@@ -1,6 +1,7 @@
 watchdog
 PyYAML
-pydantic
+python-dotenv
 boto3
 boto3-stubs[s3]
 pyinstaller
+ruff

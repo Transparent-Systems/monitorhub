@@ -156,24 +156,20 @@ Any remote profile not in monitorhub.conf will use Rclone.
 
 ## Acknowledgments
 
-This project was developed with the assistance of Google Gemini.
-We used Gemini Code Assist in VS Code for development.
-The code suggestions and quality are excellent.
+This project was developed with the assistance of Google Gemini and Deepseek V4 Pro.
+Later on in the project I started using OpenRouter which makes it easy to try out different models.
+
 
 ## Features
 
-* mhub.py  
+* mhub CLI
     This is the command-line interface for managing profiles, monitors, configuration, and diagnostics.  
     Call example:  
-    python mhub.py monitor start-all
-* YAML configuration file
-    The YAML configuration file, default ./conf/config.yaml, contains settings for logging and one or more monitors
-* Decoupled architecture where file system events are decoupled from the processing of events
-* Events are processed by an ActionHandler, currently BaseActionHandler, that runs in a separate thread
-* Shell command handler
-    A shell command can be linked to any monitor. When a matching file event
-    occurs, the command is executed on its own thread so monitoring never
-    blocks.
+    mhub monitor start-all
+* A monitor consumes an event and detaches actions to one or more profile handlers
+* A profile stores the configuration details of a profile handler
+* A profile type is linked to a sepcific handler
+* A profile category is a superset of profile types, for example remote profiles or command profiles
 
 ## Shell Command Handler
 
@@ -190,7 +186,7 @@ this monitor?" to configure a command.
 
 ### Placeholders
 
-The command template may contain placeholders that are replaced with event
+A command template may contain placeholders that are replaced with event
 details before execution:
 
 | Placeholder    | Description                                            |
@@ -208,7 +204,7 @@ notify-send "File {action_type}" "{src_path}"
 
 ### Safety
 
-* By default the command is executed **without a shell** (`shell=False`) to
+* By default a command is executed **without a shell** (`shell=False`) to
   avoid shell injection. Enable shell execution (opt-in) to use pipes,
   redirects, or environment variable expansion.
 * Event filtering: restrict the handler to specific events (e.g. only
@@ -229,14 +225,17 @@ See file: LICENSE
 
 You can find more information on website [aip.transparent.co.nz/MonitorHub](https://aip.transparent.co.nz/MonitorHub)
 
-Project MonitorHub grew organically over time.  
-All tools I used had some problem, like no real backup, cloud provider locking, hard to debug, huge CPU usage (let me guess ...)  
-Initially I used OneDrive to "backup" files to the OneDrive cloud storage.  
-However with several file explorers running simulteneously the PC became unresponsive.  
-OneDrive was frequently using 100% CPU making working on the PC impossible.  
-This was a deal breaker to me, I uninstalled OneDrive and decided to use rclone for copying files to the cloud.  
+Project MonitorHub grew organically over time.
+I wanted the solve the many issues I experienced with common Windows desktop solutions.
+- Very slow to load initially
+- Privacy intrusion
+- Issues with backup handling
+- Not a real backup
+- Vendor lockin
+- Up to 100% CPU usage (what was it doing?)
+- Tool made PC hang if several explorer windows were open
 
-Rclone worked better than OneDrive and unobtrusive in the background.  
+Initially I used rclone, whihc is the swiss knife of (cloud) file transfer.
 I scheduled an rclone job every few hours and this was just fine for my purposes.  
 Until one day I wanted to upload my security videos to the cloud as well.  
 It was critical to upload those videos instantly and build a simple PowerShell script to do the job.  
@@ -245,20 +244,32 @@ The logging was cumersome as well and I needed to run a separate cleanup job for
 The main issue was that PowerShell was running on Windows only.  
 
 Now I had the choice to build a separate application for Linux, or build a generic solution for Windows, Linux and Mac OS.  
-This is when MonitorHub was born.  
-While I had little experience with Python, it has proven to be a great choice.  
-VS Code has fantastic support for Python development like code completion and debugging.  
-I added the Gemini Code Assist extension. Gemini worked just great.  
+This is when FolderMonitor was born.
+It worked fine but it was not scalable.
+TO make it scalable:
+- each monitor needed to be started and stopped indivudually
+- a monitor needed to be able to handle file events, but also timer events
+- a pluggable architecture that allowed adding new monitor types and profile types easily
 
-## Future development
+While I was working on the application it gradually became clear to me that on a high level it was a lego box with monitors that consime events and profile handlers that process an event.
+The application is scalable and the architecture is scalable as well.
+For example adding a webhook monitor only requires one new class WebhookMonitor that registers itself with an ActionHandler. ALl the plumbing is already in place. This makes it simple to expand the application.
 
-Some new features could include:
+## Use cases
 
+Some use cases are:
+* Consolidate several cloud storage locations into a single local repository
+  you are probably familiar with the following scenario. The family is on a holiday and each mobile phone uploads their photos to a cloud provider.
+  When back home you spend hours downloading photos from all family members and copy them to a media server so you can watch the holiday pics on your PC.
+  One restore monitor with a profile for each cloud storage handles this automatically for you.
+  When you come home all photos and videos are ready to watch on your TV
 * Intrusion detection
+  Monitor some critical folder and possible honeypot files.
   This could trigger an alarm, like email, SMS message or a Discours event.
+  You could trigger a job to instantly block firewall access to the server!
 * Ransomware protection
-  This could trigger an alarm, like email, SMS message or a Discours event.
-* Develop a GUI to create a configuration file, test a configuration and start a monitor
+  Backup your files to a versioned cloud provider
+  In case of ransomware you can restore a previous file version.
 
 ---
 

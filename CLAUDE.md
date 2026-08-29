@@ -35,5 +35,3 @@
 - Python 3.12 features are permitted (e.g. `X | None`, `match`, dataclasses).
 - Follow PEP 8; prioritize readability.
 - Do not modify files in `.venv/`, `.vscode/`, `data/`, or `build/`.
-- Configuration lives in `conf/config.yaml`; use `tests/conf/config.test.yaml`
-  for test-related configuration questions.

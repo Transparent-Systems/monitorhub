@@ -180,7 +180,7 @@ class DiagnosticUtil:
         print(f"[*] Python Version: {sys.version.split()[0]} - OK")
 
         # Check for key Python dependencies
-        packages = ["pydantic", "watchdog", "yaml", "boto3"]
+        packages = ["watchdog", "yaml", "boto3"]
         missing = []
 
         for pkg in packages:
