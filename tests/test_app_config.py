@@ -1,0 +1,58 @@
+import unittest
+import tempfile
+import shutil
+from pathlib import Path
+import yaml
+from scripts.utils.app_config import AppConfig
+
+
+class TestAppConfig(unittest.TestCase):
+    def setUp(self):
+        self.temp_dir = tempfile.mkdtemp()
+        self.config_path = Path(self.temp_dir) / "config.yaml"
+
+    def tearDown(self):
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def test_missing_config_file_returns_fallback(self):
+        config = AppConfig(config_path=self.config_path)
+        self.assertEqual(config.get_default_db_dir(fallback="data"), "data")
+
+    def test_config_with_direct_default_database(self):
+        with open(self.config_path, "w", encoding="utf-8") as f:
+            yaml.dump({"default_database": "testdata/db/dev"}, f)
+
+        config = AppConfig(config_path=self.config_path)
+        self.assertEqual(config.get_default_db_dir(), "testdata/db/dev")
+
+    def test_config_with_named_database_mapping(self):
+        content = {
+            "default_database": "dev",
+            "databases": {
+                "dev": "testdata/db/dev",
+                "prod": "/var/lib/monitorhub/db",
+            },
+        }
+        with open(self.config_path, "w", encoding="utf-8") as f:
+            yaml.dump(content, f)
+
+        config = AppConfig(config_path=self.config_path)
+        self.assertEqual(config.get_default_db_dir(), "testdata/db/dev")
+
+    def test_config_with_named_database_dict_mapping(self):
+        content = {
+            "default_database": "prod",
+            "databases": {
+                "dev": {"path": "testdata/db/dev"},
+                "prod": {"path": "/var/lib/monitorhub/db"},
+            },
+        }
+        with open(self.config_path, "w", encoding="utf-8") as f:
+            yaml.dump(content, f)
+
+        config = AppConfig(config_path=self.config_path)
+        self.assertEqual(config.get_default_db_dir(), "/var/lib/monitorhub/db")
+
+
+if __name__ == "__main__":
+    unittest.main()

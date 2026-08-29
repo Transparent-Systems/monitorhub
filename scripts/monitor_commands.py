@@ -1,0 +1,900 @@
+"""Monitor subcommands for MonitorHub."""
+
+import datetime
+import logging
+import os
+import signal
+import subprocess
+import sys
+from pathlib import Path
+from typing import Any
+
+from scripts import reference_data
+from scripts.constants import (
+    MONITOR_STATUS_RUNNING,
+    MONITOR_STATUS_STOP,
+    MONITOR_STATUS_STOPPED,
+    MONITOR_TYPE_BACKUP,
+    MONITOR_TYPE_INSTANT,
+    MONITOR_TYPE_RESTORE,
+)
+from scripts.prompt_service import PromptService
+
+STALE_HEARTBEAT_SECONDS = 60
+
+
+class MonitorCommands:
+    """Monitor CRUD, start/stop, test, and lifecycle commands."""
+
+    def __init__(
+        self,
+        sqlite_handler,
+        logger: logging.Logger,
+        db_dir: str,
+        log_config: str,
+        log_level: str | None,
+        prompt: PromptService,
+    ) -> None:
+        self.sqlite_handler = sqlite_handler
+        self.logger = logger
+        self.db_dir = db_dir
+        self.log_config = log_config
+        self.log_level = log_level
+        self.prompt = prompt
+
+    @staticmethod
+    def _resolve_python_interpreter(script_dir: Path) -> str:
+        """Return the Python interpreter used to launch monitor child processes.
+
+        Prefer the project's virtual environment (.venv) so child processes run
+        with the same interpreter and installed dependencies. Falls back to the
+        currently running interpreter when the venv is not found.
+        """
+        if sys.platform == "win32":
+            venv_python = script_dir / ".venv" / "Scripts" / "python.exe"
+        else:
+            venv_python = script_dir / ".venv" / "bin" / "python3"
+
+        return str(venv_python) if venv_python.exists() else sys.executable
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    def _is_interval_valid(self, interval: str) -> bool:
+        """Check if interval string is valid (e.g. 10, 10m, 10h, 10d)."""
+        if interval.isdigit():
+            return True
+        if len(interval) > 1:
+            if interval[-1].lower() in ("m", "h", "d") and interval[:-1].isdigit():
+                return True
+        return False
+
+    @staticmethod
+    def _heartbeat_age_seconds(heartbeat: str | None) -> float | None:
+        """Return the age of a heartbeat in seconds, or None if missing/unparseable."""
+        if not heartbeat:
+            return None
+        try:
+            heartbeat_dt = datetime.datetime.strptime(heartbeat, "%Y-%m-%d %H:%M:%S")
+        except (ValueError, TypeError):
+            return None
+        heartbeat_dt = heartbeat_dt.replace(tzinfo=datetime.timezone.utc)
+        now = datetime.datetime.now(datetime.timezone.utc)
+        return (now - heartbeat_dt).total_seconds()
+
+    def _force_kill_process(self, pid: int, name: str) -> bool:
+        """Send SIGKILL to a process and return whether it is now dead.
+
+        Returns True if the process was killed or was already gone.
+        Returns False on PermissionError (process still alive).
+        """
+        try:
+            os.kill(pid, signal.SIGKILL)
+            self.prompt.print(f"Sent SIGKILL to monitor '{name}' (pid={pid}).")
+            return True
+        except ProcessLookupError:
+            self.prompt.print(f"Monitor '{name}' process (pid={pid}) not found — may have already exited.")
+            return True
+        except PermissionError:
+            self.prompt.print(f"Permission denied when sending SIGKILL to monitor '{name}' (pid={pid}).")
+            return False
+
+    def _cleanup_stale_monitors(self, monitors: list[dict]) -> list[dict]:
+        """Detect and stop stale/hung running monitors, returning them for restart."""
+        stale_monitors: list[dict] = []
+
+        for monitor in monitors:
+            if monitor.get("status") != MONITOR_STATUS_RUNNING:
+                continue
+
+            monitor_id_val: int = monitor.get("id", 0)
+            monitor_name = monitor.get("name", "N/A")
+            pid = monitor.get("pid", 0)
+            age = self._heartbeat_age_seconds(monitor.get("last_heartbeat"))
+
+            if age is not None and age <= STALE_HEARTBEAT_SECONDS:
+                continue
+
+            if age is None:
+                self.prompt.print(
+                    f"Stale monitor '{monitor_name}' (id={monitor_id_val}) has no "
+                    f"recent heartbeat. Forcing stop and restart..."
+                )
+            else:
+                self.prompt.print(
+                    f"Stale monitor '{monitor_name}' (id={monitor_id_val}) heartbeat "
+                    f"is {age:.0f}s old. Forcing stop and restart..."
+                )
+
+            if pid:
+                self._force_kill_process(pid, monitor_name)
+
+            self.sqlite_handler.update_monitor_status(monitor_id=monitor_id_val, status=MONITOR_STATUS_STOPPED)
+            self.sqlite_handler.update_monitor_pid(monitor_id=monitor_id_val, pid=0)
+            stale_monitors.append(monitor)
+
+        return stale_monitors
+
+    def _select_monitor_interactive(
+        self,
+        monitors: list[dict] | None = None,
+        allow_all: bool = False,
+        prompt: str = "Enter monitor number: ",
+    ) -> int | None:
+        """Display a numbered list of monitors and prompt the user to select one.
+
+        Returns the 1-based index of the selected monitor, ``0`` when
+        *allow_all* is True and the user chose "all", or ``None`` when the
+        user entered an empty string (cancel).
+        """
+        if monitors is None:
+            monitors = self.sqlite_handler.get_monitors()
+            if not monitors:
+                self.prompt.print(f"No monitors found in {self.sqlite_handler.db_path}")
+                return None
+
+        while True:
+            self.prompt.print()
+            if allow_all:
+                self.prompt.print("0.  Select all monitors")
+            for i in range(len(monitors)):
+                self.prompt.print(f"{i+1}. {monitors[i].get('name', 'N/A')}")
+
+            choice = self.prompt.input(prompt).strip()
+            if choice == "":
+                return None
+
+            if allow_all and choice == "0":
+                return 0
+
+            if not choice.isdigit():
+                self.prompt.print(f"Invalid monitor number: {choice}. Please try again.")
+                continue
+
+            choice_int = int(choice)
+            if 1 <= choice_int <= len(monitors):
+                return choice_int
+
+            self.prompt.print(f"Invalid monitor number: {choice_int}. Please try again.")
+
+    def _prompt_interval(self, current_interval: str | None = None) -> str:
+        """Prompt the user for a monitor interval and return the normalized value."""
+        while True:
+            if current_interval is not None:
+                self.prompt.print(f"Current interval: {current_interval}")
+                self.prompt.print("Press Enter to keep current interval")
+                input_interval = self.prompt.input("Enter interval: ").strip()
+                if input_interval == "":
+                    return current_interval
+            else:
+                self.prompt.print(
+                    "Interval is in minutes(m), hours(h) or days(d). "
+                    "Default is minutes. For example 10m means 10 minutes."
+                )
+                input_interval = self.prompt.input("Please enter interval: ").strip()
+                if input_interval == "":
+                    self.prompt.print("Interval cannot be just spaces")
+                    continue
+
+            if not self._is_interval_valid(input_interval):
+                self.prompt.print(f"Invalid interval: {input_interval}. Please try again.")
+                continue
+
+            return input_interval + "m" if input_interval.isdigit() else input_interval
+
+    def _prompt_exclude_patterns(self, current: list[str] | None = None) -> list[str]:
+        """Prompt for comma-separated exclude patterns and return them as a list.
+
+        Applies to all monitor types. An empty response means either
+        "keep current patterns" (when editing) or "no exclusions" (when new).
+        """
+        while True:
+            if current:
+                self.prompt.print(f"Current exclude patterns: {', '.join(current)}")
+                self.prompt.print("Press Enter to keep current exclude patterns")
+            else:
+                self.prompt.print("Leave empty (press Enter) for no exclusions.")
+
+            raw = self.prompt.input(
+                "Enter exclude patterns (comma-separated, e.g. *.log, .git): "
+            ).strip()
+
+            if raw == "":
+                return current if current else []
+
+            patterns = [p.strip() for p in raw.split(",") if p.strip()]
+            if not patterns:
+                self.prompt.print("No valid patterns entered. Please try again.")
+                continue
+
+            return patterns
+
+    def _launch_monitor_process(self, monitor: dict) -> bool:
+        """Launch run_monitor.py for a single monitor as a detached child process.
+
+        Returns True on success, False on failure.
+        """
+        import os as _os
+
+        monitor_id_val: int = monitor.get("id", 0)
+        monitor_name = monitor.get("name", "N/A")
+
+        project_root = Path(_os.path.join(_os.path.dirname(__file__), "../")).resolve()
+        run_monitor_script = project_root / "scripts" / "run_monitor.py"
+        python = self._resolve_python_interpreter(project_root)
+
+        child_env = None
+        if getattr(sys, "frozen", False):
+            cmd = [
+                sys.executable,
+                "run-monitor",
+                "--monitor-id", str(monitor_id_val),
+                "--db-dir", str(self.db_dir),
+                "--log", self.log_config,
+            ]
+            if self.log_level:
+                cmd += ["--log-level", self.log_level]
+            child_env = _os.environ.copy()
+            for key in list(child_env.keys()):
+                if key.startswith("_PYI_") or key in (
+                    "LD_LIBRARY_PATH",
+                    "DYLD_LIBRARY_PATH",
+                ):
+                    child_env.pop(key, None)
+        else:
+            cmd = [
+                python,
+                str(run_monitor_script),
+                "--monitor-id", str(monitor_id_val),
+                "--db-dir", str(self.db_dir),
+                "--log", self.log_config,
+            ]
+            if self.log_level:
+                cmd += ["--log-level", self.log_level]
+
+        try:
+            logs_dir = Path.cwd() / "logs"
+            logs_dir.mkdir(exist_ok=True)
+            error_log = logs_dir / f"monitor_{monitor_id_val}.log"
+            with open(error_log, "a") as error_log_fh:
+                subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.DEVNULL,
+                    stderr=error_log_fh,
+                    start_new_session=True,
+                    env=child_env,
+                )
+        except Exception as e:
+            self.prompt.print(f"Failed to start monitor '{monitor_name}' (id={monitor_id_val}): {e}")
+            return False
+
+        return True
+
+    # ------------------------------------------------------------------
+    # monitor_edit helpers
+    # ------------------------------------------------------------------
+
+    def _edit_basic_fields(self, monitor: dict) -> None:
+        """Edit name, monitor_path, remote_path, and monitor_type on a monitor dict."""
+        # Monitor name
+        while True:
+            self.prompt.print(f"Current monitor name: {monitor.get('name', 'N/A')}")
+            self.prompt.print("Press Enter to keep current monitor name")
+            input_monitor_name = self.prompt.input("Enter new monitor name: ")
+            if input_monitor_name.strip() == "":
+                break
+            monitor["name"] = input_monitor_name
+            break
+
+        # Monitor path
+        while True:
+            self.prompt.print(f"Current monitor path: {monitor.get('monitor_path', 'N/A')}")
+            self.prompt.print("Press Enter to keep current monitor path")
+            input_monitor_path = self.prompt.input("Enter new monitor path: ")
+            if input_monitor_path.strip() == "":
+                break
+            monitor["monitor_path"] = input_monitor_path
+            break
+
+        # Remote path
+        while True:
+            self.prompt.print(f"Current remote path: {monitor.get('remote_path', 'N/A')}")
+            self.prompt.print("Press Enter to keep current remote path")
+            input_remote_path = self.prompt.input("Enter new remote path: ")
+            if input_remote_path.strip() == "":
+                break
+            monitor["remote_path"] = input_remote_path
+            break
+
+        # Monitor type
+        monitor_types = reference_data.MONITOR_TYPES
+        if not monitor_types:
+            self.prompt.print("No monitor types available")
+            return
+
+        self.prompt.print("List of monitor types")
+        self.prompt.print("=" * 50)
+        for i, (name, description) in enumerate(monitor_types):
+            self.prompt.print(f"{i+1}. {name} - {description}")
+        self.prompt.print("=" * 50)
+        self.prompt.print(f"Current monitor type: {monitor.get('monitor_type', 'N/A')}")
+        self.prompt.print("Press Enter to keep current monitor type")
+        input_monitor_type = self.prompt.input("Enter new monitor type: ")
+        if input_monitor_type.strip() != "":
+            monitor["monitor_type"] = monitor_types[int(input_monitor_type) - 1][0]
+
+    def _edit_interval(self, monitor: dict) -> None:
+        """Edit the interval config for backup/restore monitor types."""
+        monitor_type = monitor.get("monitor_type", "N/A")
+        if monitor_type in (MONITOR_TYPE_BACKUP, MONITOR_TYPE_RESTORE):
+            config = monitor.get("config", {})
+            if "interval" in config:
+                current_interval = config.get("interval", "N/A")
+                monitor["config"]["interval"] = self._prompt_interval(current_interval=current_interval)
+            else:
+                monitor["config"]["interval"] = self._prompt_interval()
+
+    def _edit_exclude_patterns(self, monitor: dict) -> None:
+        """Edit the exclude_patterns config for all monitor types."""
+        config = monitor.get("config") or {}
+        current = config.get("exclude_patterns", [])
+        config["exclude_patterns"] = self._prompt_exclude_patterns(
+            current=current or None
+        )
+        monitor["config"] = config
+
+    def _edit_profiles(self, monitor: dict, monitor_id: int) -> None:
+        """Edit profile mappings: delete existing and add new profiles."""
+        monitor_profiles = self.sqlite_handler.get_profiles_for_monitor(monitor_id=monitor_id)
+        if monitor_profiles:
+            self.prompt.print("\nCurrent profiles linked to this monitor:")
+            for profile in monitor_profiles:
+                self.prompt.print(f"  - {profile.get('name', 'N/A')} (ID: {profile.get('id', 'N/A')})")
+
+            delete_profiles = {}
+            for i, profile in enumerate(monitor_profiles):
+                delete_profiles[i + 1] = profile
+
+            while delete_profiles:
+                self.prompt.print("\nProfiles to delete (leave blank to skip):")
+                for k, v in delete_profiles.items():
+                    self.prompt.print(f"{k}. {v.get('name', 'N/A')}")
+
+                input_delete_number = self.prompt.input("Enter profile number to delete (or press Enter to continue): ")
+                if input_delete_number.strip() == "":
+                    break
+
+                if not input_delete_number.isdigit():
+                    self.prompt.print(f"Invalid profile number: {input_delete_number}. Please try again.")
+                    continue
+
+                input_delete_number = int(input_delete_number)
+                if input_delete_number not in delete_profiles:
+                    self.prompt.print(f"Invalid profile number: {input_delete_number}. Please try again.")
+                    continue
+
+                profile_to_delete = delete_profiles[input_delete_number]
+                profile_id_to_delete = profile_to_delete.get("id", 0)
+
+                if self.sqlite_handler.delete_monitor_profile_map(
+                    monitor_id=monitor_id, profile_id=profile_id_to_delete
+                ):
+                    self.prompt.print(f"Profile '{profile_to_delete.get('name', 'N/A')}' removed from monitor")
+                    monitor_profiles.remove(profile_to_delete)
+                    del delete_profiles[input_delete_number]
+                else:
+                    self.prompt.print(f"Failed to remove profile '{profile_to_delete.get('name', 'N/A')}'")
+
+                if not delete_profiles:
+                    break
+
+        # Add profiles
+        all_profiles = self.sqlite_handler.get_profiles()
+        current_profile_ids = {p.get("id") for p in monitor_profiles} if monitor_profiles else set()
+        available_profiles = {}
+        for i, profile in enumerate(all_profiles):
+            if profile.get("id") not in current_profile_ids:
+                available_profiles[i + 1] = profile
+
+        if available_profiles:
+            self.prompt.print("\nAvailable profiles to add:")
+            while available_profiles:
+                for k, v in available_profiles.items():
+                    profile_name = v.get("name", "N/A")
+                    profile_type = v.get("profile_type", "N/A")
+                    self.prompt.print(f"{k}. profile name: {profile_name}, profile type: {profile_type}")
+
+                input_add_number = self.prompt.input("Enter profile number to add (or press Enter to skip): ")
+                if input_add_number.strip() == "":
+                    break
+
+                if not input_add_number.isdigit():
+                    self.prompt.print(f"Invalid profile number: {input_add_number}. Please try again.")
+                    continue
+
+                input_add_number = int(input_add_number)
+                if input_add_number not in available_profiles:
+                    self.prompt.print(f"Invalid profile number: {input_add_number}. Please try again.")
+                    continue
+
+                profile_to_add = available_profiles[input_add_number]
+                profile_id_to_add = profile_to_add.get("id", 0)
+
+                if self.sqlite_handler.add_monitor_profile_map(
+                    monitor_id=monitor_id, profile_id=profile_id_to_add
+                ):
+                    self.prompt.print(f"Profile '{profile_to_add.get('name', 'N/A')}' added to monitor")
+                    current_profile_ids.add(profile_id_to_add)
+                    del available_profiles[input_add_number]
+                else:
+                    self.prompt.print(f"Failed to add profile '{profile_to_add.get('name', 'N/A')}'")
+
+                if not available_profiles:
+                    self.prompt.print("All profiles have been added.")
+                    break
+
+                input_continue = self.prompt.input("Do you want to add another profile? (Y/n): ")
+                if input_continue.lower() == "y" or input_continue == "":
+                    continue
+                else:
+                    break
+
+    # ------------------------------------------------------------------
+    # Public monitor commands
+    # ------------------------------------------------------------------
+
+    def monitor_delete(self):
+        """Delete monitor."""
+        monitors = self.sqlite_handler.get_monitors()
+        if not monitors:
+            self.prompt.print(f"No monitors found in {self.sqlite_handler.db_path}")
+            return
+
+        choice = self._select_monitor_interactive(monitors=monitors)
+        if choice is None:
+            self.prompt.print("No monitor selected")
+            return
+
+        monitor = monitors[choice - 1]
+        self.prompt.print(f"You want to delete monitor: {monitor.get('name', 'N/A')}")
+
+        while True:
+            confirm = self._select_monitor_interactive(
+                monitors=monitors, prompt="Confirm monitor number: "
+            )
+            if confirm is None:
+                self.prompt.print("No monitor selected")
+                return
+
+            if confirm == choice:
+                break
+            self.prompt.print(f"Monitor numbers do not match: {choice} is not {confirm}. Please try again.")
+
+        if self.sqlite_handler.delete_monitor(monitor_id=monitor.get("id", 0)):
+            self.prompt.print(f"Monitor name: {monitor.get('name', 'N/A')} deleted")
+        else:
+            self.prompt.print(f"Monitor name: {monitor.get('name', 'N/A')} not deleted")
+
+    def monitor_edit(self):
+        """Edit monitor."""
+        monitors = self.sqlite_handler.get_monitors()
+        if not monitors:
+            self.prompt.print(f"No monitors found in {self.sqlite_handler.db_path}")
+            return
+
+        self.prompt.print("\nList of monitors to edit")
+        choice = self._select_monitor_interactive(monitors=monitors)
+        if choice is None:
+            self.prompt.print("No monitor selected")
+            return
+
+        monitor = monitors[choice - 1]
+        monitor_id = monitor.get("id", "N/A")
+        monitor["config"] = monitor.get("config") or {}
+
+        self._edit_basic_fields(monitor)
+        self._edit_interval(monitor)
+        self._edit_exclude_patterns(monitor)
+        self._edit_profiles(monitor, monitor_id)
+
+        # Update monitor
+        rowid = self.sqlite_handler.update_monitor(
+            monitor_id=monitor.get("id", 0),
+            name=monitor.get("name", "N/A"),
+            monitor_path=monitor.get("monitor_path", "N/A"),
+            remote_path=monitor.get("remote_path", "N/A"),
+            monitor_type=monitor.get("monitor_type", "N/A"),
+            config=monitor.get("config", {}),
+            status=monitor.get("status", MONITOR_STATUS_STOPPED),
+        )
+        if rowid is not None:
+            self.prompt.print(f"Monitor name: {monitor.get('name', 'N/A')} has been updated")
+        else:
+            self.prompt.print(f"Monitor name: {monitor.get('name', 'N/A')} has not been updated")
+
+    def monitor_new(self):
+        """Create new monitor."""
+        profiles = self.sqlite_handler.get_profiles()
+        if profiles is None or len(profiles) == 0:
+            self.logger.warning(f"No profiles found in {self.sqlite_handler.db_path}")
+            self.logger.warning("Please add profiles first")
+            return
+
+        while True:
+            self.prompt.print("Please enter monitor name")
+            input_monitor_name = self.prompt.input("Enter monitor name: ")
+            if input_monitor_name.strip() == "":
+                self.prompt.print("Monitor name cannot be just spaces.")
+                return
+            self.prompt.print(f"You entered monitor name: {input_monitor_name}")
+            monitor = self.sqlite_handler.get_monitor(monitor_name=input_monitor_name)
+            if monitor:
+                self.prompt.print(f"Monitor name: {input_monitor_name} already exists. Please try again")
+                continue
+            break
+
+        while True:
+            input_monitor_path = self.prompt.input("Please enter monitor path: ")
+            if input_monitor_path.strip() == "":
+                self.prompt.print("monitor path cannot be just spaces.")
+                return
+            self.prompt.print(f"You entered monitor path: {input_monitor_path}")
+            break
+
+        while True:
+            input_remote_path = self.prompt.input("Please enter remote path: ")
+            if input_remote_path.strip() == "":
+                self.prompt.print("Remote path cannot be just spaces.")
+                return
+            self.prompt.print(f"You entered remote path: {input_remote_path}")
+            break
+
+        monitor_types = reference_data.MONITOR_TYPES
+        if not monitor_types:
+            self.prompt.print("No monitor types available")
+            return
+
+        while True:
+            for i, (name, description) in enumerate(monitor_types):
+                self.prompt.print(f"{i+1}. {name} - {description}")
+
+            input_monitor_type_number = self.prompt.input("Please select number of monitor type: ")
+            if input_monitor_type_number.strip() == "":
+                self.prompt.print("Monitor type cannot be just spaces")
+
+            if not input_monitor_type_number.isdigit():
+                self.prompt.print(f"Invalid monitor type number: {input_monitor_type_number}. Please try again.")
+                continue
+
+            input_monitor_type_number = int(input_monitor_type_number)
+            if input_monitor_type_number > 0 and input_monitor_type_number <= len(monitor_types):
+                break
+
+        self.prompt.print(f"You entered monitor type number: {input_monitor_type_number}")
+        monitor_type = monitor_types[input_monitor_type_number - 1][0]
+        self.prompt.print(f"You selected monitor type: {monitor_type}")
+        if monitor_type in (MONITOR_TYPE_BACKUP, MONITOR_TYPE_RESTORE):
+            monitor_config = {
+                "interval": self._prompt_interval(),
+                "exclude_patterns": self._prompt_exclude_patterns(),
+            }
+        elif monitor_type == MONITOR_TYPE_INSTANT:
+            monitor_config = {"exclude_patterns": self._prompt_exclude_patterns()}
+        else:
+            monitor_config = {}
+
+        selected_profiles = []
+        unselected_profiles: dict[int, Any] = {}
+        for i, p in enumerate(profiles):
+            unselected_profiles[i + 1] = p
+
+        while True:
+            if not unselected_profiles:
+                self.prompt.print("All profiles have been selected.")
+                break
+
+            self.prompt.print("Profiles:")
+            for k, v in unselected_profiles.items():
+                profile_name = v.get("name", "N/A")
+                profile_type = v.get("profile_type", "N/A")
+                self.prompt.print(f"{k}. profile name: {profile_name}, profile type: {profile_type}")
+
+            input_profile_number = self.prompt.input("Please select profile number: ")
+            if input_profile_number.strip() == "":
+                self.prompt.print("Profile cannot be just spaces")
+                continue
+
+            if not input_profile_number.isdigit():
+                self.prompt.print(f"Invalid profile number: {input_profile_number}. Please try again.")
+                continue
+
+            input_profile_number = int(input_profile_number)
+            if input_profile_number not in unselected_profiles:
+                self.prompt.print(f"You entered an invalid profile number: {input_profile_number}")
+                continue
+
+            self.prompt.print(f"You entered profile number: {input_profile_number}")
+            chosen = unselected_profiles[input_profile_number]
+            selected_profiles.append(chosen)
+            del unselected_profiles[input_profile_number]
+
+            if len(unselected_profiles) == 0:
+                self.prompt.print("All profiles have been selected.")
+                break
+
+            input_continue = self.prompt.input("Do you want to add another profile? (Y/n): ")
+            if input_continue.lower() == "y" or input_continue == "":
+                continue
+            else:
+                break
+
+        monitor_id = self.sqlite_handler.add_monitor(
+            name=input_monitor_name,
+            monitor_path=input_monitor_path,
+            remote_path=input_remote_path,
+            monitor_type=monitor_types[input_monitor_type_number - 1][0],
+            config=monitor_config,
+            status=MONITOR_STATUS_STOPPED,
+        )
+
+        if monitor_id is None:
+            self.prompt.print(f"Monitor name: {input_monitor_name} not created")
+            return
+        else:
+            self.prompt.print(f"Monitor name: {input_monitor_name} created")
+            for i in range(len(selected_profiles)):
+                profile = selected_profiles[i]
+                profile_id = profile["id"]
+                self.sqlite_handler.add_monitor_profile_map(
+                    monitor_id=monitor_id, profile_id=profile_id
+                )
+
+    def monitor_show(self):
+        """Show all monitors."""
+        monitors = self.sqlite_handler.get_monitors()
+        for monitor in monitors:
+            self.prompt.print()
+            self.prompt.print("=" * 50)
+            self.prompt.print(f"Monitor id: {monitor.get('id', '0')}")
+            self.prompt.print(f"Monitor name: {monitor.get('name', 'N/A')}")
+            self.prompt.print(f"Monitor type: {monitor.get('monitor_type', 'N/A')}")
+            self.prompt.print(f"Monitor path: {monitor.get('monitor_path', 'N/A')}")
+            self.prompt.print(f"Remote path: {monitor.get('remote_path', 'N/A')}")
+            self.prompt.print(f"Status: {monitor.get('status', 'N/A')}")
+            config = monitor.get("config", {})
+            for key in config.keys():
+                self.prompt.print(f"   {key}: {config.get(key, 'N/A')}")
+            self.prompt.print("=" * 50)
+
+    def monitor_test(self, monitor_id: int | None = None, monitor_name: str | None = None):
+        """Test monitor(s)."""
+        from scripts.utils.diagnostic_util import DiagnosticUtil
+
+        if monitor_id is not None and monitor_name is not None:
+            self.prompt.print("Cannot specify both --monitor-id and --monitor-name.")
+            return
+
+        monitors = self.sqlite_handler.get_monitors()
+        if not monitors:
+            self.prompt.print(f"No monitors found in {self.sqlite_handler.db_path}")
+            return
+
+        if monitor_id is not None:
+            monitor = self.sqlite_handler.get_monitor(monitor_id=monitor_id)
+            if not monitor:
+                self.prompt.print(f"Monitor with id={monitor_id} not found.")
+                return
+        elif monitor_name is not None:
+            monitor = self.sqlite_handler.get_monitor(monitor_name=monitor_name)
+            if not monitor:
+                self.prompt.print(f"Monitor with name='{monitor_name}' not found.")
+                return
+            monitor_id = monitor.get("id")
+        else:
+            self.prompt.print("\nList of monitors")
+            choice = self._select_monitor_interactive(monitors=monitors, allow_all=True)
+            if choice is None:
+                self.prompt.print("Nothing selected")
+                return
+
+            if choice == 0:
+                self.prompt.print("Your selected all monitors")
+                monitor_id = None
+            else:
+                monitor_id = monitors[choice - 1].get("id", "N/A")
+
+        try:
+            diagnostic_util = DiagnosticUtil(db_dir=self.db_dir, logger=self.logger)
+            if not diagnostic_util.check_monitor_config(monitor_id=monitor_id):
+                return
+        finally:
+            self.prompt.print("Monitor test completed")
+
+    def monitor_start(self, monitor_id: int | None = None, monitor_name: str | None = None):
+        """Start a single monitor as a detached child process."""
+        if monitor_id is not None and monitor_name is not None:
+            self.prompt.print("Cannot specify both --monitor-id and --monitor-name.")
+            return
+
+        if monitor_id is None and monitor_name is None:
+            monitors = self.sqlite_handler.get_monitors()
+            if not monitors:
+                self.prompt.print(f"No monitors found in {self.sqlite_handler.db_path}")
+                return
+
+            self.prompt.print("\nList of monitors")
+            choice = self._select_monitor_interactive(monitors=monitors)
+            if choice is None:
+                self.prompt.print("Nothing selected")
+                return
+            monitor = monitors[choice - 1]
+        elif monitor_id is not None:
+            monitor = self.sqlite_handler.get_monitor(monitor_id=monitor_id)
+            if not monitor:
+                self.prompt.print(f"Monitor with id={monitor_id} not found.")
+                return
+        else:
+            monitor = self.sqlite_handler.get_monitor(monitor_name=monitor_name)
+            if not monitor:
+                self.prompt.print(f"Monitor with name='{monitor_name}' not found.")
+                return
+
+        monitor_id_val: int = monitor.get("id", 0)
+        monitor_name = monitor.get("name", "N/A")
+
+        if monitor.get("status") == MONITOR_STATUS_RUNNING:
+            self.prompt.print(f"Monitor '{monitor_name}' (id={monitor_id_val}) is already running.")
+            return
+
+        if self._launch_monitor_process(monitor):
+            self.prompt.print(f"Monitor '{monitor_name}' (id={monitor_id_val}) started.")
+
+    def monitor_start_all(self):
+        """Clean up stale/hung monitors and start all monitors that are not running."""
+        monitors = self.sqlite_handler.get_monitors()
+        if not monitors:
+            self.prompt.print(f"No monitors found in {self.sqlite_handler.db_path}")
+            return
+
+        to_start = self._cleanup_stale_monitors(monitors)
+        to_start.extend(m for m in monitors if m.get("status") != MONITOR_STATUS_RUNNING)
+
+        if not to_start:
+            self.prompt.print("All monitors are already running.")
+            return
+
+        self.prompt.print(f"Starting {len(to_start)} monitor(s)...")
+
+        for monitor in to_start:
+            monitor_id_val: int = monitor.get("id", 0)
+            monitor_name = monitor.get("name", "N/A")
+
+            if self._launch_monitor_process(monitor):
+                self.prompt.print(f"Monitor '{monitor_name}' (id={monitor_id_val}) started.")
+            else:
+                self.prompt.print(f"Monitor '{monitor_name}' (id={monitor_id_val}) failed to start.")
+
+        self.prompt.print(f"Processed {len(to_start)} monitor(s)...")
+
+    def monitor_stop(self, monitor_id: int | None = None, immediate: bool = False, monitor_name: str | None = None):
+        """Stop a running monitor (gracefully or force-kill)."""
+        if monitor_id is not None and monitor_name is not None:
+            self.prompt.print("Cannot specify both --monitor-id and --monitor-name.")
+            return
+
+        monitors = self.sqlite_handler.get_monitors()
+        if not monitors:
+            self.prompt.print(f"No monitors found in {self.sqlite_handler.db_path}")
+            return
+
+        if monitor_id is None and monitor_name is None:
+            self.prompt.print("\nList of monitors")
+            choice = self._select_monitor_interactive(monitors=monitors, allow_all=True)
+            if choice is None:
+                self.prompt.print("Nothing selected")
+                return
+
+            if choice == 0:
+                selected_monitors = monitors
+            else:
+                selected_monitors = [monitors[choice - 1]]
+        elif monitor_id is not None:
+            monitor = self.sqlite_handler.get_monitor(monitor_id=monitor_id)
+            if not monitor:
+                self.prompt.print(f"Monitor with id={monitor_id} not found.")
+                return
+            selected_monitors = [monitor]
+        else:
+            monitor = self.sqlite_handler.get_monitor(monitor_name=monitor_name)
+            if not monitor:
+                self.prompt.print(f"Monitor with name='{monitor_name}' not found.")
+                return
+            selected_monitors = [monitor]
+
+        for monitor in selected_monitors:
+            monitor_id_val: int = monitor.get("id", 0)
+            if not monitor_id_val:
+                self.prompt.print("Monitor has no valid ID — skipping.")
+                continue
+            monitor_name = monitor.get("name", "N/A")
+            current_status = monitor.get("status", "N/A")
+            current_pid = monitor.get("pid", 0)
+
+            if current_status == MONITOR_STATUS_STOPPED:
+                self.prompt.print(f"Monitor '{monitor_name}' (id={monitor_id_val}) is already stopped.")
+                continue
+
+            if immediate:
+                if current_pid and current_pid != 0:
+                    if not self._force_kill_process(current_pid, monitor_name):
+                        continue
+                else:
+                    self.prompt.print(f"Monitor '{monitor_name}' has no stored PID — cannot force kill.")
+
+                self.sqlite_handler.update_monitor_status(monitor_id=monitor_id_val, status=MONITOR_STATUS_STOPPED)
+                self.sqlite_handler.update_monitor_pid(monitor_id=monitor_id_val, pid=0)
+                self.prompt.print(f"Monitor '{monitor_name}' (id={monitor_id_val}) status set to 'stopped'.")
+            else:
+                self.sqlite_handler.update_monitor_status(monitor_id=monitor_id_val, status=MONITOR_STATUS_STOP)
+                self.prompt.print(f"Stop signal sent to monitor '{monitor_name}' (id={monitor_id_val}).")
+                self.prompt.print("The monitor will gracefully shut down within ~10 seconds and set status to 'stopped'.")
+
+    def monitor_stop_all(self, immediate: bool = False):
+        """Stop all running monitors."""
+        monitors = self.sqlite_handler.get_monitors()
+        if not monitors:
+            self.prompt.print(f"No monitors found in {self.sqlite_handler.db_path}")
+            return
+
+        running_monitors = [m for m in monitors if m.get("status") == MONITOR_STATUS_RUNNING]
+        if not running_monitors:
+            self.prompt.print("No running monitors found.")
+            return
+
+        self.prompt.print(f"Stopping {len(running_monitors)} running monitor(s)...")
+
+        for monitor in running_monitors:
+            monitor_id_val: int = monitor.get("id", 0)
+            if not monitor_id_val:
+                self.prompt.print("Monitor has no valid ID — skipping.")
+                continue
+            monitor_name = monitor.get("name", "N/A")
+            current_pid = monitor.get("pid", 0)
+
+            if immediate:
+                if current_pid and current_pid != 0:
+                    if not self._force_kill_process(current_pid, monitor_name):
+                        continue
+                else:
+                    self.prompt.print(f"Monitor '{monitor_name}' has no stored PID — cannot force kill.")
+
+                self.sqlite_handler.update_monitor_status(monitor_id=monitor_id_val, status=MONITOR_STATUS_STOPPED)
+                self.sqlite_handler.update_monitor_pid(monitor_id=monitor_id_val, pid=0)
+                self.prompt.print(f"Monitor '{monitor_name}' (id={monitor_id_val}) status set to 'stopped'.")
+            else:
+                self.sqlite_handler.update_monitor_status(monitor_id=monitor_id_val, status=MONITOR_STATUS_STOP)
+                self.prompt.print(f"Stop signal sent to monitor '{monitor_name}' (id={monitor_id_val}).")
+                self.prompt.print("  The monitor will gracefully shut down within ~10 seconds and set status to 'stopped'.")
+
+        self.prompt.print(f"All {len(running_monitors)} running monitor(s) have been processed.")

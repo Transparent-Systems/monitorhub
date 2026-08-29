@@ -1,0 +1,25 @@
+"""
+Global constants for the MonitorHub application.
+"""
+
+__all__ = [
+    "DB_FILENAME",
+    "MONITOR_STATUS_ERROR",
+    "MONITOR_STATUS_RUNNING",
+    "MONITOR_STATUS_STOP",
+    "MONITOR_STATUS_STOPPED",
+    "MONITOR_TYPE_BACKUP",
+    "MONITOR_TYPE_INSTANT",
+    "MONITOR_TYPE_RESTORE",
+]
+
+MONITOR_STATUS_RUNNING = "running"
+MONITOR_STATUS_STOP = "stop"
+MONITOR_STATUS_STOPPED = "stopped"
+MONITOR_STATUS_ERROR = "error"
+
+MONITOR_TYPE_INSTANT = "instant"
+MONITOR_TYPE_BACKUP = "backup"
+MONITOR_TYPE_RESTORE = "restore"
+DB_FILENAME = "monitorhub.db"
+DATABASE_SCHEMA_VERSION = "1.0.0"

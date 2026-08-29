@@ -1,0 +1,65 @@
+"""
+Diagnostics runner for MonitorHub.
+
+Runs DiagnosticUtil checks against the project database. This is a manual
+script, not a unittest module: DiagnosticUtil is only constructed when the
+file is executed directly, so test discovery stays side-effect-free.
+"""
+
+import argparse
+import sys
+
+from scripts.utils.diagnostic_util import DiagnosticUtil
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="MonitorHub diagnostics runner")
+    parser.add_argument(
+        "test_cases",
+        nargs="*",
+        default=["check_app_config"],
+        help=(
+            "Diagnostics to run: check_app_env, check_profile_import, "
+            "check_rclone_dependency, check_app_config"
+        ),
+    )
+    parser.add_argument(
+        "--db-dir",
+        default="db",
+        help="Directory containing monitorhub.db (default: db)",
+    )
+    args = parser.parse_args()
+
+    diagnostic_util = DiagnosticUtil(
+        db_dir=args.db_dir,
+        logger=None
+    )
+
+    if ("check_app_env" in args.test_cases):
+        if (diagnostic_util.check_app_env()):
+            print("Env check passed")
+        else:
+            print("Env check failed")
+
+    elif ("check_profile_import" in args.test_cases):
+        if diagnostic_util.check_profile_import():
+            print("Profile import passed")
+        else:
+            print("Profile import failed")
+
+    elif ("check_rclone_dependency" in args.test_cases):
+        if diagnostic_util.check_rclone_dependency():
+            print("Check for Rclone dependency passed")
+        else:
+            print("Check for Rclone dependency failed")
+
+    elif ("check_app_config" in args.test_cases):
+        if (diagnostic_util.check_monitor_config()):
+            print("Config check passed")
+        else:
+            print("Config check failed")
+    else:
+        print("No test cases selected")
+
+    # diagnostic_util.print_overview()
+
+    sys.exit(0)
