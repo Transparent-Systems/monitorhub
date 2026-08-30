@@ -20,9 +20,7 @@ from scripts.monitor_handler import MonitorHandler, MonitorHandlerFactory
 from scripts.utils.generic_util import convert_to_seconds
 from scripts.action_handler import (
     ActionContext,
-    ActionDispatcher,
     ActionHandlerFactory,
-    CommandActionHandler
 )
 
 
@@ -50,6 +48,7 @@ class ScheduledMonitorHandler(MonitorHandler):
         self.monitor_name = monitor.get("name")
         self.worker_thread = None
         self.stop_event = threading.Event()
+        self.command_handlers = self._build_command_handlers()
 
     def start(self) -> bool:
         """
@@ -71,6 +70,28 @@ class ScheduledMonitorHandler(MonitorHandler):
         self.stop_event.set()
         if self.worker_thread and self.worker_thread.is_alive():
             self.worker_thread.join(timeout=2)
+
+    def _build_command_handlers(self) -> dict:
+        """
+        Build (and cache) a CommandActionHandler for each command profile.
+
+        Handlers are built once so that per-handler state (e.g. cooldown)
+        persists across scheduled ticks, and are reused for every timer event.
+        """
+        handlers = {}
+        for profile in self.profiles or []:
+            category = reference_data.get_profile_category(
+                profile_type=profile.get("profile_type", "")
+            )
+            if category != reference_data.PROFILE_CATEGORY_COMMAND:
+                continue
+            handler = ActionHandlerFactory.get_handler(
+                monitor=self.monitor,
+                profile=profile,
+                logger=self.logger,
+            )
+            handlers[profile.get("name")] = handler
+        return handlers
 
     def _perform_operation(self, reason="scheduled"):
         """
@@ -119,29 +140,21 @@ class ScheduledMonitorHandler(MonitorHandler):
 
                     self.logger.debug(f"[{monitor_name}] Finished {self.direction} folder copy.")
                 elif category == "command":
-                    # Instantiate command handler
-                    command_handler = ActionHandlerFactory.get_handler(
-                        monitor=self.monitor,
-                        profile=profile,
-                        logger=self.logger,
-                    )
-                    if command_handler is not None:
-                        # Run command 
-                        action_dispatcher = ActionDispatcher(handlers=[command_handler], logger=self.logger)
-                        action_dispatcher.start()
-                        # Create action context
-                        action_context = ActionContext(
-                            event_type="timer",
-                            src_path=monitor_path,
-                            dest_path=remote_path,
-                            is_directory=True
-                        )
-                        action_dispatcher.queue_action(action_context)
-                    else:
+                    command_handler = self.command_handlers.get(profile.get("name"))
+                    if command_handler is None:
                         self.logger.error(
                             f"Profile {profile.get('name')} could not be instantiated by ActionHandlerFactory"
                         )
                         continue
+                    # Fire the handler directly; CommandActionHandler runs the
+                    # command on its own thread, so this never blocks the loop.
+                    action_context = ActionContext(
+                        event_type="timer",
+                        src_path=monitor_path,
+                        dest_path=remote_path,
+                        is_directory=True
+                    )
+                    command_handler.handle_action(action_context)
                 else:
                     self.logger.warning(f"Unknown profile category: {category}")
             except Exception as e:

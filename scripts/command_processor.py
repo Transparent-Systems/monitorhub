@@ -160,7 +160,7 @@ class CommandProcessor:
         self.profile.profile_new_remote()
 
     def profile_new_command(self):
-        """Create a new file_event_command profile."""
+        """Create a new event_command profile."""
         self.profile.profile_new_command()
 
     def profile_show(self):

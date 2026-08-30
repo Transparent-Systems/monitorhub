@@ -112,6 +112,24 @@ class TestCommandActionHandler(unittest.TestCase):
             handler.handle_action(make_context(event_type="created"))
             thread_mock.assert_called_once()
 
+    def test_default_cooldown_is_zero(self):
+        handler = CommandActionHandler(command="echo hi")
+        self.assertEqual(handler.cooldown_seconds, 0)
+
+    def test_handle_action_timer_event_fires_when_listed(self):
+        handler = CommandActionHandler(command="echo hi", events=["timer"])
+        with patch("threading.Thread") as thread_mock:
+            thread_mock.return_value.start.return_value = None
+            handler.handle_action(make_context(event_type="timer"))
+            self.assertEqual(thread_mock.call_count, 1)
+
+    def test_handle_action_timer_event_skipped_when_not_listed(self):
+        handler = CommandActionHandler(command="echo hi", events=["created"])
+        with patch("threading.Thread") as thread_mock:
+            thread_mock.return_value.start.return_value = None
+            handler.handle_action(make_context(event_type="timer"))
+            self.assertEqual(thread_mock.call_count, 0)
+
     def test_run_command_nonzero_return_code(self):
         handler = CommandActionHandler(command="false")
 
@@ -150,7 +168,7 @@ class TestActionHandlerFactory(unittest.TestCase):
         monitor = {"name": "test-mon", "monitor_path": "/tmp/mon"}
         profile = {
             "name": "cmd-prof",
-            "profile_type": "command",
+            "profile_type": "event_command",
             "config": {
                 "command": "echo {src_path}",
                 "command_events": ["created", "modified"],
@@ -164,11 +182,11 @@ class TestActionHandlerFactory(unittest.TestCase):
         self.assertEqual(handler.events, ["created", "modified"])
         self.assertEqual(handler.cooldown_seconds, 300)
 
-    def test_factory_creates_command_action_handler_for_file_event_command(self):
+    def test_factory_creates_command_action_handler_for_event_command(self):
         monitor = {"name": "test-mon", "monitor_path": "/tmp/mon"}
         profile = {
             "name": "file-event-prof",
-            "profile_type": "file_event_command",
+            "profile_type": "event_command",
             "config": {
                 "command": "sh process.sh {src_path}",
                 "command_events": ["closed"],

@@ -71,7 +71,7 @@ class DatabaseTestData:
             {
                 "category": "command",
                 "name": "file-event-command-1",
-                "type": "file_event_command",
+                "type": "event_command",
                 "config": {
                     "command": "notify-send \"Testing command from monitor = {monitor_name}, profile = {profile_name}, event = {event_name}, source path = {src_path}\"", 
                     "command_events": ["created", "deleted", "modified"], 

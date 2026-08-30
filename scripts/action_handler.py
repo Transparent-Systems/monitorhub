@@ -7,7 +7,6 @@ import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
-from constants import MONITOR_TYPE_BACKUP, MONITOR_TYPE_RESTORE
 from scripts import reference_data
 from scripts.remote_handler import RemoteHandler
 from scripts.remote_handler_factory import RemoteHandlerFactory
@@ -177,12 +176,6 @@ class RemoteActionHandler(ActionHandler):
                 self._handle_moved(context)
             elif context.event_type == "closed":
                 self._handle_closed(context)
-            elif context.event_type == MONITOR_TYPE_BACKUP:
-                #TODO: add dedicated handler for timer event
-                self._handle_created(context)
-            elif context.event_type == MONITOR_TYPE_RESTORE:
-                #TODO: add dedicated handler for timer event
-                self._handle_created(context)
         except Exception as e:
             self.logger.error(f"Error handling action {context.event_type} for {context.src_path}: {e}")
 
@@ -296,14 +289,14 @@ class ActionDispatcher:
 
 class CommandActionHandler(ActionHandler):
     """
-    Runs a shell command when a file event occurs.
+    Runs a shell command when a matching event occurs.
 
     The command template may contain placeholders that are replaced with the
     event details before execution:
 
         {monitor_name}  name of the monitor
         {profile_name}  name of the attached profile
-        {event_name}    event type: "created", "deleted", "modified", "moved", "closed"
+        {event_name}    event type: "created", "deleted", "modified", "moved", "closed", "timer"
         {src_path}      absolute source file path
 
     By default the command is executed without a shell (shell=False) to avoid
@@ -318,7 +311,7 @@ class CommandActionHandler(ActionHandler):
         monitor_name: str = "",
         profile_name: str = "",
         events: list[str] | None = None,
-        cooldown: str = "60m",
+        cooldown: str = "0s",
         shell: bool = False,
         timeout:  str = "60s",
         logger: logging.Logger | None = None,
@@ -526,7 +519,7 @@ class ActionHandlerFactory:
             return None
 
         events = cfg.get("command_events", "")
-        cooldown = cfg.get("command_cooldown", "60m")
+        cooldown = cfg.get("command_cooldown", "0s")
         shell = cfg.get("command_shell", False)
         timeout = cfg.get("command_timeout", 60.0)
 

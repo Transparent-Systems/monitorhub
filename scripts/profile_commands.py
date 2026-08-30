@@ -124,7 +124,7 @@ class ProfileCommands:
         self, profile_name: str, config: dict, live: bool = False
     ) -> bool:
         """
-        Validate a file_event_command profile's configuration.
+        Validate an event_command profile's configuration.
 
         Checks that:
         - command is present, non-empty, and parseable by shlex
@@ -154,14 +154,14 @@ class ProfileCommands:
                 errors.append(f"Command is not parseable by shlex: {e}")
 
         # Validate cooldown
-        cooldown = config.get("command_cooldown", "60m")
+        cooldown = config.get("command_cooldown", "0s")
         self.prompt.print(f"Cooldown: {cooldown}")
         if not self._is_interval_valid(cooldown):
             errors.append(f"Invalid command_cooldown: {cooldown!r}")
 
         # Validate events
         events = config.get("command_events")
-        valid_events = {"created", "deleted", "modified", "moved", "closed"}
+        valid_events = {"created", "deleted", "modified", "moved", "closed", "timer"}
         if events:
             self.prompt.print(f"Events: {', '.join(events) if events else 'all'}")
             invalid = [e for e in events if e not in valid_events]
@@ -531,7 +531,7 @@ class ProfileCommands:
 
         current_command = existing.get("command") if existing else None
         current_events = existing.get("command_events") if existing else None
-        current_cooldown = existing.get("command_cooldown", "60m") if existing else "60m"
+        current_cooldown = existing.get("command_cooldown", "0s") if existing else "0s"
         current_shell = existing.get("command_shell", False) if existing else False
         current_timeout = existing.get("command_timeout", "10s") if existing else "10s"
         
@@ -540,7 +540,7 @@ class ProfileCommands:
         self.prompt.print("Runtime variables are injected before the command runs:")
         self.prompt.print("  {monitor_name}  - name of the monitor")
         self.prompt.print("  {profile_name}  - name of the attached profile")
-        self.prompt.print("  {event_name}    - event type: created, deleted, modified, moved, closed")
+        self.prompt.print("  {event_name}    - event type: created, deleted, modified, moved, closed, timer")
         self.prompt.print("  {src_path}      - absolute source file path")
         self.prompt.print()
         self.prompt.print("Other information (monitor paths, destinations, etc.) is available")
@@ -566,8 +566,8 @@ class ProfileCommands:
             break
 
         # Event filter
-        valid_events = ["created", "deleted", "modified", "moved", "closed"]
-        self.prompt.print("Available events: created, deleted, modified, moved, closed")
+        valid_events = ["created", "deleted", "modified", "moved", "closed", "timer"]
+        self.prompt.print("Available events: created, deleted, modified, moved, closed, timer")
         self.prompt.print("Leave empty for all events.")
         while True:
             current_display = ",".join(current_events) if current_events else "all"
@@ -592,10 +592,10 @@ class ProfileCommands:
         # Cooldown
         while True:
             input_cooldown = self.prompt.input(
-                f"Cooldown between firings per event (current: {current_cooldown}; Enter to keep): "
+                f"Cooldown between command firings (current: {current_cooldown}; Enter to keep): "
             ).strip()
             if input_cooldown == "":
-                cooldown = current_cooldown if current_command else "60m"
+                cooldown = current_cooldown if current_command else "0s"
                 break
             if not self._is_interval_valid(input_cooldown):
                 self.prompt.print(f"Invalid cooldown: {input_cooldown}. Please try again.")
@@ -774,10 +774,11 @@ class ProfileCommands:
 
     def profile_new_command(self):
         """
-        Create a new file_event_command profile.
+        Create a new event_command profile.
 
-        A file_event_command profile triggers a shell command on file system
-        events. Unlike a remote profile, it has no provider, credentials, or
+        An event_command profile triggers a shell command on matching events
+        (file system events such as created/modified, or timer events).
+        Unlike a remote profile, it has no provider, credentials, or
         remote endpoint — only the command configuration is required.
         """
 
@@ -810,7 +811,7 @@ class ProfileCommands:
         # Create profile
         profile_id = self.sqlite_handler.add_profile(
             name=input_profile_name,
-            profile_type="file_event_command",
+            profile_type="event_command",
             config=command_config,
         )
 

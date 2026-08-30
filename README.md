@@ -173,8 +173,9 @@ Later on in the project I started using OpenRouter which makes it easy to try ou
 
 ## Shell Command Handler
 
-MonitorHub can run a shell command in response to file events on any
-monitor. This makes it useful for a wide range of use cases, such as:
+MonitorHub can run a shell command in response to events on any monitor
+(file system events on instant monitors, or timer events on scheduled
+monitors). This makes it useful for a wide range of use cases, such as:
 
 * Triggering an alert (email, SMS, webhook, chat notification)
 * Locking down a firewall or revoking access
@@ -191,7 +192,7 @@ details before execution:
 
 | Placeholder    | Description                                            |
 |----------------|--------------------------------------------------------|
-| `{action_type}` | Event type: `created`, `deleted`, `modified`, `moved`, `closed` |
+| `{action_type}` | Event type: `created`, `deleted`, `modified`, `moved`, `closed`, `timer` |
 | `{src_path}`    | Absolute source path                                   |
 | `{dest_path}`   | Destination path (moved events only, empty otherwise)  |
 | `{is_directory}`| `true` or `false`                                      |
@@ -209,11 +210,15 @@ notify-send "File {action_type}" "{src_path}"
   redirects, or environment variable expansion.
 * Event filtering: restrict the handler to specific events (e.g. only
   `created` and `closed`).
-* Cooldown: a per-event interval (default `60m`) suppresses repeat firings of
-  the same event type within the window.
+* Cooldown: a global interval (default `0s`) suppresses repeat firings of any
+  event within the window. `0s` disables throttling.
 
 Configuration is stored in the monitor's `config` under the keys `command`,
 `command_events`, `command_cooldown`, and `command_shell`.
+
+`command_events` may include `timer` to fire on scheduled (backup/restore)
+timer ticks in addition to file system events. For a timer event, the command
+fires once per monitor `interval` (with no cooldown by default).
 
 
 ## License

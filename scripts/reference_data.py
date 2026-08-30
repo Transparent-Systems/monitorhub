@@ -68,7 +68,7 @@ PROFILE_CATEGORY_REMOTE  = "remote"
 PROFILE_CATEGORY_COMMAND = "command"
 
 # These profile types are handled by CommandActionHandler, not RemoteHandler.
-COMMAND_PROFILE_TYPES = ("file_event_command", "timer_event_command", "command")
+COMMAND_PROFILE_TYPES = ("event_command",)
 
 # Documentation-only — handled by rclone, not a native handler.
 # Listed here so the vocabulary is visible; no runtime behaviour depends on them.

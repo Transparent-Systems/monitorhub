@@ -27,13 +27,11 @@ class TestReferenceDataProfileTypes(unittest.TestCase):
     def test_get_profile_category(self):
         self.assertEqual(reference_data.get_profile_category("s3"), "remote")
         self.assertEqual(reference_data.get_profile_category("ftp"), "remote")
-        self.assertEqual(reference_data.get_profile_category("file_event_command"), "command")
-        self.assertEqual(reference_data.get_profile_category("command"), "command")
-        self.assertEqual(reference_data.get_profile_category("timer_event_command"), "command")
+        self.assertEqual(reference_data.get_profile_category("event_command"), "command")
 
     def test_is_profile_type_implemented(self):
         self.assertTrue(reference_data.is_profile_type_implemented("s3"))
-        self.assertTrue(reference_data.is_profile_type_implemented("file_event_command"))
+        self.assertTrue(reference_data.is_profile_type_implemented("event_command"))
         self.assertFalse(reference_data.is_profile_type_implemented("ftp"))
         self.assertFalse(reference_data.is_profile_type_implemented("drive"))
 
@@ -49,7 +47,7 @@ class TestReferenceDataProfileTypes(unittest.TestCase):
         profiles = [
             {"name": "a", "profile_type": "s3"},
             {"name": "b", "profile_type": "ftp"},
-            {"name": "c", "profile_type": "file_event_command"},
+            {"name": "c", "profile_type": "event_command"},
         ]
         filtered = reference_data.filter_implemented_profiles(profiles)
         names = {p["name"] for p in filtered}
