@@ -19,6 +19,7 @@ from scripts.constants import (
     MONITOR_TYPE_RESTORE,
 )
 from scripts.prompt_service import PromptService
+from scripts.sqlite_handler import SQLiteHandler
 
 STALE_HEARTBEAT_SECONDS = 60
 
@@ -28,7 +29,7 @@ class MonitorCommands:
 
     def __init__(
         self,
-        sqlite_handler,
+        sqlite_handler: SQLiteHandler,
         logger: logging.Logger,
         db_dir: str,
         log_config: str,

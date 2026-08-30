@@ -166,7 +166,7 @@ if __name__ == "__main__":
     from sqlite_handler import SQLiteHandler
     sqlite_handler = SQLiteHandler(
         logger=logger,
-        db_dir="testdata/db/dev"
+        db_dir="testdb/dev"
     )
     profile = sqlite_handler.get_profile(profile_name=profile_name)
     if profile is None:

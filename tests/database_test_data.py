@@ -17,7 +17,7 @@ class DatabaseTestData:
         self.dotenv_path = dotenv_path
         self.logger = logger
         if db_dir is None:
-            db_dir = "testdata/db/unittest"
+            db_dir = "testdb/unittest"
         self.sqlite_handler: SQLiteHandler = SQLiteHandler(
             logger=logger,
             db_dir=db_dir
@@ -182,8 +182,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "-d",
         "--db-dir",
-        default="testdata/db/dev",
-        help="Directory containing the database file (default: testdata/db/dev).",
+        default="testdb/dev",
+        help="Directory containing the database file (default: testdb/dev).",
     )
     parser.add_argument(
         "--dotenv-path",

@@ -20,16 +20,16 @@ class TestAppConfig(unittest.TestCase):
 
     def test_config_with_direct_default_database(self):
         with open(self.config_path, "w", encoding="utf-8") as f:
-            yaml.dump({"default_database": "testdata/db/dev"}, f)
+            yaml.dump({"default_database": "testdb/dev"}, f)
 
         config = AppConfig(config_path=self.config_path)
-        self.assertEqual(config.get_default_db_dir(), "testdata/db/dev")
+        self.assertEqual(config.get_default_db_dir(), "testdb/dev")
 
     def test_config_with_named_database_mapping(self):
         content = {
             "default_database": "dev",
             "databases": {
-                "dev": "testdata/db/dev",
+                "dev": "testdb/dev",
                 "prod": "/var/lib/monitorhub/db",
             },
         }
@@ -37,13 +37,13 @@ class TestAppConfig(unittest.TestCase):
             yaml.dump(content, f)
 
         config = AppConfig(config_path=self.config_path)
-        self.assertEqual(config.get_default_db_dir(), "testdata/db/dev")
+        self.assertEqual(config.get_default_db_dir(), "testdb/dev")
 
     def test_config_with_named_database_dict_mapping(self):
         content = {
             "default_database": "prod",
             "databases": {
-                "dev": {"path": "testdata/db/dev"},
+                "dev": {"path": "testdb/dev"},
                 "prod": {"path": "/var/lib/monitorhub/db"},
             },
         }

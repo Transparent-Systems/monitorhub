@@ -238,7 +238,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "-d", "--db-dir",
         type=str,
-        default="testdata/db/dev",
+        default="testdb/dev",
         metavar="<PATH>",
         help="Directory of SQlite database"
     )

@@ -46,11 +46,11 @@ class AppConfig:
         1. Named database mapping:
            default_database: dev
            databases:
-             dev: testdata/db/dev
+             dev: testdb/dev
              prod: /var/lib/monitorhub/db
              
         2. Direct string path:
-           default_database: testdata/db/dev
+           default_database: testdb/dev
            
         Falls back to `fallback` (default "data") if not configured or found.
         """

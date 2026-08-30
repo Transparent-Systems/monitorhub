@@ -8,7 +8,7 @@ from scripts.sqlite_handler import SQLiteHandler
 
 logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger('test')
-h = SQLiteHandler(logger=logger, db_dir='testdata/db/dev')
+h = SQLiteHandler(logger=logger, db_dir='testdb/dev')
 h.create_schema()
 
 errs = []

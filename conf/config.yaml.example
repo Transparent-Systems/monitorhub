@@ -8,7 +8,7 @@ default_database: dev
 
 # Database paths dictionary
 databases:
-  dev: testdata/db/dev
-  unittest: testdata/db/unittest
+  dev: testdb/dev
+  unittest: testdb/unittest
   prod: /var/lib/monitorhub/db
   local: data

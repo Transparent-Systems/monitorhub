@@ -13,7 +13,7 @@ class TestCommandProcessor(BaseTestClass):
     Test CommandProcessor
     The main purpose of TestCommandProcessor is to test the CommandProcessor class.
     This avoids havng to manually run monitor hub with the corresponding command.
-    Additionaly, this class uses the test SQLite datbase in folder testdata/db/dev
+    Additionaly, this class uses the test SQLite datbase in folder testdb/dev
     You can run individual tests using paramater test_cases which is a space delimited string of test methods.
     Only part of the test method name is used for matching.
     For example: python3 tests/interactive_test_command_processor.py -tests_cases "_01 _02"
@@ -122,7 +122,7 @@ if __name__ == "__main__":
         "-d",
         "--db-dir",
         type=str,
-        default="testdata/db/dev",
+        default="testdb/dev",
         help="Path to database file."
     )
     parser.add_argument(

@@ -164,36 +164,28 @@ class TestMonitorHubIntegration(unittest.TestCase):
     def test_01_create_new_file(self):
         """Create new file"""
         self.logger.debug(f"==> Monitor {self.monitor_name} -> {self._testMethodName}")
+        file_name = "test1.txt"
 
         # Step 1
-        # Delete the file to ensure we create a new file in step 2
-        file_name = "test1.txt"
-        file_path = delete_test_data(path=self.monitor_path, files=[file_name])
-        remote_path = self.remote_handler.get_remote_path(monitor_path=file_path.as_posix())
-        result_code, _ = self.check_path.file_exists(remote_path=remote_path, should_exist=False)
-        self.assertNotEqual(result_code, 0, f"File {file_name} should not exist at {remote_path}.")
-
-        # Step 2
-        # Now create the file again
+        # Create the file regardless if it exists or not on monitor path
         file_path = create_test_data(path=self.monitor_path, files=[file_name])
         remote_path = self.remote_handler.get_remote_path(monitor_path=file_path.as_posix())
         result_code, _ = self.check_path.file_exists(remote_path=remote_path, should_exist=True)
         self.assertEqual(result_code, 0, f"File {file_name} should exist at {remote_path}.")
 
-    def test_02_delete_file(self):
-        """Delete a file"""
-        self.logger.debug(f"==> Monitor {self.monitor_name} -> {self._testMethodName}")
-        file_name = "test1.txt"
-        
-        # Ensure file exists first (setup)
-        create_test_data(path=self.monitor_path, files=[file_name])
-        # Wait for sync
-        time.sleep(self.check_delay)
+        # Step 2
+        # Delete the file to ensure we create a new file in step 3
         file_path = delete_test_data(path=self.monitor_path, files=[file_name])
-        self.logger.debug(f"Deleted source file : '{file_path}'")
         remote_path = self.remote_handler.get_remote_path(monitor_path=file_path.as_posix())
         result_code, _ = self.check_path.file_exists(remote_path=remote_path, should_exist=False)
         self.assertNotEqual(result_code, 0, f"File {file_name} should not exist at {remote_path}.")
+
+        # Step 3
+        # Now create the file again
+        file_path = create_test_data(path=self.monitor_path, files=[file_name])
+        remote_path = self.remote_handler.get_remote_path(monitor_path=file_path.as_posix())
+        result_code, _ = self.check_path.file_exists(remote_path=remote_path, should_exist=True)
+        self.assertEqual(result_code, 0, f"File {file_name} should exist at {remote_path}.")
 
     def test_03_delete_file_with_spaces(self):
         """Delete a file"""
@@ -318,7 +310,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "-d", "--db-dir",
         type=str,
-        default="testdata/db/dev",
+        default="testdb/dev",
         metavar="<PATH>",
         help="Directory of SQlite database"
     )
