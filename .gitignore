@@ -7,17 +7,18 @@ __pycache__/
 log.yaml
 
 # Ignore all files in the following directories
-bat
-bin
-data
-testdata
-temp
-logs
-pid
-snippets
-todo
-build
-dist
+bat/
+bin/
+data/
+testdata/
+testdb/
+temp/
+logs/
+pid/
+snippets/
+todo/
+build/
+dist/
 
 # Operating System files
 .DS_Store
