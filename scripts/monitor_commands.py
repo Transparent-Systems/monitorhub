@@ -455,8 +455,8 @@ class MonitorCommands:
                     self.prompt.print("All profiles have been added.")
                     break
 
-                input_continue = self.prompt.input("Do you want to add another profile? (Y/n): ")
-                if input_continue.lower() == "y" or input_continue == "":
+                input_continue = self.prompt.input("Do you want to add another profile? (y/N): ")
+                if input_continue.strip().lower() in ("y", "yes"):
                     continue
                 else:
                     break
@@ -621,10 +621,9 @@ class MonitorCommands:
                 profile_type = v.get("profile_type", "N/A")
                 self.prompt.print(f"{k}. profile name: {profile_name}, profile type: {profile_type}")
 
-            input_profile_number = self.prompt.input("Please select profile number: ")
+            input_profile_number = self.prompt.input("Please select profile number (or press Enter to finish): ")
             if input_profile_number.strip() == "":
-                self.prompt.print("Profile cannot be just spaces")
-                continue
+                break
 
             if not input_profile_number.isdigit():
                 self.prompt.print(f"Invalid profile number: {input_profile_number}. Please try again.")
@@ -644,8 +643,8 @@ class MonitorCommands:
                 self.prompt.print("All profiles have been selected.")
                 break
 
-            input_continue = self.prompt.input("Do you want to add another profile? (Y/n): ")
-            if input_continue.lower() == "y" or input_continue == "":
+            input_continue = self.prompt.input("Do you want to add another profile? (y/N): ")
+            if input_continue.strip().lower() in ("y", "yes"):
                 continue
             else:
                 break
