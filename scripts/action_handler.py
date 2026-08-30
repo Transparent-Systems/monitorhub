@@ -7,6 +7,7 @@ import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
+from constants import MONITOR_TYPE_BACKUP, MONITOR_TYPE_RESTORE
 from scripts import reference_data
 from scripts.remote_handler import RemoteHandler
 from scripts.remote_handler_factory import RemoteHandlerFactory
@@ -176,6 +177,12 @@ class RemoteActionHandler(ActionHandler):
                 self._handle_moved(context)
             elif context.event_type == "closed":
                 self._handle_closed(context)
+            elif context.event_type == MONITOR_TYPE_BACKUP:
+                #TODO: add dedicated handler for timer event
+                self._handle_created(context)
+            elif context.event_type == MONITOR_TYPE_RESTORE:
+                #TODO: add dedicated handler for timer event
+                self._handle_created(context)
         except Exception as e:
             self.logger.error(f"Error handling action {context.event_type} for {context.src_path}: {e}")
 

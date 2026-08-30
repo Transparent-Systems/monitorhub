@@ -13,10 +13,17 @@ The `direction` parameter selects between them, so the same class handles both.
 import threading
 import time
 
+import reference_data
 from scripts.remote_handler_factory import RemoteHandlerFactory
 from scripts.constants import MONITOR_TYPE_BACKUP, MONITOR_TYPE_RESTORE
 from scripts.monitor_handler import MonitorHandler, MonitorHandlerFactory
 from scripts.utils.generic_util import convert_to_seconds
+from scripts.action_handler import (
+    ActionContext,
+    ActionDispatcher,
+    ActionHandlerFactory,
+    CommandActionHandler
+)
 
 
 class ScheduledMonitorHandler(MonitorHandler):
@@ -83,32 +90,63 @@ class ScheduledMonitorHandler(MonitorHandler):
         # Iterate over profiles
         for profile in profiles:
             try:
+                # Handler depends on profile category: command or remote
+                profile_type = profile.get("profile_type", "")
+                category = reference_data.get_profile_category(profile_type=profile_type)
                 self.logger.debug(
                     f"[{monitor_name}] Using profile '{profile.get('name')}' for {self.direction}."
                 )
 
-                handler = RemoteHandlerFactory.get_handler(
-                    logger=self.logger,
-                    monitor_path=monitor_path,
-                    remote_path=remote_path,
-                    profile=profile,
-                    exclude_patterns=self.exclude_patterns,
-                )
-
-                if handler is None:
-                    self.logger.error(
-                        f"[{monitor_name}] Could not instantiate handler for {self.direction}."
+                if category == "remote":
+                    remote_handler = RemoteHandlerFactory.get_handler(
+                        logger=self.logger,
+                        monitor_path=monitor_path,
+                        remote_path=remote_path,
+                        profile=profile,
+                        exclude_patterns=self.exclude_patterns,
                     )
-                    return
 
-                if self.direction == MONITOR_TYPE_BACKUP:
-                    handler.copy_folder(monitor_path=monitor_path)
+                    if remote_handler is None:
+                        self.logger.error(
+                            f"[{monitor_name}] Could not instantiate handler for {self.direction}."
+                        )
+                        return
+
+                    if self.direction == MONITOR_TYPE_BACKUP:
+                        remote_handler.copy_folder(monitor_path=monitor_path)
+                    else:
+                        remote_handler.restore_folder(remote_path=remote_path)
+
+                    self.logger.debug(f"[{monitor_name}] Finished {self.direction} folder copy.")
+                elif category == "command":
+                    # Instantiate command handler
+                    command_handler = ActionHandlerFactory.get_handler(
+                        monitor=self.monitor,
+                        profile=profile,
+                        logger=self.logger,
+                    )
+                    if command_handler is not None:
+                        # Run command 
+                        action_dispatcher = ActionDispatcher(handlers=[command_handler], logger=self.logger)
+                        action_dispatcher.start()
+                        # Create action context
+                        action_context = ActionContext(
+                            event_type="timer",
+                            src_path=monitor_path,
+                            dest_path=remote_path,
+                            is_directory=True
+                        )
+                        action_dispatcher.queue_action(action_context)
+                    else:
+                        self.logger.error(
+                            f"Profile {profile.get('name')} could not be instantiated by ActionHandlerFactory"
+                        )
+                        continue
                 else:
-                    handler.restore_folder(remote_path=remote_path)
-
-                self.logger.debug(f"[{monitor_name}] Finished {self.direction} folder copy.")
+                    self.logger.warning(f"Unknown profile category: {category}")
             except Exception as e:
                 self.logger.error(f"[{monitor_name}] {self.direction.capitalize()} failed: {e}")
+            
 
     def _run_loop(self):
         """
