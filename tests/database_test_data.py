@@ -74,7 +74,7 @@ class DatabaseTestData:
                 "type": "event_command",
                 "config": {
                     "command": "notify-send \"Testing command from monitor = {monitor_name}, profile = {profile_name}, event = {event_name}, source path = {src_path}\"", 
-                    "command_events": ["created", "deleted", "modified"], 
+                    "command_events": ["created", "deleted", "modified", "timer"], 
                     "command_cooldown": "0s", 
                     "command_shell": "false",
                     "command_timeout": "10s"

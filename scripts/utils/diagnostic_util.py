@@ -12,7 +12,7 @@ from typing import Any
 
 from scripts.remote_handler_factory import RemoteHandlerFactory
 from scripts.sqlite_handler import SQLiteHandler
-from tests.util.testing_util import ProcessTestResult
+from scripts.utils.process_test_result import ProcessTestResult
 
 
 class DiagnosticUtil:
