@@ -3,6 +3,7 @@ import os
 from logging.handlers import RotatingFileHandler
 
 import yaml
+from version import VERSION_STRING
 
 
 def setup_logging(
@@ -32,7 +33,7 @@ def setup_logging(
         print(f"Log configuration file '{config_path}' does not exist. Creating default.")
         os.makedirs(os.path.dirname(config_path) or ".", exist_ok=True)
         with open(config_path, "w", encoding="utf-8") as fh:
-            fh.write("version: 1.0.0\n")
+            fh.write(f"version: {VERSION_STRING}\n")
             fh.write("logging:\n")
             fh.write("  file_name: monitorhub.log\n")
             fh.write("  folder: logs\n")

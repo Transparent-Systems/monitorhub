@@ -1,5 +1,5 @@
 """
-Version: 2.0.0
+Version: 1.0.0
 
 This script runs integration tests for a monitor configured in a config.yaml file.
 It uses the unittest framework to execute tests sequentially.
