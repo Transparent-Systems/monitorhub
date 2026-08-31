@@ -20,6 +20,7 @@ from scripts.constants import (
 )
 from scripts.prompt_service import PromptService
 from scripts.sqlite_handler import SQLiteHandler
+from scripts.utils.generic_util import find_by_id
 
 STALE_HEARTBEAT_SECONDS = 60
 
@@ -141,13 +142,13 @@ class MonitorCommands:
         self,
         monitors: list[dict] | None = None,
         allow_all: bool = False,
-        prompt: str = "Enter monitor number: ",
+        prompt: str = "Enter monitor id: ",
     ) -> int | None:
-        """Display a numbered list of monitors and prompt the user to select one.
+        """Display a list of monitors (by id) and prompt the user to select one.
 
-        Returns the 1-based index of the selected monitor, ``0`` when
-        *allow_all* is True and the user chose "all", or ``None`` when the
-        user entered an empty string (cancel).
+        Returns the id of the selected monitor, ``0`` when *allow_all* is True
+        and the user chose "all", or ``None`` when the user entered an empty
+        string (cancel).
         """
         if monitors is None:
             monitors = self.sqlite_handler.get_monitors()
@@ -159,8 +160,10 @@ class MonitorCommands:
             self.prompt.print()
             if allow_all:
                 self.prompt.print("0.  Select all monitors")
-            for i in range(len(monitors)):
-                self.prompt.print(f"{i+1}. {monitors[i].get('name', 'N/A')}")
+            for monitor in monitors:
+                self.prompt.print(
+                    f"Id: {monitor.get('id', 'N/A')}, Monitor name: {monitor.get('name', 'N/A')}"
+                )
 
             choice = self.prompt.input(prompt).strip()
             if choice == "":
@@ -170,14 +173,14 @@ class MonitorCommands:
                 return 0
 
             if not choice.isdigit():
-                self.prompt.print(f"Invalid monitor number: {choice}. Please try again.")
+                self.prompt.print(f"Invalid monitor id: {choice}. Please try again.")
                 continue
 
             choice_int = int(choice)
-            if 1 <= choice_int <= len(monitors):
+            if find_by_id(monitors, choice_int) is not None:
                 return choice_int
 
-            self.prompt.print(f"Invalid monitor number: {choice_int}. Please try again.")
+            self.prompt.print(f"Invalid monitor id: {choice_int}. Please try again.")
 
     def _prompt_interval(self, current_interval: str | None = None) -> str:
         """Prompt the user for a monitor interval and return the normalized value."""
@@ -373,37 +376,34 @@ class MonitorCommands:
             for profile in monitor_profiles:
                 self.prompt.print(f"  - {profile.get('name', 'N/A')} (ID: {profile.get('id', 'N/A')})")
 
-            delete_profiles = {}
-            for i, profile in enumerate(monitor_profiles):
-                delete_profiles[i + 1] = profile
+            delete_profiles = {profile.get("id"): profile for profile in monitor_profiles}
 
             while delete_profiles:
                 self.prompt.print("\nProfiles to delete (leave blank to skip):")
-                for k, v in delete_profiles.items():
-                    self.prompt.print(f"{k}. {v.get('name', 'N/A')}")
+                for pid, v in delete_profiles.items():
+                    self.prompt.print(f"Id: {pid}, Profile name: {v.get('name', 'N/A')}")
 
-                input_delete_number = self.prompt.input("Enter profile number to delete (or press Enter to continue): ")
-                if input_delete_number.strip() == "":
+                input_delete_id = self.prompt.input("Enter profile id to delete (or press Enter to continue): ")
+                if input_delete_id.strip() == "":
                     break
 
-                if not input_delete_number.isdigit():
-                    self.prompt.print(f"Invalid profile number: {input_delete_number}. Please try again.")
+                if not input_delete_id.isdigit():
+                    self.prompt.print(f"Invalid profile id: {input_delete_id}. Please try again.")
                     continue
 
-                input_delete_number = int(input_delete_number)
-                if input_delete_number not in delete_profiles:
-                    self.prompt.print(f"Invalid profile number: {input_delete_number}. Please try again.")
+                profile_id_to_delete = int(input_delete_id)
+                if profile_id_to_delete not in delete_profiles:
+                    self.prompt.print(f"Invalid profile id: {profile_id_to_delete}. Please try again.")
                     continue
 
-                profile_to_delete = delete_profiles[input_delete_number]
-                profile_id_to_delete = profile_to_delete.get("id", 0)
+                profile_to_delete = delete_profiles[profile_id_to_delete]
 
                 if self.sqlite_handler.delete_monitor_profile_map(
                     monitor_id=monitor_id, profile_id=profile_id_to_delete
                 ):
                     self.prompt.print(f"Profile '{profile_to_delete.get('name', 'N/A')}' removed from monitor")
                     monitor_profiles.remove(profile_to_delete)
-                    del delete_profiles[input_delete_number]
+                    del delete_profiles[profile_id_to_delete]
                 else:
                     self.prompt.print(f"Failed to remove profile '{profile_to_delete.get('name', 'N/A')}'")
 
@@ -413,41 +413,41 @@ class MonitorCommands:
         # Add profiles
         all_profiles = self.sqlite_handler.get_profiles()
         current_profile_ids = {p.get("id") for p in monitor_profiles} if monitor_profiles else set()
-        available_profiles = {}
-        for i, profile in enumerate(all_profiles):
-            if profile.get("id") not in current_profile_ids:
-                available_profiles[i + 1] = profile
+        available_profiles = {
+            profile.get("id"): profile
+            for profile in all_profiles
+            if profile.get("id") not in current_profile_ids
+        }
 
         if available_profiles:
             self.prompt.print("\nAvailable profiles to add:")
             while available_profiles:
-                for k, v in available_profiles.items():
-                    profile_name = v.get("name", "N/A")
-                    profile_type = v.get("profile_type", "N/A")
-                    self.prompt.print(f"{k}. profile name: {profile_name}, profile type: {profile_type}")
+                for pid, v in available_profiles.items():
+                    self.prompt.print(
+                        f"Id: {pid}, Profile name: {v.get('name', 'N/A')}, Profile type: {v.get('profile_type', 'N/A')}"
+                    )
 
-                input_add_number = self.prompt.input("Enter profile number to add (or press Enter to skip): ")
-                if input_add_number.strip() == "":
+                input_add_id = self.prompt.input("Enter profile id to add (or press Enter to skip): ")
+                if input_add_id.strip() == "":
                     break
 
-                if not input_add_number.isdigit():
-                    self.prompt.print(f"Invalid profile number: {input_add_number}. Please try again.")
+                if not input_add_id.isdigit():
+                    self.prompt.print(f"Invalid profile id: {input_add_id}. Please try again.")
                     continue
 
-                input_add_number = int(input_add_number)
-                if input_add_number not in available_profiles:
-                    self.prompt.print(f"Invalid profile number: {input_add_number}. Please try again.")
+                profile_id_to_add = int(input_add_id)
+                if profile_id_to_add not in available_profiles:
+                    self.prompt.print(f"Invalid profile id: {profile_id_to_add}. Please try again.")
                     continue
 
-                profile_to_add = available_profiles[input_add_number]
-                profile_id_to_add = profile_to_add.get("id", 0)
+                profile_to_add = available_profiles[profile_id_to_add]
 
                 if self.sqlite_handler.add_monitor_profile_map(
                     monitor_id=monitor_id, profile_id=profile_id_to_add
                 ):
                     self.prompt.print(f"Profile '{profile_to_add.get('name', 'N/A')}' added to monitor")
                     current_profile_ids.add(profile_id_to_add)
-                    del available_profiles[input_add_number]
+                    del available_profiles[profile_id_to_add]
                 else:
                     self.prompt.print(f"Failed to add profile '{profile_to_add.get('name', 'N/A')}'")
 
@@ -477,12 +477,12 @@ class MonitorCommands:
             self.prompt.print("No monitor selected")
             return
 
-        monitor = monitors[choice - 1]
+        monitor = find_by_id(monitors, choice)
         self.prompt.print(f"You want to delete monitor: {monitor.get('name', 'N/A')}")
 
         while True:
             confirm = self._select_monitor_interactive(
-                monitors=monitors, prompt="Confirm monitor number: "
+                monitors=monitors, prompt="Confirm monitor id: "
             )
             if confirm is None:
                 self.prompt.print("No monitor selected")
@@ -490,7 +490,7 @@ class MonitorCommands:
 
             if confirm == choice:
                 break
-            self.prompt.print(f"Monitor numbers do not match: {choice} is not {confirm}. Please try again.")
+            self.prompt.print(f"Monitor ids do not match: {choice} is not {confirm}. Please try again.")
 
         if self.sqlite_handler.delete_monitor(monitor_id=monitor.get("id", 0)):
             self.prompt.print(f"Monitor name: {monitor.get('name', 'N/A')} deleted")
@@ -510,7 +510,7 @@ class MonitorCommands:
             self.prompt.print("No monitor selected")
             return
 
-        monitor = monitors[choice - 1]
+        monitor = find_by_id(monitors, choice)
         monitor_id = monitor.get("id", "N/A")
         monitor["config"] = monitor.get("config") or {}
 
@@ -606,9 +606,7 @@ class MonitorCommands:
             monitor_config = {}
 
         selected_profiles = []
-        unselected_profiles: dict[int, Any] = {}
-        for i, p in enumerate(profiles):
-            unselected_profiles[i + 1] = p
+        unselected_profiles: dict[int, Any] = {p.get("id"): p for p in profiles}
 
         while True:
             if not unselected_profiles:
@@ -616,28 +614,28 @@ class MonitorCommands:
                 break
 
             self.prompt.print("Profiles:")
-            for k, v in unselected_profiles.items():
-                profile_name = v.get("name", "N/A")
-                profile_type = v.get("profile_type", "N/A")
-                self.prompt.print(f"{k}. profile name: {profile_name}, profile type: {profile_type}")
+            for pid, v in unselected_profiles.items():
+                self.prompt.print(
+                    f"Id: {pid}, Profile name: {v.get('name', 'N/A')}, Profile type: {v.get('profile_type', 'N/A')}"
+                )
 
-            input_profile_number = self.prompt.input("Please select profile number (or press Enter to finish): ")
-            if input_profile_number.strip() == "":
+            input_profile_id = self.prompt.input("Please select profile id (or press Enter to finish): ")
+            if input_profile_id.strip() == "":
                 break
 
-            if not input_profile_number.isdigit():
-                self.prompt.print(f"Invalid profile number: {input_profile_number}. Please try again.")
+            if not input_profile_id.isdigit():
+                self.prompt.print(f"Invalid profile id: {input_profile_id}. Please try again.")
                 continue
 
-            input_profile_number = int(input_profile_number)
-            if input_profile_number not in unselected_profiles:
-                self.prompt.print(f"You entered an invalid profile number: {input_profile_number}")
+            profile_id = int(input_profile_id)
+            if profile_id not in unselected_profiles:
+                self.prompt.print(f"You entered an invalid profile id: {profile_id}")
                 continue
 
-            self.prompt.print(f"You entered profile number: {input_profile_number}")
-            chosen = unselected_profiles[input_profile_number]
+            self.prompt.print(f"You entered profile id: {profile_id}")
+            chosen = unselected_profiles[profile_id]
             selected_profiles.append(chosen)
-            del unselected_profiles[input_profile_number]
+            del unselected_profiles[profile_id]
 
             if len(unselected_profiles) == 0:
                 self.prompt.print("All profiles have been selected.")
@@ -722,7 +720,7 @@ class MonitorCommands:
                 self.prompt.print("Your selected all monitors")
                 monitor_id = None
             else:
-                monitor_id = monitors[choice - 1].get("id", "N/A")
+                monitor_id = choice
 
         try:
             diagnostic_util = DiagnosticUtil(db_dir=self.db_dir, logger=self.logger)
@@ -748,7 +746,7 @@ class MonitorCommands:
             if choice is None:
                 self.prompt.print("Nothing selected")
                 return
-            monitor = monitors[choice - 1]
+            monitor = find_by_id(monitors, choice)
         elif monitor_id is not None:
             monitor = self.sqlite_handler.get_monitor(monitor_id=monitor_id)
             if not monitor:
@@ -818,7 +816,7 @@ class MonitorCommands:
             if choice == 0:
                 selected_monitors = monitors
             else:
-                selected_monitors = [monitors[choice - 1]]
+                selected_monitors = [find_by_id(monitors, choice)]
         elif monitor_id is not None:
             monitor = self.sqlite_handler.get_monitor(monitor_id=monitor_id)
             if not monitor:

@@ -10,7 +10,7 @@ from scripts.rclone_handler import RcloneHandler
 from scripts.s3_factory import S3Factory
 from scripts.sqlite_handler import SQLiteHandler
 from scripts.utils.diagnostic_util import DiagnosticUtil
-from scripts.utils.generic_util import convert_to_seconds
+from scripts.utils.generic_util import find_by_id
 
 
 class ProfileCommands:
@@ -283,46 +283,42 @@ class ProfileCommands:
             self.logger.info(f"No profiles found in {self.sqlite_handler.db_path}")
             return
 
-        profile_names = []
-        for profile in profiles:
-            profile_name = profile.get("name", "N/A")
-            profile_names.append(profile_name)
-
         # Show all profiles
         self.prompt.print("\nList of profiles to delete")
         self.prompt.print("=" * 50)
-        for i in range(len(profile_names)):
-            self.prompt.print(f"{i+1}. {profile_names[i]}")
+        for profile in profiles:
+            self.prompt.print(
+                f"Id: {profile.get('id', 'N/A')}, Profile name: {profile.get('name', 'N/A')}"
+            )
         self.prompt.print("=" * 50)
 
-        # Prompt user for profile_number
+        # Prompt user for profile id
         while True:
-            profile_number = self.prompt.input("Enter profile number to delete: ")
-            self.prompt.print(f"You entered profile number: {profile_number}")
-            if not profile_number.isdigit():
-                self.prompt.print(f"Invalid profile number: {profile_number}. Please try again.")
-                continue
-            profile_number = int(profile_number)
-            if profile_number <= 0 or profile_number > len(profile_names):
-                self.prompt.print(f"Invalid profile number: {profile_number}. Please try again.")
+            profile_id_entered = self.prompt.input("Enter profile id to delete: ").strip()
+            self.prompt.print(f"You entered profile id: {profile_id_entered}")
+            if not profile_id_entered.isdigit():
+                self.prompt.print(f"Invalid profile id: {profile_id_entered}. Please try again.")
                 continue
 
-            profile_number_repeat = self.prompt.input("Repeat profile number to delete: ")
-            self.prompt.print(f"You entered profile number: {profile_number_repeat}")
-            if not profile_number_repeat.isdigit():
-                self.prompt.print(f"Invalid profile number: {profile_number_repeat}. Please try again.")
-                continue
-            profile_number_repeat = int(profile_number_repeat)
-            if profile_number_repeat <= 0 or profile_number_repeat > len(profile_names):
-                self.prompt.print(f"Invalid profile number: {profile_number_repeat}. Please try again.")
+            profile_id = int(profile_id_entered)
+            profile = find_by_id(profiles, profile_id)
+            if profile is None:
+                self.prompt.print(f"Invalid profile id: {profile_id}. Please try again.")
                 continue
 
-            if profile_number != profile_number_repeat:
-                self.prompt.print(f"Profile numbers do not match: {profile_number} is not {profile_number_repeat}. Please try again.")
+            profile_id_repeat_entered = self.prompt.input("Repeat profile id to delete: ").strip()
+            self.prompt.print(f"You entered profile id: {profile_id_repeat_entered}")
+            if not profile_id_repeat_entered.isdigit():
+                self.prompt.print(f"Invalid profile id: {profile_id_repeat_entered}. Please try again.")
+                continue
+            profile_id_repeat = int(profile_id_repeat_entered)
+
+            if profile_id != profile_id_repeat:
+                self.prompt.print(f"Profile ids do not match: {profile_id} is not {profile_id_repeat}. Please try again.")
                 continue
             break
 
-        profile_name = profile_names[profile_number - 1]
+        profile_name = profile.get("name", "N/A")
         self.prompt.print(f"You want to delete profile: {profile_name}")
 
         if self.sqlite_handler.delete_profile(profile_name=profile_name):
@@ -343,30 +339,33 @@ class ProfileCommands:
 
         while True:
             # Show all implemented profiles
-            for i in range(len(implemented_profiles)):
-                self.prompt.print(f"{i+1}. {implemented_profiles[i].get('name', 'N/A')}")
+            self.prompt.print("List of profiles")
+            self.prompt.print("=" * 50)
+            for profile in implemented_profiles:
+                self.prompt.print(
+                    f"Id: {profile.get('id', 'N/A')}, Profile name: {profile.get('name', 'N/A')}"
+                )
+            self.prompt.print("=" * 50)
 
-            input_profile_index = self.prompt.input("Enter profile number: ")
+            input_profile_id = self.prompt.input("Enter profile id: ").strip()
 
-            if input_profile_index == "":
+            if input_profile_id == "":
                 self.prompt.print("No profile selected")
                 return
 
-            self.prompt.print(f"You entered profile number: {input_profile_index}")
-            if input_profile_index.strip() == "":  # User entered Enter
-                self.prompt.print("No profile selected")
-                return
+            self.prompt.print(f"You entered profile id: {input_profile_id}")
+            if not input_profile_id.isdigit():
+                self.prompt.print(f"Invalid profile id: {input_profile_id}. Please try again.")
+                continue
 
-            if input_profile_index.isdigit():
-                input_profile_index = int(input_profile_index)
-                if input_profile_index > 0 and input_profile_index <= len(implemented_profiles):
-                    break
+            profile_id = int(input_profile_id)
+            profile = find_by_id(implemented_profiles, profile_id)
+            if profile is not None:
+                break
 
-            self.prompt.print(f"Invalid profile number: {input_profile_index}. Please try again.")
+            self.prompt.print(f"Invalid profile id: {profile_id}. Please try again.")
 
         # Get profile name
-        input_profile_index = int(input_profile_index)
-        profile = implemented_profiles[input_profile_index - 1]
         input_profile_name = profile.get("name", "N/A")
         self.prompt.print(f"You selected profile: {input_profile_name}")
 

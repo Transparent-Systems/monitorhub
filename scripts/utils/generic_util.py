@@ -39,3 +39,15 @@ def convert_to_seconds(time_str: str | int | None) -> int:
         return int(time_str[:-1]) * 86400
 
     return 0
+
+
+def find_by_id(items: list[dict], item_id: int) -> dict | None:
+    """Return the first item whose ``id`` matches ``item_id``, or None.
+
+    Used by the CLI selection prompts so users can pick database entities by
+    their stable id instead of a transient 1..n list index.
+    """
+    for item in items:
+        if item.get("id") == item_id:
+            return item
+    return None
