@@ -249,11 +249,9 @@ The logging was cumersome as well and I needed to run a separate cleanup job for
 The main issue was that PowerShell was running on Windows only.  
 
 Now I had the choice to build a separate application for Linux, or build a generic solution for Windows, Linux and Mac OS.  
-This is when FolderMonitor was born.
-It worked fine but it was not scalable.
-TO make it scalable:
-- each monitor needed to be started and stopped indivudually
-- a monitor needed to be able to handle file events, but also timer events
+To make the application scalable:
+- each monitor needed to be a separate process that could be started or stopped individually
+- a monitor could handle file events, timer events and futue prrof to handle events
 - a pluggable architecture that allowed adding new monitor types and profile types easily
 
 While I was working on the application it gradually became clear to me that on a high level it was a lego box with monitors that consime events and profile handlers that process an event.
