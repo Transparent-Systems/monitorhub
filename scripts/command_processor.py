@@ -20,6 +20,7 @@ class CommandProcessor:
         db_dir: str,
         log_config: str = "conf/log.yaml",
         log_level: str | None = None,
+        prompt: PromptService | None = None,
     ):
         self.logger = logger
         # Filter logging to avoid noise on the console
@@ -44,7 +45,7 @@ class CommandProcessor:
             db_dir=db_dir
         )
 
-        self.prompt = PromptService()
+        self.prompt = prompt or PromptService()
 
         self.database = DatabaseCommands(self.sqlite_handler, self.prompt)
         self.profile = ProfileCommands(self.sqlite_handler, self.logger, self.diagnostic_util, self.prompt)
