@@ -85,10 +85,7 @@ if __name__ == "__main__":
     profile_subparsers.add_parser("show", help="Show all profiles")
     profile_subparsers.add_parser("file", help="Show the file location of monitorhub.conf")
     profile_subparsers.add_parser("import", help="Import profiles from rclone")
-    profile_new_parser = profile_subparsers.add_parser("new", help="Create a new profile (subcommands: remote, command; enter 'profile new -h' for help)")
-    profile_new_subparsers = profile_new_parser.add_subparsers(dest="profile_new_subcommand", help="Profile type to create")
-    profile_new_subparsers.add_parser("remote", help="Create a new remote profile (S3 / rclone)")
-    profile_new_subparsers.add_parser("command", help="Create a new command profile")
+    profile_new_parser = profile_subparsers.add_parser("new", help="Create a new profile (select profile category interactively)")
     profile_subparsers.add_parser("edit", help="Edit a profile")
     profile_subparsers.add_parser("delete", help="Delete a profile")
     profile_test_parser = profile_subparsers.add_parser("test", help="Test a profile")
@@ -204,13 +201,7 @@ if __name__ == "__main__":
             elif args.profile_subcommand == "show":
                 command_processor.profile_show()
             elif args.profile_subcommand == "new":
-                if args.profile_new_subcommand == "remote":
-                    command_processor.profile_new_remote()
-                elif args.profile_new_subcommand == "command":
-                    command_processor.profile_new_command()
-                else:
-                    profile_new_parser.print_help()
-                    sys.exit(1)
+                command_processor.profile_new()
             elif args.profile_subcommand == "edit":
                 command_processor.profile_edit()
             elif args.profile_subcommand == "delete":

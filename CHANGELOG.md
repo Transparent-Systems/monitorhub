@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+- ``profile new`` now selects the profile category interactively (``remote`` or
+    ``command``) instead of requiring a hard-coded CLI subcommand.
+    The ``profile new remote`` and ``profile new command`` subcommands have been
+    removed to make ``profile new`` consistent with ``monitor new``, which
+    already selects the monitor type interactively.
+
 - Merged ``main.py`` into the CLI.
     ``main.py`` duplicated the launcher behaviour of ``mhub.py monitor start-all``.
     It has been removed. Use:

@@ -67,6 +67,14 @@ MONITOR_STATUSES: tuple[tuple[str, str], ...] = (
 PROFILE_CATEGORY_REMOTE  = "remote"
 PROFILE_CATEGORY_COMMAND = "command"
 
+# (name, description) tuples — used for UI display in profile commands.
+# Mirrors MONITOR_TYPES so the user selects a category interactively the same
+# way they select a monitor type in "monitor new".
+PROFILE_CATEGORIES: tuple[tuple[str, str], ...] = (
+    (PROFILE_CATEGORY_REMOTE,  "Remote profile (upload/download via provider or rclone)"),
+    (PROFILE_CATEGORY_COMMAND, "Command profile (run a shell command on events)"),
+)
+
 # These profile types are handled by CommandActionHandler, not RemoteHandler.
 COMMAND_PROFILE_TYPES = ("event_command",)
 

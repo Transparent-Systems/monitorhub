@@ -54,6 +54,17 @@ class TestReferenceDataProfileTypes(unittest.TestCase):
         self.assertEqual(names, {"a", "c"})
 
 
+class TestReferenceDataProfileCategories(unittest.TestCase):
+    def test_profile_categories(self):
+        names = [name for name, _desc in reference_data.PROFILE_CATEGORIES]
+        self.assertEqual(names, ["remote", "command"])
+
+    def test_profile_categories_align_with_constants(self):
+        names = [name for name, _desc in reference_data.PROFILE_CATEGORIES]
+        self.assertIn(reference_data.PROFILE_CATEGORY_REMOTE, names)
+        self.assertIn(reference_data.PROFILE_CATEGORY_COMMAND, names)
+
+
 class TestReferenceDataMonitorTypes(unittest.TestCase):
     def test_monitor_types(self):
         names = [name for name, _desc in reference_data.MONITOR_TYPES]

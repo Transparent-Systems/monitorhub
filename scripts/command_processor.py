@@ -155,13 +155,9 @@ class CommandProcessor:
         """Show all profiles and let user choose one to edit."""
         self.profile.profile_edit()
 
-    def profile_new_remote(self):
-        """Create a new remote profile."""
-        self.profile.profile_new_remote()
-
-    def profile_new_command(self):
-        """Create a new event_command profile."""
-        self.profile.profile_new_command()
+    def profile_new(self):
+        """Create a new profile (interactively select the category)."""
+        self.profile.profile_new()
 
     def profile_show(self):
         """Show all profiles."""

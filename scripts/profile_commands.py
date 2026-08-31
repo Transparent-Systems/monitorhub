@@ -400,8 +400,7 @@ class ProfileCommands:
             self.prompt.print(f"Profile name: {profile_name} not updated")
 
         self.prompt.print("Please test profile with one of the following commands:")
-        self.prompt.print("   Windows command: mhub.exe profile test")
-        self.prompt.print("   Linux or Windows command: python mhub.py profile test")
+        self.prompt.print("   Command: mhub profile test")
 
     def _profile_edit_remote(self, profile: dict[str, Any], profile_name: str):
         """
@@ -484,20 +483,6 @@ class ProfileCommands:
                     profile_config["endpoint"] = input_profile_endpoint
                     break
 
-        # Offer to edit the shell command attached to this profile
-        has_existing_command = bool(profile_config.get("command"))
-        if has_existing_command:
-            self.prompt.print("\nShell command configuration")
-            edit_cmd = self.prompt.input("Edit the shell command attached to this profile? (y/N): ").strip().lower()
-            if edit_cmd in ("y", "yes"):
-                command_config = self._prompt_command_config(existing=profile_config)
-                profile_config.update(command_config)
-        else:
-            attach_cmd = self.prompt.input("Attach a shell command to this profile? (y/N): ").strip().lower()
-            if attach_cmd in ("y", "yes"):
-                command_config = self._prompt_command_config()
-                profile_config.update(command_config)
-
         # Profile_config has already been populated with provider_name, access_key_id etc
         # Now update profile
         if self.sqlite_handler.update_profile(
@@ -511,8 +496,7 @@ class ProfileCommands:
             self.prompt.print(f"Profile name: {profile_name} not updated")
 
         self.prompt.print("Please test profile with one of the following commands:")
-        self.prompt.print("   Windows command: mhub.exe profile test")
-        self.prompt.print("   Linux or Windows command: python mhub.py profile test")
+        self.prompt.print("   Command: mhub profile test")
 
     def _is_interval_valid(self, interval: str) -> bool:
         """Check if interval string is valid (e.g. 10, 10m, 10h, 10d)."""
@@ -648,9 +632,56 @@ class ProfileCommands:
         }
         return config
 
+    def profile_new(self):
+        """
+        Create a new profile.
+
+        Mirrors monitor_new(): the profile category is selected interactively
+        from reference_data.PROFILE_CATEGORIES instead of being a hard-coded
+        CLI subcommand. The selected category then dispatches to the specific
+        remote or command creation flow.
+        """
+
+        categories = reference_data.PROFILE_CATEGORIES
+        if not categories:
+            self.prompt.print("No profile categories available")
+            return
+
+        while True:
+            self.prompt.print("List of profile categories")
+            self.prompt.print("=" * 50)
+            for i, (name, description) in enumerate(categories):
+                self.prompt.print(f"{i+1}. {name} - {description}")
+            self.prompt.print("=" * 50)
+
+            input_category_number = self.prompt.input("Please select number of profile category: ")
+            if input_category_number.strip() == "":
+                self.prompt.print("Profile category cannot be just spaces")
+                continue
+
+            if not input_category_number.isdigit():
+                self.prompt.print(f"Invalid profile category number: {input_category_number}. Please try again.")
+                continue
+
+            input_category_number = int(input_category_number)
+            if input_category_number > 0 and input_category_number <= len(categories):
+                break
+
+            self.prompt.print(f"Invalid profile category number: {input_category_number}. Please try again.")
+
+        category = categories[input_category_number - 1][0]
+        self.prompt.print(f"You selected profile category: {category}")
+
+        if category == reference_data.PROFILE_CATEGORY_REMOTE:
+            self.profile_new_remote()
+        elif category == reference_data.PROFILE_CATEGORY_COMMAND:
+            self.profile_new_command()
+        else:
+            self.prompt.print(f"Unknown or unsupported profile category '{category}'")
+
     def profile_new_remote(self):
         """
-        Create a new remote profile (S3 / rclone).
+        Create a new remote profile.
         """
 
         implemented_providers = reference_data.get_providers()
@@ -768,8 +799,7 @@ class ProfileCommands:
             self.prompt.print(f"Profile name: {input_profile_name} created")
 
         self.prompt.print("Please test profile with one of the following commands:")
-        self.prompt.print("   Windows command: mhub.exe profile test")
-        self.prompt.print("   Linux command: mhub profile test")
+        self.prompt.print("   Command: mhub profile test")
 
     def profile_new_command(self):
         """
@@ -820,8 +850,7 @@ class ProfileCommands:
             self.prompt.print(f"Profile name: {input_profile_name} created")
 
         self.prompt.print("Please test profile with one of the following commands:")
-        self.prompt.print("   Windows command: mhub.exe profile test")
-        self.prompt.print("   Linux command: mhub profile test")
+        self.prompt.print("   Command: mhub profile test")
 
     def profile_show(self):
         """

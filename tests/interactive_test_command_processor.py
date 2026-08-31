@@ -43,11 +43,8 @@ class TestCommandProcessor(BaseTestClass):
         # Perform any necessary cleanup after all tests have run
         cls.logger.info("TearDown finished")
 
-    def test_01_1_profile_new_command(self):
-        self.command_processor.profile_new_command()
-
-    def test_01_2_profile_new_command(self):
-        self.command_processor.profile_new_remote()
+    def test_01_profile_new(self):
+        self.command_processor.profile_new()
 
     def test_02_profile_edit(self):
         self.command_processor.profile_edit()
