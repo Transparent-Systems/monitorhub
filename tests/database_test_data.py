@@ -70,12 +70,12 @@ class DatabaseTestData:
             },
             {
                 "category": "command",
-                "name": "file-event-command-1",
+                "name": "command-profile-1",
                 "type": "event_command",
                 "config": {
                     "command": "notify-send \"Testing command from monitor = {monitor_name}, profile = {profile_name}, event = {event_name}, source path = {src_path}\"", 
                     "command_events": ["created", "deleted", "modified"], 
-                    "command_cooldown": "10s", 
+                    "command_cooldown": "0s", 
                     "command_shell": "false",
                     "command_timeout": "10s"
                 }
