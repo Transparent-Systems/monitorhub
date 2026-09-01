@@ -71,6 +71,7 @@ _SUBCOMMAND_DISPATCH = {
     ),
     ("monitor", "stop-all"): ("monitor", "stop_all", lambda args: {"immediate": args.immediate}),
     ("database", "info"): ("database", "info", lambda _: {}),
+    ("database", "version"): ("database", "version", lambda _: {}),
     ("database", "init"): ("database", "init", lambda args: {"recreate": args.recreate}),
     ("database", "sample-data"): ("database", "sample_data", lambda _: {}),
 }
@@ -155,6 +156,7 @@ if __name__ == "__main__":
     database_parser = subparsers.add_parser("database", help="Database information")
     database_subparsers = database_parser.add_subparsers(dest="database_subcommand", help="Database subcommands")
     database_info_parser = database_subparsers.add_parser("info", help="Show database information")
+    database_version_parser = database_subparsers.add_parser("version", help="Show database version")
     database_init_parser = database_subparsers.add_parser("init", help="Initialise the database schema and load support tables")
     database_init_parser.add_argument("--recreate",
         action="store_true",

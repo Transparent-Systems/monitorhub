@@ -4,12 +4,13 @@ import os
 
 from scripts.constants import MONITOR_STATUS_STOPPED, MONITOR_TYPE_INSTANT
 from scripts.prompt_service import PromptService
+from scripts.sqlite_handler import SQLiteHandler
 
 
 class DatabaseCommands:
     """Database initialisation, info, and sample-data commands."""
 
-    def __init__(self, sqlite_handler, prompt: PromptService) -> None:
+    def __init__(self, sqlite_handler: SQLiteHandler, prompt: PromptService) -> None:
         self.sqlite_handler = sqlite_handler
         self.prompt = prompt
 
@@ -24,6 +25,16 @@ class DatabaseCommands:
             self.prompt.print("SQLite database path is not set.")
             return
         self.prompt.print(f"Location of SQLite database: {db_path}")
+
+    def version(self):
+        """
+        Print the version of the SQLite database
+        """
+        db_version = self.sqlite_handler.get_current_schema_version()
+        if not db_version:
+            self.prompt.print("SQLite database version is not set.")
+            return
+        self.prompt.print(f"Version of SQLite database: {db_version}")
 
     def init(self, recreate: bool = False):
         """
