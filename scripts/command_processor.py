@@ -69,9 +69,7 @@ class CommandProcessor:
         Test configuration
         """
         try:
-            diagnostic_util = DiagnosticUtil(
-                db_dir=self.db_dir,
-                logger=self.logger)
+            diagnostic_util = self.diagnostic_util
             if (not diagnostic_util.check_app_env()):
                 return
 

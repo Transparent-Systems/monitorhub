@@ -17,12 +17,59 @@ Notes:
 
 import argparse
 import sys
-from pathlib import Path
 
 from scripts.command_processor import CommandProcessor
-from scripts.sqlite_handler import SQLiteHandler
 from scripts.utils.app_config import AppConfig
 from scripts.utils.logger_setup import setup_logging
+
+# Data-driven mapping of (command, subcommand) to the CommandProcessor method
+# to invoke, together with a callable that builds the keyword arguments from
+# the parsed argparse namespace. This replaces the previous hand-written
+# if/elif dispatch tree.
+_SUBCOMMAND_DISPATCH = {
+    ("version", None): ("version", lambda _: {}),
+    ("config", "test"): ("config_test", lambda _: {}),
+    ("profile", "test"): (
+        "profile_test",
+        lambda args: {"profile_id": args.profile_id, "live": args.live},
+    ),
+    ("profile", "show"): ("profile_show", lambda _: {}),
+    ("profile", "new"): ("profile_new", lambda _: {}),
+    ("profile", "edit"): ("profile_edit", lambda _: {}),
+    ("profile", "delete"): ("profile_delete", lambda _: {}),
+    ("profile", "import"): ("profile_import", lambda _: {}),
+    ("monitor", "delete"): ("monitor_delete", lambda _: {}),
+    ("monitor", "edit"): ("monitor_edit", lambda _: {}),
+    ("monitor", "new"): ("monitor_new", lambda _: {}),
+    ("monitor", "show"): ("monitor_show", lambda _: {}),
+    ("monitor", "start"): (
+        "monitor_start",
+        lambda args: {
+            "monitor_id": getattr(args, "monitor_id", None),
+            "monitor_name": getattr(args, "monitor_name", None),
+        },
+    ),
+    ("monitor", "test"): (
+        "monitor_test",
+        lambda args: {
+            "monitor_id": getattr(args, "monitor_id", None),
+            "monitor_name": getattr(args, "monitor_name", None),
+        },
+    ),
+    ("monitor", "start-all"): ("monitor_start_all", lambda _: {}),
+    ("monitor", "stop"): (
+        "monitor_stop",
+        lambda args: {
+            "monitor_id": getattr(args, "monitor_id", None),
+            "immediate": args.immediate,
+            "monitor_name": getattr(args, "monitor_name", None),
+        },
+    ),
+    ("monitor", "stop-all"): ("monitor_stop_all", lambda args: {"immediate": args.immediate}),
+    ("database", "info"): ("database_info", lambda _: {}),
+    ("database", "init"): ("database_init", lambda args: {"recreate": args.recreate}),
+    ("database", "sample-data"): ("database_sample_data", lambda _: {}),
+}
 
 if __name__ == "__main__":
     # Hidden in-process dispatch used by the frozen PyInstaller binary.
@@ -183,9 +230,16 @@ if __name__ == "__main__":
     else:
         db_dir = args.db_dir
 
-    sqlite_handler = SQLiteHandler(logger=logger, db_dir=db_dir)
+    # Map top-level command names to their subcommand parser, used to print the
+    # correct help text when no (or an unknown) subcommand is supplied.
+    command_parsers = {
+        "profile": profile_parser,
+        "monitor": monitor_parser,
+        "database": database_parser,
+        "config": config_parser,
+    }
 
-    # Handle command line arguments
+    # Handle command line arguments via a data-driven dispatch table.
     if args.command is not None:
         command_processor = CommandProcessor(
             logger=logger,
@@ -193,77 +247,13 @@ if __name__ == "__main__":
             log_config=args.log,
             log_level=args.log_level,
         )
-        config_path = Path(db_dir).resolve()
-        if args.command == "profile":
-            if args.profile_subcommand == "test":
-                profile_id = args.profile_id
-                command_processor.profile_test(profile_id=profile_id, live=args.live)
-            elif args.profile_subcommand == "show":
-                command_processor.profile_show()
-            elif args.profile_subcommand == "new":
-                command_processor.profile_new()
-            elif args.profile_subcommand == "edit":
-                command_processor.profile_edit()
-            elif args.profile_subcommand == "delete":
-                command_processor.profile_delete()
-            elif args.profile_subcommand == "import":
-                command_processor.profile_import()
-            else:
-                profile_parser.print_help()
-                sys.exit(1)
-        elif args.command == "monitor":
-            if args.monitor_subcommand == "delete":
-                command_processor.monitor_delete()
-            elif args.monitor_subcommand == "edit":
-                command_processor.monitor_edit()
-            elif args.monitor_subcommand == "new":
-                command_processor.monitor_new()
-            elif args.monitor_subcommand == "show":
-                command_processor.monitor_show()
-            elif args.monitor_subcommand == "start":
-                command_processor.monitor_start(
-                    monitor_id=getattr(args, "monitor_id", None),
-                    monitor_name=getattr(args, "monitor_name", None),
-                )
-            elif args.monitor_subcommand == "test":
-                command_processor.monitor_test(
-                    monitor_id=getattr(args, "monitor_id", None),
-                    monitor_name=getattr(args, "monitor_name", None),
-                )
-            elif args.monitor_subcommand == "start-all":
-                command_processor.monitor_start_all()
-            elif args.monitor_subcommand == "stop":
-                command_processor.monitor_stop(
-                    monitor_id=getattr(args, "monitor_id", None),
-                    immediate=args.immediate,
-                    monitor_name=getattr(args, "monitor_name", None),
-                )
-            elif args.monitor_subcommand == "stop-all":
-                command_processor.monitor_stop_all(immediate=args.immediate)
-            else:
-                monitor_parser.print_help()
-                sys.exit(1)
-        elif args.command == "database":
-            if args.database_subcommand == "info":
-                command_processor.database_info()
-            elif args.database_subcommand == "init":
-                command_processor.database_init(recreate=args.recreate)
-            elif args.database_subcommand == "sample-data":
-                command_processor.database_sample_data()
-            else:
-                database_parser.print_help()
-                sys.exit(1)
-        elif args.command == "config":
-            if args.config_subcommand == "test":
-                command_processor.config_test()
-            else:
-                config_parser.print_help()
-                sys.exit(1)
-        elif args.command == "version":
-            command_processor.version()
-        else:
-            parser.print_help()
+        subcommand = getattr(args, f"{args.command}_subcommand", None)
+        entry = _SUBCOMMAND_DISPATCH.get((args.command, subcommand))
+        if entry is None:
+            command_parsers.get(args.command, parser).print_help()
             sys.exit(1)
+        method_name, kwargs_builder = entry
+        getattr(command_processor, method_name)(**kwargs_builder(args))
     else:
         parser.print_help()
         sys.exit(1)
