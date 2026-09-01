@@ -259,7 +259,9 @@ if __name__ == "__main__":
             command_parsers.get(args.command, parser).print_help()
             sys.exit(1)
         owner_attr, method_name, kwargs_builder = entry
-        getattr(getattr(commands, owner_attr), method_name)(**kwargs_builder(args))
+        command_obj = getattr(commands, owner_attr)
+        kwargs = kwargs_builder(args)
+        getattr(command_obj, method_name)(**kwargs)
     else:
         parser.print_help()
         sys.exit(1)
