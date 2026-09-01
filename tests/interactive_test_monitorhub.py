@@ -443,7 +443,7 @@ if __name__ == "__main__":
         prompt=prompt
     )
 
-    monitor_commands.monitor_start(monitor_id=monitor_id)
+    monitor_commands.start(monitor_id=monitor_id)
     # Get latest monitor from database
     monitor = sqlite_handler.get_monitor(monitor_id=monitor_id)
     pid = monitor.get("pid", "0")
@@ -515,7 +515,7 @@ if __name__ == "__main__":
         break
 
     # Stop monitor gracefully
-    monitor_commands.monitor_stop(monitor_id=monitor_id)
+    monitor_commands.stop(monitor_id=monitor_id)
     # Remove monitor from monitor_profile_map
     for profile in test_monitor_profiles:
         profile_id = profile.get("id", 0)

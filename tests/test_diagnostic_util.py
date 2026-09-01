@@ -7,8 +7,10 @@ file is executed directly, so test discovery stays side-effect-free.
 """
 
 import argparse
+import logging
 import sys
 
+from scripts.sqlite_handler import SQLiteHandler
 from scripts.utils.diagnostic_util import DiagnosticUtil
 
 if __name__ == "__main__":
@@ -29,9 +31,13 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    diagnostic_util = DiagnosticUtil(
+    sqlite_handler = SQLiteHandler(
+        logger=logging.getLogger(__name__),
         db_dir=args.db_dir,
-        logger=None
+    )
+    diagnostic_util = DiagnosticUtil(
+        sqlite_handler=sqlite_handler,
+        logger=None,
     )
 
     if ("check_app_env" in args.test_cases):

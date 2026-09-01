@@ -13,7 +13,7 @@ class DatabaseCommands:
         self.sqlite_handler = sqlite_handler
         self.prompt = prompt
 
-    def database_info(self):
+    def info(self):
         """
         Print information about the SQLite database
         """
@@ -25,7 +25,7 @@ class DatabaseCommands:
             return
         self.prompt.print(f"Location of SQLite database: {db_path}")
 
-    def database_init(self, recreate: bool = False):
+    def init(self, recreate: bool = False):
         """
         Initialise the SQLite database by creating the schema and loading the
         support tables.
@@ -58,7 +58,7 @@ class DatabaseCommands:
         self.sqlite_handler.create_schema()
         self.prompt.print(f"Database initialised at {self.sqlite_handler.db_path}")
 
-    def database_sample_data(self):
+    def sample_data(self):
         """
         Load example profile and monitor sample data into the database.
 

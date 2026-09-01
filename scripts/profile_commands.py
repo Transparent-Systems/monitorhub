@@ -62,7 +62,7 @@ class ProfileCommands:
 
             self.prompt.print(f"Invalid profile id: {profile_id}. Please try again.")
 
-    def profile_test(self, profile_id: int | None = None, live: bool = False) -> bool:
+    def test(self, profile_id: int | None = None, live: bool = False) -> bool:
         """
         Test selected profile.
 
@@ -272,7 +272,7 @@ class ProfileCommands:
         self.prompt.print("Test succeeded")
         return True
 
-    def profile_delete(self):
+    def delete(self):
         """
         Show all profiles and let user choose one to delete
         """
@@ -326,7 +326,7 @@ class ProfileCommands:
         else:
             self.prompt.print(f"Profile name: {profile_name} not deleted")
 
-    def profile_edit(self):
+    def edit(self):
         """
         Show all profiles and let user choose one to edit
         """
@@ -374,11 +374,11 @@ class ProfileCommands:
         profile_category = reference_data.get_profile_category(profile_type)
 
         if profile_category == "remote":
-            self._profile_edit_remote(profile=profile, profile_name=input_profile_name)
+            self._edit_remote(profile=profile, profile_name=input_profile_name)
         else:
-            self._profile_edit_command(profile=profile, profile_name=input_profile_name)
+            self._edit_command(profile=profile, profile_name=input_profile_name)
 
-    def _profile_edit_command(self, profile: dict[str, Any], profile_name: str):
+    def _edit_command(self, profile: dict[str, Any], profile_name: str):
         """
         Handles profile edit for profiles with category "command". See lookup table profile_types.
         """
@@ -402,7 +402,7 @@ class ProfileCommands:
         self.prompt.print("Please test profile with one of the following commands:")
         self.prompt.print("   Command: mhub profile test")
 
-    def _profile_edit_remote(self, profile: dict[str, Any], profile_name: str):
+    def _edit_remote(self, profile: dict[str, Any], profile_name: str):
         """
         Handles profile edit for profiles with category "remote". See lookup table profile_types.
         """
@@ -632,7 +632,7 @@ class ProfileCommands:
         }
         return config
 
-    def profile_new(self):
+    def new(self):
         """
         Create a new profile.
 
@@ -673,13 +673,13 @@ class ProfileCommands:
         self.prompt.print(f"You selected profile category: {category}")
 
         if category == reference_data.PROFILE_CATEGORY_REMOTE:
-            self.profile_new_remote()
+            self._new_remote()
         elif category == reference_data.PROFILE_CATEGORY_COMMAND:
-            self.profile_new_command()
+            self._new_command()
         else:
             self.prompt.print(f"Unknown or unsupported profile category '{category}'")
 
-    def profile_new_remote(self):
+    def _new_remote(self):
         """
         Create a new remote profile.
         """
@@ -801,7 +801,7 @@ class ProfileCommands:
         self.prompt.print("Please test profile with one of the following commands:")
         self.prompt.print("   Command: mhub profile test")
 
-    def profile_new_command(self):
+    def _new_command(self):
         """
         Create a new event_command profile.
 
@@ -852,7 +852,7 @@ class ProfileCommands:
         self.prompt.print("Please test profile with one of the following commands:")
         self.prompt.print("   Command: mhub profile test")
 
-    def profile_show(self):
+    def show(self):
         """
         Show all profiles
         """
@@ -867,7 +867,7 @@ class ProfileCommands:
             for key in config:
                 self.prompt.print(f"   {key}: {config[key]}")
 
-    def profile_import(self):
+    def import_profiles(self):
         """
         Import profiles from rclone
         """

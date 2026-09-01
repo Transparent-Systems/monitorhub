@@ -20,7 +20,7 @@ class DiagnosticUtil:
     Utility class for system diagnostics and configuration checks.
     """
 
-    def __init__(self, db_dir: str, logger: logging.Logger | None = None):
+    def __init__(self, sqlite_handler: SQLiteHandler, logger: logging.Logger | None = None):
         if logger is None:
             test_logger = logging.getLogger(__name__)
             test_logger.setLevel(logging.DEBUG)
@@ -38,10 +38,7 @@ class DiagnosticUtil:
         self.check_profile_import_result = False
         self.check_rclone_dependency_result = False
         self.check_app_config_result = False
-        self.sqlite_handler = SQLiteHandler(
-                logger=self.logger,
-                db_dir=db_dir
-        )
+        self.sqlite_handler = sqlite_handler
 
     def print_overview(self):
         print("=" *50)

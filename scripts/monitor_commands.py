@@ -296,7 +296,7 @@ class MonitorCommands:
         return True
 
     # ------------------------------------------------------------------
-    # monitor_edit helpers
+    # edit helpers
     # ------------------------------------------------------------------
 
     def _edit_basic_fields(self, monitor: dict) -> None:
@@ -465,7 +465,7 @@ class MonitorCommands:
     # Public monitor commands
     # ------------------------------------------------------------------
 
-    def monitor_delete(self):
+    def delete(self):
         """Delete monitor."""
         monitors = self.sqlite_handler.get_monitors()
         if not monitors:
@@ -497,7 +497,7 @@ class MonitorCommands:
         else:
             self.prompt.print(f"Monitor name: {monitor.get('name', 'N/A')} not deleted")
 
-    def monitor_edit(self):
+    def edit(self):
         """Edit monitor."""
         monitors = self.sqlite_handler.get_monitors()
         if not monitors:
@@ -534,7 +534,7 @@ class MonitorCommands:
         else:
             self.prompt.print(f"Monitor name: {monitor.get('name', 'N/A')} has not been updated")
 
-    def monitor_new(self):
+    def new(self):
         """Create new monitor."""
         profiles = self.sqlite_handler.get_profiles()
         if profiles is None or len(profiles) == 0:
@@ -668,7 +668,7 @@ class MonitorCommands:
                     monitor_id=monitor_id, profile_id=profile_id
                 )
 
-    def monitor_show(self):
+    def show(self):
         """Show all monitors."""
         monitors = self.sqlite_handler.get_monitors()
         for monitor in monitors:
@@ -685,7 +685,7 @@ class MonitorCommands:
                 self.prompt.print(f"   {key}: {config.get(key, 'N/A')}")
             self.prompt.print("=" * 50)
 
-    def monitor_test(self, monitor_id: int | None = None, monitor_name: str | None = None):
+    def test(self, monitor_id: int | None = None, monitor_name: str | None = None):
         """Test monitor(s)."""
         from scripts.utils.diagnostic_util import DiagnosticUtil
 
@@ -723,13 +723,13 @@ class MonitorCommands:
                 monitor_id = choice
 
         try:
-            diagnostic_util = DiagnosticUtil(db_dir=self.db_dir, logger=self.logger)
+            diagnostic_util = DiagnosticUtil(sqlite_handler=self.sqlite_handler, logger=self.logger)
             if not diagnostic_util.check_monitor_config(monitor_id=monitor_id):
                 return
         finally:
             self.prompt.print("Monitor test completed")
 
-    def monitor_start(self, monitor_id: int | None = None, monitor_name: str | None = None):
+    def start(self, monitor_id: int | None = None, monitor_name: str | None = None):
         """Start a single monitor as a detached child process."""
         if monitor_id is not None and monitor_name is not None:
             self.prompt.print("Cannot specify both --monitor-id and --monitor-name.")
@@ -768,7 +768,7 @@ class MonitorCommands:
         if self._launch_monitor_process(monitor):
             self.prompt.print(f"Monitor '{monitor_name}' (id={monitor_id_val}) started.")
 
-    def monitor_start_all(self):
+    def start_all(self):
         """Clean up stale/hung monitors and start all monitors that are not running."""
         monitors = self.sqlite_handler.get_monitors()
         if not monitors:
@@ -795,7 +795,7 @@ class MonitorCommands:
 
         self.prompt.print(f"Processed {len(to_start)} monitor(s)...")
 
-    def monitor_stop(self, monitor_id: int | None = None, immediate: bool = False, monitor_name: str | None = None):
+    def stop(self, monitor_id: int | None = None, immediate: bool = False, monitor_name: str | None = None):
         """Stop a running monitor (gracefully or force-kill)."""
         if monitor_id is not None and monitor_name is not None:
             self.prompt.print("Cannot specify both --monitor-id and --monitor-name.")
@@ -858,7 +858,7 @@ class MonitorCommands:
                 self.prompt.print(f"Stop signal sent to monitor '{monitor_name}' (id={monitor_id_val}).")
                 self.prompt.print("The monitor will gracefully shut down within ~10 seconds and set status to 'stopped'.")
 
-    def monitor_stop_all(self, immediate: bool = False):
+    def stop_all(self, immediate: bool = False):
         """Stop all running monitors."""
         monitors = self.sqlite_handler.get_monitors()
         if not monitors:

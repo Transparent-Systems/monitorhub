@@ -18,57 +18,61 @@ Notes:
 import argparse
 import sys
 
-from scripts.command_processor import CommandProcessor
+from scripts.commands import build_commands
 from scripts.utils.app_config import AppConfig
 from scripts.utils.logger_setup import setup_logging
 
-# Data-driven mapping of (command, subcommand) to the CommandProcessor method
-# to invoke, together with a callable that builds the keyword arguments from
-# the parsed argparse namespace. This replaces the previous hand-written
-# if/elif dispatch tree.
+# Data-driven mapping of (command, subcommand) to the command object attribute
+# and method to invoke, together with a callable that builds the keyword
+# arguments from the parsed argparse namespace. This replaces the previous
+# hand-written if/elif dispatch tree.
 _SUBCOMMAND_DISPATCH = {
-    ("version", None): ("version", lambda _: {}),
-    ("config", "test"): ("config_test", lambda _: {}),
+    ("version", None): ("app", "version", lambda _: {}),
+    ("config", "test"): ("app", "config_test", lambda _: {}),
     ("profile", "test"): (
-        "profile_test",
+        "profile",
+        "test",
         lambda args: {"profile_id": args.profile_id, "live": args.live},
     ),
-    ("profile", "show"): ("profile_show", lambda _: {}),
-    ("profile", "new"): ("profile_new", lambda _: {}),
-    ("profile", "edit"): ("profile_edit", lambda _: {}),
-    ("profile", "delete"): ("profile_delete", lambda _: {}),
-    ("profile", "import"): ("profile_import", lambda _: {}),
-    ("monitor", "delete"): ("monitor_delete", lambda _: {}),
-    ("monitor", "edit"): ("monitor_edit", lambda _: {}),
-    ("monitor", "new"): ("monitor_new", lambda _: {}),
-    ("monitor", "show"): ("monitor_show", lambda _: {}),
+    ("profile", "show"): ("profile", "show", lambda _: {}),
+    ("profile", "new"): ("profile", "new", lambda _: {}),
+    ("profile", "edit"): ("profile", "edit", lambda _: {}),
+    ("profile", "delete"): ("profile", "delete", lambda _: {}),
+    ("profile", "import"): ("profile", "import_profiles", lambda _: {}),
+    ("monitor", "delete"): ("monitor", "delete", lambda _: {}),
+    ("monitor", "edit"): ("monitor", "edit", lambda _: {}),
+    ("monitor", "new"): ("monitor", "new", lambda _: {}),
+    ("monitor", "show"): ("monitor", "show", lambda _: {}),
     ("monitor", "start"): (
-        "monitor_start",
+        "monitor",
+        "start",
         lambda args: {
             "monitor_id": getattr(args, "monitor_id", None),
             "monitor_name": getattr(args, "monitor_name", None),
         },
     ),
     ("monitor", "test"): (
-        "monitor_test",
+        "monitor",
+        "test",
         lambda args: {
             "monitor_id": getattr(args, "monitor_id", None),
             "monitor_name": getattr(args, "monitor_name", None),
         },
     ),
-    ("monitor", "start-all"): ("monitor_start_all", lambda _: {}),
+    ("monitor", "start-all"): ("monitor", "start_all", lambda _: {}),
     ("monitor", "stop"): (
-        "monitor_stop",
+        "monitor",
+        "stop",
         lambda args: {
             "monitor_id": getattr(args, "monitor_id", None),
             "immediate": args.immediate,
             "monitor_name": getattr(args, "monitor_name", None),
         },
     ),
-    ("monitor", "stop-all"): ("monitor_stop_all", lambda args: {"immediate": args.immediate}),
-    ("database", "info"): ("database_info", lambda _: {}),
-    ("database", "init"): ("database_init", lambda args: {"recreate": args.recreate}),
-    ("database", "sample-data"): ("database_sample_data", lambda _: {}),
+    ("monitor", "stop-all"): ("monitor", "stop_all", lambda args: {"immediate": args.immediate}),
+    ("database", "info"): ("database", "info", lambda _: {}),
+    ("database", "init"): ("database", "init", lambda args: {"recreate": args.recreate}),
+    ("database", "sample-data"): ("database", "sample_data", lambda _: {}),
 }
 
 if __name__ == "__main__":
@@ -241,7 +245,7 @@ if __name__ == "__main__":
 
     # Handle command line arguments via a data-driven dispatch table.
     if args.command is not None:
-        command_processor = CommandProcessor(
+        commands = build_commands(
             logger=logger,
             db_dir=db_dir,
             log_config=args.log,
@@ -252,8 +256,8 @@ if __name__ == "__main__":
         if entry is None:
             command_parsers.get(args.command, parser).print_help()
             sys.exit(1)
-        method_name, kwargs_builder = entry
-        getattr(command_processor, method_name)(**kwargs_builder(args))
+        owner_attr, method_name, kwargs_builder = entry
+        getattr(getattr(commands, owner_attr), method_name)(**kwargs_builder(args))
     else:
         parser.print_help()
         sys.exit(1)
