@@ -6,7 +6,7 @@ from version import VERSION_STRING
 
 from scripts.constants import MONITOR_STATUS_STOPPED, MONITOR_TYPE_INSTANT
 from scripts.prompt_service import PromptService
-from scripts.schema_versioning import LATEST_DB_SCHEMA_VERSION, classify
+from scripts.schema_versioning import DATABASE_SCHEMA_VERSION, classify
 from scripts.sqlite_handler import SQLiteHandler
 
 
@@ -36,13 +36,13 @@ class DatabaseCommands:
         """
         db_version = self.sqlite_handler.get_current_schema_version()
         self.prompt.print(f"Application version: {VERSION_STRING}")
-        self.prompt.print(f"Supported database schema version: {LATEST_DB_SCHEMA_VERSION}")
+        self.prompt.print(f"Supported database schema version: {DATABASE_SCHEMA_VERSION}")
         if not db_version:
             self.prompt.print("SQLite database version is not set.")
             return
         self.prompt.print(f"Version of SQLite database: {db_version}")
 
-        state = classify(db_version, LATEST_DB_SCHEMA_VERSION)
+        state = classify(db_version, DATABASE_SCHEMA_VERSION)
         if state == "newer":
             self.prompt.print(
                 f"WARNING: this database (schema {db_version}) was created by a newer "
@@ -51,7 +51,7 @@ class DatabaseCommands:
         elif state == "older":
             self.prompt.print(
                 f"Note: database schema is older than supported. Run 'database upgrade' "
-                f"to migrate from {db_version} to {LATEST_DB_SCHEMA_VERSION}."
+                f"to migrate from {db_version} to {DATABASE_SCHEMA_VERSION}."
             )
         else:
             self.prompt.print("Database schema is up to date.")
@@ -84,7 +84,7 @@ class DatabaseCommands:
 
         if self.sqlite_handler.is_initialized():
             db_version = self.sqlite_handler.get_current_schema_version()
-            state = classify(db_version, LATEST_DB_SCHEMA_VERSION)
+            state = classify(db_version, DATABASE_SCHEMA_VERSION)
             if state == "newer":
                 self.prompt.print(
                     f"WARNING: this database (schema {db_version}) was created by a newer "
@@ -95,7 +95,7 @@ class DatabaseCommands:
             if state == "older":
                 self.prompt.print(
                     f"Database schema is older ({db_version}). Run 'database upgrade' "
-                    f"to migrate to {LATEST_DB_SCHEMA_VERSION}."
+                    f"to migrate to {DATABASE_SCHEMA_VERSION}."
                 )
                 return
             self.prompt.print(f"Database already initialised at {self.sqlite_handler.db_path}")
@@ -117,12 +117,12 @@ class DatabaseCommands:
             return
 
         db_version = self.sqlite_handler.get_current_schema_version()
-        state = classify(db_version, LATEST_DB_SCHEMA_VERSION)
+        state = classify(db_version, DATABASE_SCHEMA_VERSION)
 
         if state == "newer":
             self.prompt.print(
                 f"WARNING: this database (schema {db_version}) is newer than the schema "
-                f"this application supports ({LATEST_DB_SCHEMA_VERSION})."
+                f"this application supports ({DATABASE_SCHEMA_VERSION})."
             )
             self.prompt.print("Refusing to downgrade the database.")
             return

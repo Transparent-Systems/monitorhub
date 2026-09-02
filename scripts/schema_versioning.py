@@ -13,18 +13,6 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from version import VERSION_STRING
-
-from scripts.constants import DATABASE_SCHEMA_VERSION
-
-# One entry per schema change, keyed by the application version that introduced
-# it. Do *not* add an entry for every application release — only when the
-# database schema version is bumped. Releases that do not change the schema
-# inherit the schema version of the most recent entry before them.
-APP_VERSION_TO_DB_VERSION: list[tuple[str, str]] = [
-    (VERSION_STRING, DATABASE_SCHEMA_VERSION),
-]
-
 # Ordered migration registry. Each entry is ``(db_schema_version, description,
 # apply_fn)`` where ``apply_fn`` receives the SQLiteHandler and performs the
 # schema change. ``apply_fn`` may be ``None`` when the schema for that version
@@ -37,8 +25,9 @@ SCHEMA_MIGRATIONS: list[Migration] = [
 ]
 
 # The schema version this application creates and supports. Always the most
-# recent entry in ``SCHEMA_MIGRATIONS``.
-LATEST_DB_SCHEMA_VERSION: str = SCHEMA_MIGRATIONS[-1][0]
+# recent entry in ``SCHEMA_MIGRATIONS``, which is the single source of truth
+# for the database schema version.
+DATABASE_SCHEMA_VERSION: str = SCHEMA_MIGRATIONS[-1][0]
 
 
 def parse_version(version: str) -> tuple[int, ...]:
@@ -91,20 +80,3 @@ def classify(db_version: str, supported_version: str) -> str:
     if comparison < 0:
         return "older"
     return "ok"
-
-
-def db_version_for_app(app_version: str) -> str:
-    """Return the database schema version a given application version supports.
-
-    Looks up the most recent entry in ``APP_VERSION_TO_DB_VERSION`` whose
-    application version is at or before ``app_version``. If none matches (an
-    application older than the first schema change), the first known schema
-    version is returned.
-    """
-    result = APP_VERSION_TO_DB_VERSION[0][1]
-    for entry_app_version, entry_db_version in APP_VERSION_TO_DB_VERSION:
-        if compare_versions(entry_app_version, app_version) <= 0:
-            result = entry_db_version
-        else:
-            break
-    return result

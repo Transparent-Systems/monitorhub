@@ -1,12 +1,10 @@
 import unittest
 
 from scripts.schema_versioning import (
-    APP_VERSION_TO_DB_VERSION,
-    LATEST_DB_SCHEMA_VERSION,
+    DATABASE_SCHEMA_VERSION,
     SCHEMA_MIGRATIONS,
     classify,
     compare_versions,
-    db_version_for_app,
     parse_version,
 )
 
@@ -34,16 +32,10 @@ class TestSchemaVersioning(unittest.TestCase):
         self.assertEqual(classify("9.0.0", "10.0.0"), "older")
         self.assertEqual(classify("10.0.0", "9.0.0"), "newer")
 
-    def test_db_version_for_app_inherits_latest_schema(self):
-        self.assertEqual(db_version_for_app("1.0.0"), "1.0.0")
-        # A release newer than the last schema bump still maps to the same schema.
-        self.assertEqual(db_version_for_app("1.5.0"), "1.0.0")
-
-    def test_registry_has_only_one_entry_per_schema_change(self):
+    def test_registry_has_single_baseline_entry(self):
         # The current codebase has a single schema change: the initial schema.
-        self.assertEqual(len(APP_VERSION_TO_DB_VERSION), 1)
         self.assertEqual(SCHEMA_MIGRATIONS[0], ("1.0.0", "Initial schema", None))
-        self.assertEqual(LATEST_DB_SCHEMA_VERSION, SCHEMA_MIGRATIONS[-1][0])
+        self.assertEqual(DATABASE_SCHEMA_VERSION, SCHEMA_MIGRATIONS[-1][0])
 
 
 if __name__ == "__main__":
