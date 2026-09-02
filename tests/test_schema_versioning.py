@@ -37,6 +37,15 @@ class TestSchemaVersioning(unittest.TestCase):
         self.assertEqual(SCHEMA_MIGRATIONS[0], ("1.0.0", "Initial schema", None))
         self.assertEqual(DATABASE_SCHEMA_VERSION, SCHEMA_MIGRATIONS[-1][0])
 
+    def test_migrations_are_ordered_ascending(self):
+        # ``apply_pending_migrations`` sorts defensively, but the registry is
+        # still expected to be authored in ascending version order. Fail fast
+        # here if a future entry is added out of sequence.
+        self.assertEqual(
+            SCHEMA_MIGRATIONS,
+            sorted(SCHEMA_MIGRATIONS, key=lambda entry: parse_version(entry[0])),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

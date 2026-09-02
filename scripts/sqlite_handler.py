@@ -186,18 +186,6 @@ class SQLiteHandler:
         self.connection.commit()
         self.apply_pending_migrations()
 
-    def _ensure_schema_version_description_column(self) -> None:
-        """
-        Add the ``description`` column to ``schema_version`` if it is missing.
-
-        Databases created before the column was introduced do not have it, so
-        this keeps ``apply_pending_migrations`` safe when upgrading in place.
-        """
-        self.cursor.execute("PRAGMA table_info(schema_version)")
-        columns = [row["name"] for row in self.cursor.fetchall()]
-        if "description" not in columns:
-            self.cursor.execute("ALTER TABLE schema_version ADD COLUMN description TEXT")
-
     def _record_schema_version(self, version: str, description: str | None) -> None:
         """
         Append a row to the ``schema_version`` history table (idempotent).
@@ -221,11 +209,14 @@ class SQLiteHandler:
         ascending version order and recorded in the ``schema_version`` table.
         Returns the list of schema versions that were applied (possibly empty).
         """
-        self._ensure_schema_version_description_column()
         current = self.get_current_schema_version()
         applied: list[str] = []
 
-        for version, description, apply_fn in SCHEMA_MIGRATIONS:
+        # Apply migrations in ascending version order regardless of how
+        # ``SCHEMA_MIGRATIONS`` is ordered, so a mis-ordered registry entry can
+        # never cause a migration to be skipped or applied out of sequence.
+        ordered = sorted(SCHEMA_MIGRATIONS, key=lambda entry: parse_version(entry[0]))
+        for version, description, apply_fn in ordered:
             if current and compare_versions(version, current) <= 0:
                 continue
 
