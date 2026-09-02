@@ -1,5 +1,22 @@
 # Changelog
 
+## [Unreleased]
+
+- Added a schema migration/upgrade path for the SQLite database.
+    - ``mhub database upgrade`` applies any pending schema migrations in place
+      (non-destructive) and refuses to downgrade a database created by a newer
+      application.
+    - ``mhub database version`` now reports the application version, the
+      supported schema version, and whether the database is up to date, older,
+      or newer than the schema this application supports.
+    - ``mhub database init`` is now non-destructive on existing databases: it
+      warns and suggests ``database upgrade`` instead of silently recreating.
+- The ``schema_version`` table is now an append-only history with a descriptive
+  ``description`` column. The schema version is compared numerically, fixing a
+  bug where ``9.0.0`` was treated as newer than ``10.0.0``.
+- New ``scripts/schema_versioning.py`` module centralises version comparison,
+  compatibility classification, and the ordered migration registry.
+
 ## [1.0.0] - 2026-09-01
 
 Initial release of MonitorHub (formerly "FolderMonitor").

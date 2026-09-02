@@ -78,6 +78,39 @@ class TestSqliteHandler(BaseTestClass):
             finally:
                 handler.close()
 
+    def test_01_03_schema_version_recorded_with_description(self):
+        """create_schema should record the baseline schema version with a description."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            handler = SQLiteHandler(logger=self.logger, db_dir=tmp_dir)
+            try:
+                handler.create_schema()
+
+                versions = handler.get_schema_versions()
+                self.assertEqual(len(versions), 1)
+                self.assertEqual(versions[0]["version"], "1.0.0")
+                self.assertEqual(versions[0]["description"], "Initial schema")
+
+                self.assertEqual(handler.get_current_schema_version(), "1.0.0")
+
+                # Applying migrations again must be a no-op.
+                self.assertEqual(handler.apply_pending_migrations(), [])
+            finally:
+                handler.close()
+
+    def test_01_04_get_current_schema_version_is_numeric(self):
+        """The highest version must be chosen numerically, not lexicographically."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            handler = SQLiteHandler(logger=self.logger, db_dir=tmp_dir)
+            try:
+                handler.create_schema()
+                handler.update_schema_version("9.0.0")
+                handler.update_schema_version("10.0.0")
+
+                # Lexicographically "9.0.0" > "10.0.0", but numerically 10 > 9.
+                self.assertEqual(handler.get_current_schema_version(), "10.0.0")
+            finally:
+                handler.close()
+
     def test_02_update_schema_version(self):
         try:
             self.sqlite_handler.update_schema_version(version="2.0.0")

@@ -52,6 +52,18 @@
     mhub database info
     ```
 
+    You can check the database schema version (and whether it matches the
+    version this application supports) and, when needed, upgrade it in place:
+
+    ```bash
+    mhub database version
+    mhub database upgrade
+    ```
+
+    ``mhub database upgrade`` applies any pending schema migrations without
+    touching your data. It refuses to downgrade a database that was created by a
+    newer version of MonitorHub.
+
     You can rebuild the database.
     IMPORTANT: 
       This will override your existing database.

@@ -2,8 +2,11 @@
 
 import os
 
+from version import VERSION_STRING
+
 from scripts.constants import MONITOR_STATUS_STOPPED, MONITOR_TYPE_INSTANT
 from scripts.prompt_service import PromptService
+from scripts.schema_versioning import LATEST_DB_SCHEMA_VERSION, classify
 from scripts.sqlite_handler import SQLiteHandler
 
 
@@ -28,13 +31,30 @@ class DatabaseCommands:
 
     def version(self):
         """
-        Print the version of the SQLite database
+        Print the database schema version together with the application version
+        and the schema version this application supports.
         """
         db_version = self.sqlite_handler.get_current_schema_version()
+        self.prompt.print(f"Application version: {VERSION_STRING}")
+        self.prompt.print(f"Supported database schema version: {LATEST_DB_SCHEMA_VERSION}")
         if not db_version:
             self.prompt.print("SQLite database version is not set.")
             return
         self.prompt.print(f"Version of SQLite database: {db_version}")
+
+        state = classify(db_version, LATEST_DB_SCHEMA_VERSION)
+        if state == "newer":
+            self.prompt.print(
+                f"WARNING: this database (schema {db_version}) was created by a newer "
+                "MonitorHub than this application supports. Some features may not work."
+            )
+        elif state == "older":
+            self.prompt.print(
+                f"Note: database schema is older than supported. Run 'database upgrade' "
+                f"to migrate from {db_version} to {LATEST_DB_SCHEMA_VERSION}."
+            )
+        else:
+            self.prompt.print("Database schema is up to date.")
 
     def init(self, recreate: bool = False):
         """
@@ -63,11 +83,62 @@ class DatabaseCommands:
             return
 
         if self.sqlite_handler.is_initialized():
+            db_version = self.sqlite_handler.get_current_schema_version()
+            state = classify(db_version, LATEST_DB_SCHEMA_VERSION)
+            if state == "newer":
+                self.prompt.print(
+                    f"WARNING: this database (schema {db_version}) was created by a newer "
+                    "MonitorHub than this application supports. Refusing to touch it."
+                )
+                self.prompt.print(f"Database already initialised at {self.sqlite_handler.db_path}")
+                return
+            if state == "older":
+                self.prompt.print(
+                    f"Database schema is older ({db_version}). Run 'database upgrade' "
+                    f"to migrate to {LATEST_DB_SCHEMA_VERSION}."
+                )
+                return
             self.prompt.print(f"Database already initialised at {self.sqlite_handler.db_path}")
             return
 
         self.sqlite_handler.create_schema()
         self.prompt.print(f"Database initialised at {self.sqlite_handler.db_path}")
+
+    def upgrade(self):
+        """
+        Apply pending schema migrations to bring an existing database up to the
+        latest supported schema version, in place (non-destructive).
+
+        Refuses to downgrade a database whose schema is newer than the schema
+        this application supports.
+        """
+        if not self.sqlite_handler.is_initialized():
+            self.prompt.print("Database is not initialised. Run 'database init' first.")
+            return
+
+        db_version = self.sqlite_handler.get_current_schema_version()
+        state = classify(db_version, LATEST_DB_SCHEMA_VERSION)
+
+        if state == "newer":
+            self.prompt.print(
+                f"WARNING: this database (schema {db_version}) is newer than the schema "
+                f"this application supports ({LATEST_DB_SCHEMA_VERSION})."
+            )
+            self.prompt.print("Refusing to downgrade the database.")
+            return
+
+        if state == "ok":
+            self.prompt.print(f"Database schema is already up to date (version {db_version}).")
+            return
+
+        applied = self.sqlite_handler.apply_pending_migrations()
+        if applied:
+            new_version = self.sqlite_handler.get_current_schema_version()
+            self.prompt.print(f"Database schema upgraded from {db_version} to {new_version}.")
+            for version in applied:
+                self.prompt.print(f"  Applied migration {version}")
+        else:
+            self.prompt.print(f"No migrations available to upgrade from {db_version}.")
 
     def sample_data(self):
         """

@@ -73,6 +73,7 @@ _SUBCOMMAND_DISPATCH = {
     ("database", "info"): ("database", "info", lambda _: {}),
     ("database", "version"): ("database", "version", lambda _: {}),
     ("database", "init"): ("database", "init", lambda args: {"recreate": args.recreate}),
+    ("database", "upgrade"): ("database", "upgrade", lambda _: {}),
     ("database", "sample-data"): ("database", "sample_data", lambda _: {}),
 }
 
@@ -162,6 +163,10 @@ if __name__ == "__main__":
         action="store_true",
         default=False,
         help="Drop the existing schema and recreate it from scratch"
+    )
+    database_upgrade_parser = database_subparsers.add_parser(
+        "upgrade",
+        help="Apply pending schema migrations to bring the database up to date",
     )
     database_sample_data_parser = database_subparsers.add_parser(
         "sample-data",

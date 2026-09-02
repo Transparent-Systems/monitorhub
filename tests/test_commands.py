@@ -60,6 +60,19 @@ class TestCommands(unittest.TestCase):
         commands.database.info()
         self.assertIn("Location of SQLite database", mock_prompt.output_text)
 
+    def test_database_version(self):
+        commands, mock_prompt = self._make_commands([])
+        commands.database.version()
+        text = mock_prompt.output_text
+        self.assertIn("Version of SQLite database", text)
+        self.assertIn("Supported database schema version", text)
+        self.assertIn("Database schema is up to date.", text)
+
+    def test_database_upgrade_already_up_to_date(self):
+        commands, mock_prompt = self._make_commands([])
+        commands.database.upgrade()
+        self.assertIn("already up to date", mock_prompt.output_text)
+
     def test_monitor_show(self):
         commands, mock_prompt = self._make_commands([])
         commands.monitor.show()

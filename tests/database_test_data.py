@@ -24,7 +24,6 @@ class DatabaseTestData:
         )
 
         self.sqlite_handler.create_schema()
-        self.sqlite_handler.init_database_version()
 
 
     def load_test_data(self):

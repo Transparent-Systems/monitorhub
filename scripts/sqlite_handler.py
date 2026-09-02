@@ -6,7 +6,8 @@ import threading
 from pathlib import Path
 from typing import Any
 
-from scripts.constants import DATABASE_SCHEMA_VERSION, DB_FILENAME
+from scripts.constants import DB_FILENAME
+from scripts.schema_versioning import SCHEMA_MIGRATIONS, compare_versions, parse_version
 
 
 class _LockedConnection:
@@ -140,6 +141,7 @@ class SQLiteHandler:
         self.cursor.execute("""
             CREATE TABLE IF NOT EXISTS schema_version (
                 version TEXT PRIMARY KEY,
+                description TEXT,
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         """)
@@ -182,60 +184,122 @@ class SQLiteHandler:
         """)
 
         self.connection.commit()
-        self.init_database_version()
+        self.apply_pending_migrations()
 
-    def init_database_version(self) -> None:
+    def _ensure_schema_version_description_column(self) -> None:
         """
-        Initialise the database version if it does not exist.
-        """
-        database_version = DATABASE_SCHEMA_VERSION
-        self.cursor.execute(
-            "SELECT version FROM schema_version WHERE version = :version",
-            {"version": database_version},
-        )
-        if not self.cursor.fetchone():
-            self.cursor.execute(
-                "INSERT INTO schema_version (version) VALUES (:version)",
-                {"version": database_version},
-            )
-            self.connection.commit()
-            self.logger.info(f"Database version initialised to {database_version}")
-        else:
-            self.logger.info(f"Database version already initialised to {database_version}")
+        Add the ``description`` column to ``schema_version`` if it is missing.
 
-    def update_schema_version(self, version: str) -> None:
+        Databases created before the column was introduced do not have it, so
+        this keeps ``apply_pending_migrations`` safe when upgrading in place.
         """
-        Update the schema version in the database
+        self.cursor.execute("PRAGMA table_info(schema_version)")
+        columns = [row["name"] for row in self.cursor.fetchall()]
+        if "description" not in columns:
+            self.cursor.execute("ALTER TABLE schema_version ADD COLUMN description TEXT")
+
+    def _record_schema_version(self, version: str, description: str | None) -> None:
+        """
+        Append a row to the ``schema_version`` history table (idempotent).
+
+        Rows are never overwritten, so the table remains an audit trail of every
+        schema version that has been applied to this database.
         """
         self.cursor.execute(
-            "INSERT OR REPLACE INTO schema_version (version) VALUES (:version)",
-            {"version": version},
+            """
+            INSERT OR IGNORE INTO schema_version (version, description)
+            VALUES (:version, :description)
+            """,
+            {"version": version, "description": description},
         )
+
+    def apply_pending_migrations(self) -> list[str]:
+        """
+        Apply schema migrations newer than the current database schema version.
+
+        Each pending migration in :data:`SCHEMA_MIGRATIONS` is applied in
+        ascending version order and recorded in the ``schema_version`` table.
+        Returns the list of schema versions that were applied (possibly empty).
+        """
+        self._ensure_schema_version_description_column()
+        current = self.get_current_schema_version()
+        applied: list[str] = []
+
+        for version, description, apply_fn in SCHEMA_MIGRATIONS:
+            if current and compare_versions(version, current) <= 0:
+                continue
+
+            try:
+                if apply_fn is not None:
+                    apply_fn(self)
+                self._record_schema_version(version, description)
+                self.connection.commit()
+                applied.append(version)
+                self.logger.info(f"Applied schema migration {version}: {description}")
+            except Exception as exc:
+                self.connection.rollback()
+                self.logger.error(f"Schema migration {version} failed: {exc}")
+                raise
+
+        return applied
+
+    def update_schema_version(self, version: str, description: str | None = None) -> None:
+        """
+        Append a schema version to the database's version history (idempotent).
+
+        Kept as a thin wrapper for callers that want to record a version
+        directly; prefer :meth:`apply_pending_migrations` for normal upgrades.
+        """
+        self._record_schema_version(version, description)
         self.connection.commit()
 
     def get_current_schema_version(self) -> str:
         """
-        Get the current schema version from the database
+        Get the highest schema version recorded in the database.
+
+        Versions are compared numerically (``"9.0.0"`` is older than
+        ``"10.0.0"``), not lexicographically. Returns ``""`` when the database
+        does not yet have a ``schema_version`` table.
         """
-        self.cursor.execute("SELECT version FROM schema_version ORDER BY version DESC LIMIT 1")
-        result = self.cursor.fetchone()
-        return result["version"] if result else ""
+        self.cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='schema_version'"
+        )
+        if self.cursor.fetchone() is None:
+            return ""
+        self.cursor.execute("SELECT version FROM schema_version")
+        rows = self.cursor.fetchall()
+        if not rows:
+            return ""
+        return max((row["version"] for row in rows), key=parse_version)
 
     def get_schema_versions(self) -> list[dict[str, Any]]:
         """
-        Return all schema versions in ascending order of version.
-        Each entry is a dictionary with keys 'version' and 'updated_at'.
+        Return all schema versions in ascending numeric order of version.
+
+        Each entry is a dictionary with keys 'version', 'description' and
+        'updated_at'. Returns an empty list when the database does not yet have
+        a ``schema_version`` table.
         """
+        self.cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='schema_version'"
+        )
+        if self.cursor.fetchone() is None:
+            return []
         self.cursor.execute("""
-            SELECT version, updated_at
+            SELECT version, description, updated_at
             FROM schema_version
-            ORDER BY version ASC
         """)
         rows = self.cursor.fetchall()
-        return [
-            {"version": row["version"], "updated_at": row["updated_at"]}
+        entries = [
+            {
+                "version": row["version"],
+                "description": row["description"],
+                "updated_at": row["updated_at"],
+            }
             for row in rows
         ]
+        entries.sort(key=lambda entry: parse_version(entry["version"]))
+        return entries
 
     def _row_to_monitor(self, row: sqlite3.Row) -> dict[str, Any]:
         """Convert a monitors table sqlite3.Row to a monitor dictionary."""
