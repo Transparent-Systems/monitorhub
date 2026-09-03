@@ -63,6 +63,8 @@ GEMINI.md
 *.ear
 *.o
 *.pyc
+*.mmd
+*.plantuml
 
 # Dependency directories
 node_modules/
