@@ -95,6 +95,10 @@ class ProfileCommands:
         config = profile.get("config", {})
         profile_type = profile.get("profile_type")
 
+        if not profile_type:
+            self.prompt.print(f"Profile type not found for profile id: {profile_id}")
+            return False
+        
         # Look up category from the code-defined reference data
         category = reference_data.get_profile_category(profile_type)
 
@@ -375,7 +379,7 @@ class ProfileCommands:
             self.prompt.print("Cannot specify both --profile-id and --profile-name.")
             return
 
-        profile = None
+        profile: dict[str, Any] | None = None
         if profile_id is not None:
             profile = self.sqlite_handler.get_profile(profile_id=profile_id)
             if not profile:

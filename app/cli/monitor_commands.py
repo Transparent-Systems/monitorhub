@@ -498,6 +498,9 @@ class MonitorCommands:
             return
 
         monitor = find_by_id(monitors, choice)
+        if monitor is None:
+            self.prompt.print(f"Monitor with id={choice} not found.")
+            return
         self.prompt.print(f"You want to delete monitor: {monitor.get('name', 'N/A')}")
 
         while True:
@@ -535,6 +538,9 @@ class MonitorCommands:
             return
 
         monitor = find_by_id(monitors, choice)
+        if monitor is None:
+            self.prompt.print(f"Monitor with id={choice} not found.")
+            return
         monitor_id = monitor.get("id", "N/A")
         monitor["config"] = monitor.get("config") or {}
 
@@ -800,13 +806,22 @@ class MonitorCommands:
                 self.prompt.print(f"Monitor with name='{monitor_name}' not found.")
                 return
 
+        if not monitor:
+            if monitor_id is not None:
+                self.prompt.print(f"Monitor {monitor_id} not found.")
+            elif monitor_name is not None:
+                self.prompt.print(f"Monitor '{monitor_name}' not found.")
+            else:
+                self.prompt.print("Monitor not found.")
+            return
+
         monitor_id_val: int = monitor.get("id", 0)
         monitor_name = monitor.get("name", "N/A")
 
         if monitor.get("status") == MONITOR_STATUS_RUNNING:
             self.prompt.print(f"Monitor '{monitor_name}' (id={monitor_id_val}) is already running.")
             return
-
+        
         if self._launch_monitor_process(monitor):
             self.prompt.print(f"Monitor '{monitor_name}' (id={monitor_id_val}) started.")
 
@@ -858,7 +873,11 @@ class MonitorCommands:
             if choice == 0:
                 selected_monitors = monitors
             else:
-                selected_monitors = [find_by_id(monitors, choice)]
+                monitor = find_by_id(monitors, choice)
+                if monitor is None:
+                    self.prompt.print(f"Monitor with id={choice} not found.")
+                    return
+                selected_monitors = [monitor]
         elif monitor_id is not None:
             monitor = self.sqlite_handler.get_monitor(monitor_id=monitor_id)
             if not monitor:
@@ -873,10 +892,16 @@ class MonitorCommands:
             selected_monitors = [monitor]
 
         for monitor in selected_monitors:
+            if monitor is None: # This should not happen. Check is here to avoid Pylance warnings.
+                self.prompt.print("Monitor not found — skipping.")
+                continue
+
             monitor_id_val: int = monitor.get("id", 0)
+
             if not monitor_id_val:
                 self.prompt.print("Monitor has no valid ID — skipping.")
                 continue
+
             monitor_name = monitor.get("name", "N/A")
             current_status = monitor.get("status", "N/A")
             current_pid = monitor.get("pid", 0)
