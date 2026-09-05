@@ -31,24 +31,24 @@ def main():
     logger.addHandler(file_logger)
 
     # Get two remote handlers: S3Handler and RcloneHandler
-    s3_handler: S3Handler = None
-    rclone_handler: RcloneHandler = None
+    s3_handler: S3Handler | None = None
+    rclone_handler: RcloneHandler | None = None
     # Iterate over profiles in the test database and find the first S3Handler and RcloneHandler
     from app.utils.sqlite_handler import SQLiteHandler
     sqlite_handler = SQLiteHandler(logger=logger, db_dir="testdb/dev")
     profiles = sqlite_handler.get_profiles()
     for profile in profiles:
-        if profile['type'] == 's3' and s3_handler is None:
+        if profile.get('profile_type', "") == 's3' and s3_handler is None:
             s3_handler = S3Handler(
                 logger=logger,
-                base_monitor_path="data/Source/idrive-cloud-storage/performance-test",
+                base_monitor_path="testdata/source/idrive-cloud-storage/performance-test",
                 base_remote_path="test-monitorhub/idrive-cloud-storage/performance-test-s3",
-                profile_config=profile['name']
+                profile_config=profile.get('config', {})
             )
         elif rclone_handler is None:    # All other profiles are handled by RcloneHandler
             rclone_handler = RcloneHandler(
                 logger=logger,
-                base_monitor_path="data/Source/idrive-cloud-storage/performance-test",
+                base_monitor_path="testdata/source/idrive-cloud-storage/performance-test",
                 base_remote_path="test-monitorhub/idrive-cloud-storage/performance-test-rclone",
                 profile_name=profile['name']
             )
@@ -62,13 +62,13 @@ def main():
         logger.info("No RcloneHandler found in test database profiles")
         sys.exit(1)
 
-    NUMBER_OF_TESTS = 10
+    NUMBER_OF_TESTS = 3
     logger.info(f"Simple performance test - number of tests: {NUMBER_OF_TESTS}")
     remote_handlers = [s3_handler, rclone_handler]
     # remote_handlers = [s3_handler]
 
     for remote_handler in remote_handlers:
-        file = "data/Source/idrive-cloud-storage/performance-test/testfile-8kb.txt"
+        file = "testdata/source/idrive-cloud-storage/performance-test/testfile-8kb.txt"
         _test_copy_file_performance(
             logger=logger,
             remote_handler=remote_handler,
@@ -76,7 +76,7 @@ def main():
             number_of_tests=NUMBER_OF_TESTS
         )
 
-        # file = "data/Source/idrive-cloud-storage/performance-test/testfile-1mb.txt"
+        # file = "testdata/source/idrive-cloud-storage/performance-test/testfile-1mb.txt"
         # _test_copy_file_performance(
         #     logger=logger,
         #     remote_handler=remote_handler,
