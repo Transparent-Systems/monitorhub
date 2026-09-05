@@ -1,9 +1,9 @@
 """
 Version: 1.0.0
 
-This script runs integration tests for a monitor configured in a config.yaml file.
+This script runs integration tests for an instant monitor.
+The script creates and starts and instant monitor. No manual action required.
 It uses the unittest framework to execute tests sequentially.
-The script depends on a monitorhub running in a separate process.
 
 Pre-requisites:
     Ensure there is at least one properly working remote profile configured in the test database
@@ -12,7 +12,6 @@ Pre-requisites:
 import argparse
 import logging
 import shutil
-import subprocess
 import sys
 import time
 import unittest
@@ -90,7 +89,9 @@ class CheckPath:
 class TestMonitorHubIntegration(unittest.TestCase):
     """
     Integration tests for MonitorHub.
-    We use rclone to perform all tests as the main purpose is to test monitorhub.py.
+    This integration test class is designed to be run against a monitor that is already running in a separate process.
+    It checks the instant monitor's ability to detect and synchronize file system changes to a remote location.
+    The instant monitor is created and started by the integration test and requires no manual intevention
     """
     logger : logging.Logger
     monitor : dict[str, str]

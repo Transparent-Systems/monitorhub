@@ -5,10 +5,14 @@ import sys
 import time
 from pathlib import Path
 
+# Add project root to sys.path to allow imports from app package
+project_root = Path(__file__).resolve().parents[1]  # One level up to reach the project root
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
+
 from app.monitor.remote_handler import RemoteHandler
 from app.monitor.rclone_handler import RcloneHandler
 from app.monitor.s3_handler import S3Handler
-
 
 def main():
     logger = logging.getLogger()
@@ -26,19 +30,37 @@ def main():
     file_logger.setFormatter(formatter)
     logger.addHandler(file_logger)
 
-    s3_handler = S3Handler(
-        logger=logger,
-        base_monitor_path="data/Source/idrive-cloud-storage/performance-test",
-        base_remote_path="test-monitorhub/idrive-cloud-storage/performance-test-s3",
-        profile_config="idrive-test"
-    )
+    # Get two remote handlers: S3Handler and RcloneHandler
+    s3_handler: S3Handler = None
+    rclone_handler: RcloneHandler = None
+    # Iterate over profiles in the test database and find the first S3Handler and RcloneHandler
+    from app.utils.sqlite_handler import SQLiteHandler
+    sqlite_handler = SQLiteHandler(logger=logger, db_dir="testdb/dev")
+    profiles = sqlite_handler.get_profiles()
+    for profile in profiles:
+        if profile['type'] == 's3' and s3_handler is None:
+            s3_handler = S3Handler(
+                logger=logger,
+                base_monitor_path="data/Source/idrive-cloud-storage/performance-test",
+                base_remote_path="test-monitorhub/idrive-cloud-storage/performance-test-s3",
+                profile_config=profile['name']
+            )
+        elif rclone_handler is None:    # All other profiles are handled by RcloneHandler
+            rclone_handler = RcloneHandler(
+                logger=logger,
+                base_monitor_path="data/Source/idrive-cloud-storage/performance-test",
+                base_remote_path="test-monitorhub/idrive-cloud-storage/performance-test-rclone",
+                profile_name=profile['name']
+            )
+        if s3_handler is not None and rclone_handler is not None:
+            break
 
-    rclone_handler = RcloneHandler(
-        logger=logger,
-        base_monitor_path="data/Source/idrive-cloud-storage/performance-test",
-        base_remote_path="test-monitorhub/idrive-cloud-storage/performance-test-rclone",
-        profile_name="idrive-test"
-    )
+    if s3_handler is None:
+        logger.info("No S3Handler found in test database profiles")
+        sys.exit(1)
+    if rclone_handler is None:
+        logger.info("No RcloneHandler found in test database profiles")
+        sys.exit(1)
 
     NUMBER_OF_TESTS = 10
     logger.info(f"Simple performance test - number of tests: {NUMBER_OF_TESTS}")
@@ -54,14 +76,13 @@ def main():
             number_of_tests=NUMBER_OF_TESTS
         )
 
-        file = "data/Source/idrive-cloud-storage/performance-test/testfile-1mb.txt"
-        # test_copy_file_performance(
+        # file = "data/Source/idrive-cloud-storage/performance-test/testfile-1mb.txt"
+        # _test_copy_file_performance(
         #     logger=logger,
         #     remote_handler=remote_handler,
         #     monitor_path=file,
-        #     number_of_tests=3
+        #     number_of_tests=NUMBER_OF_TESTS
         # )
-
 
 def _test_copy_file_performance(logger: logging.Logger, remote_handler: RemoteHandler, monitor_path: str, number_of_tests: int = 10):
     logger.info("=" * 20)

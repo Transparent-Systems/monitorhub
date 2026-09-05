@@ -22,7 +22,6 @@ from pathlib import Path
 # Ensure the project root is on sys.path so `app.*` imports resolve
 # whether the script is run as `python app/monitor/run_monitor.py` or via
 # `python -m app.monitor.run_monitor`.
-# project_root = Path(__file__).resolve().parent.parent
 project_root = Path(__file__).resolve().parents[2]  # Two levels up to reach the project root
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
