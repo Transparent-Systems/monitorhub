@@ -6,7 +6,7 @@ so tests can drive interactive command flows and assert on the output without a
 human or monkey-patching builtins.
 """
 
-from scripts.prompt_service import PromptService
+from app.cli.prompt_service import PromptService
 
 
 class MockPromptService(PromptService):

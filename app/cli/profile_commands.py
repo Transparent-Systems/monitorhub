@@ -4,13 +4,13 @@ import logging
 import shlex
 from typing import Any
 
-from scripts import reference_data
-from scripts.prompt_service import PromptService
-from scripts.rclone_handler import RcloneHandler
-from scripts.s3_factory import S3Factory
-from scripts.sqlite_handler import SQLiteHandler
-from scripts.utils.diagnostic_util import DiagnosticUtil
-from scripts.utils.generic_util import find_by_id
+from app.utils import reference_data
+from app.cli.prompt_service import PromptService
+from app.monitor.rclone_handler import RcloneHandler
+from app.monitor.s3_factory import S3Factory
+from app.utils.sqlite_handler import SQLiteHandler
+from app.utils.diagnostic_util import DiagnosticUtil
+from app.utils.generic_util import find_by_id
 
 
 class ProfileCommands:

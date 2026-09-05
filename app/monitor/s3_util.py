@@ -3,7 +3,7 @@ Utility functions and classes for S3 operations.
 """
 import time
 
-from scripts.s3_handler import S3Handler
+from app.monitor.s3_handler import S3Handler
 
 
 class S3CheckPath:

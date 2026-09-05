@@ -1,9 +1,9 @@
 import logging
 from collections.abc import Callable
 
-from scripts.remote_handler import RemoteHandler
-from scripts.rclone_handler import RcloneHandler
-from scripts.s3_handler import S3Handler
+from app.monitor.remote_handler import RemoteHandler
+from app.monitor.rclone_handler import RcloneHandler
+from app.monitor.s3_handler import S3Handler
 
 
 class RemoteHandlerFactory:
@@ -18,7 +18,7 @@ class RemoteHandlerFactory:
 
     The set of registered types is the single source of truth for which profile
     types are implemented natively (as opposed to delegated to rclone). See
-    ``scripts/reference_data.py``.
+    ``a/reference_data.py``.
     """
 
     _handlers: dict[str, Callable[..., RemoteHandler]] = {}

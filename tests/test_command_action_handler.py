@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch
 
-from scripts.action_handler import (
+from app.monitor.action_handler import (
     ActionContext,
     ActionHandlerFactory,
     CommandActionHandler,

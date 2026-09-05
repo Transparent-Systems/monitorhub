@@ -9,8 +9,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from scripts import reference_data
-from scripts.constants import (
+from app.utils import reference_data
+from app.utils.constants import (
     MONITOR_STATUS_RUNNING,
     MONITOR_STATUS_STOP,
     MONITOR_STATUS_STOPPED,
@@ -18,9 +18,9 @@ from scripts.constants import (
     MONITOR_TYPE_INSTANT,
     MONITOR_TYPE_RESTORE,
 )
-from scripts.prompt_service import PromptService
-from scripts.sqlite_handler import SQLiteHandler
-from scripts.utils.generic_util import find_by_id
+from app.cli.prompt_service import PromptService
+from app.utils.sqlite_handler import SQLiteHandler
+from app.utils.generic_util import find_by_id
 
 STALE_HEARTBEAT_SECONDS = 60
 
@@ -245,7 +245,7 @@ class MonitorCommands:
         monitor_name = monitor.get("name", "N/A")
 
         project_root = Path(_os.path.join(_os.path.dirname(__file__), "../")).resolve()
-        run_monitor_script = project_root / "scripts" / "run_monitor.py"
+        run_monitor_script = project_root / "monitor" / "run_monitor.py"
         python = self._resolve_python_interpreter(project_root)
 
         child_env = None
@@ -687,7 +687,7 @@ class MonitorCommands:
 
     def test(self, monitor_id: int | None = None, monitor_name: str | None = None):
         """Test monitor(s)."""
-        from scripts.utils.diagnostic_util import DiagnosticUtil
+        from app.utils.diagnostic_util import DiagnosticUtil
 
         if monitor_id is not None and monitor_name is not None:
             self.prompt.print("Cannot specify both --monitor-id and --monitor-name.")

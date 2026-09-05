@@ -1,6 +1,6 @@
 import unittest
 
-from scripts.instant_monitor_handler import is_excluded
+from app.monitor.instant_monitor_handler import is_excluded
 
 
 class TestCheckPathIsExcluded(unittest.TestCase):

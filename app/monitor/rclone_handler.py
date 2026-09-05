@@ -32,7 +32,7 @@ import sys
 import time
 from pathlib import Path
 
-from scripts.remote_handler import RemoteHandler
+from app.monitor.remote_handler import RemoteHandler
 
 
 class RcloneHandler(RemoteHandler):

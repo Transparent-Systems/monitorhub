@@ -17,8 +17,8 @@ from pathlib import Path
 
 import yaml
 
-from scripts.s3_handler import S3Handler
-from scripts.sqlite_handler import SQLiteHandler
+from app.monitor.s3_handler import S3Handler
+from app.utils.sqlite_handler import SQLiteHandler
 from tests.util.testing_util import create_test_data
 from tests.database_test_data import DatabaseTestData
 

@@ -4,7 +4,7 @@
 import logging
 import threading
 
-from scripts.sqlite_handler import SQLiteHandler
+from app.utils.sqlite_handler import SQLiteHandler
 
 logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger('test')

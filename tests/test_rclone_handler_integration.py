@@ -15,9 +15,9 @@ import unittest
 from pathlib import Path
 
 import yaml
-from scripts import reference_data
-from scripts.rclone_handler import RcloneHandler
-from scripts.sqlite_handler import SQLiteHandler
+from app.utils import reference_data
+from app.monitor.rclone_handler import RcloneHandler
+from app.utils.sqlite_handler import SQLiteHandler
 
 from tests.database_test_data import DatabaseTestData
 from tests.util.testing_util import create_test_data

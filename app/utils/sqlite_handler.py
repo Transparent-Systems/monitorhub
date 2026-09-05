@@ -6,8 +6,8 @@ import threading
 from pathlib import Path
 from typing import Any
 
-from scripts.constants import DB_FILENAME
-from scripts.schema_versioning import SCHEMA_MIGRATIONS, compare_versions, parse_version
+from app.utils.constants import DB_FILENAME
+from app.cli.schema_versioning import SCHEMA_MIGRATIONS, compare_versions, parse_version
 
 
 class _LockedConnection:

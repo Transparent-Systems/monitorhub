@@ -13,12 +13,12 @@ The `direction` parameter selects between them, so the same class handles both.
 import threading
 import time
 
-from scripts import reference_data
-from scripts.constants import MONITOR_TYPE_BACKUP, MONITOR_TYPE_RESTORE
-from scripts.monitor_handler import MonitorHandler, MonitorHandlerFactory
-from scripts.remote_handler_factory import RemoteHandlerFactory
-from scripts.utils.generic_util import convert_to_seconds
-from scripts.action_handler import (
+from app.utils import reference_data
+from app.utils.constants import MONITOR_TYPE_BACKUP, MONITOR_TYPE_RESTORE
+from app.monitor.monitor_handler import MonitorHandler
+from app.monitor.remote_handler_factory import RemoteHandlerFactory
+from app.utils.generic_util import convert_to_seconds
+from app.monitor.action_handler import (
     ActionContext,
     ActionHandlerFactory,
 )
@@ -200,18 +200,3 @@ class ScheduledMonitorHandler(MonitorHandler):
             if self.stop_event.wait(interval_seconds):
                 break
             self._perform_operation(reason="scheduled")
-
-
-# Register both directions to the same class, passing the direction explicitly.
-MonitorHandlerFactory.register(
-    MONITOR_TYPE_BACKUP,
-    lambda monitor, profiles, log_config: ScheduledMonitorHandler(
-        monitor, profiles, log_config, direction=MONITOR_TYPE_BACKUP
-    ),
-)
-MonitorHandlerFactory.register(
-    MONITOR_TYPE_RESTORE,
-    lambda monitor, profiles, log_config: ScheduledMonitorHandler(
-        monitor, profiles, log_config, direction=MONITOR_TYPE_RESTORE
-    ),
-)

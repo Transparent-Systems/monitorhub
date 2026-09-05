@@ -23,15 +23,15 @@ from watchdog.events import (
 )
 from watchdog.observers import Observer
 
-from scripts.action_handler import (
+from app.monitor.action_handler import (
     ActionContext,
     ActionDispatcher,
     ActionHandlerFactory,
 )
-from scripts.constants import MONITOR_TYPE_INSTANT
-from scripts.monitor_handler import MonitorHandler, MonitorHandlerFactory
+from app.utils.constants import MONITOR_TYPE_INSTANT
+from app.monitor.monitor_handler import MonitorHandler
 
-from scripts.utils.path_filter import is_excluded
+from app.utils.path_filter import is_excluded
 
 class MonitorEventHandler(FileSystemEventHandler):
     """
@@ -364,6 +364,3 @@ class InstantMonitorHandler(MonitorHandler):
             if hasattr(handler, "stop"):
                 handler.stop()
         self.action_handlers = []
-
-
-MonitorHandlerFactory.register(InstantMonitorHandler.MONITOR_TYPE, InstantMonitorHandler)

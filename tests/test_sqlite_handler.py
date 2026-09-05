@@ -10,7 +10,7 @@ import tempfile
 import unittest
 
 from tests.base_test_class import BaseTestClass
-from scripts.sqlite_handler import SQLiteHandler
+from app.utils.sqlite_handler import SQLiteHandler
 
 
 class TestSqliteHandler(BaseTestClass):

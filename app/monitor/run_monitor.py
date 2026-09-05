@@ -7,7 +7,7 @@ Date: 2026-08-12
     Launched as a child process by mhub.py (monitor start / start-all).
     Updates the database with status and PID on start/stop.
 Usage:
-    python scripts/run_monitor.py --monitor-id <ID> --db-dir <PATH> --log <PATH>
+    python app/monitor/run_monitor.py --monitor-id <ID> --db-dir <PATH> --log <PATH>
 """
 
 import argparse
@@ -19,19 +19,17 @@ import threading
 import time
 from pathlib import Path
 
-# Ensure the project root is on sys.path so `scripts.*` imports resolve
-# whether the script is run as `python scripts/run_monitor.py` or via
-# `python -m scripts.run_monitor`.
-project_root = Path(__file__).resolve().parent.parent
+# Ensure the project root is on sys.path so `app.*` imports resolve
+# whether the script is run as `python app/monitor/run_monitor.py` or via
+# `python -m app.monitor.run_monitor`.
+# project_root = Path(__file__).resolve().parent.parent
+project_root = Path(__file__).resolve().parents[2]  # Two levels up to reach the project root
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-# Importing the concrete handlers triggers their factory registration.
-from scripts.instant_monitor_handler import InstantMonitorHandler  # noqa: F401
-from scripts.monitor_handler import MonitorHandlerFactory
-from scripts.scheduled_monitor_handler import ScheduledMonitorHandler  # noqa: F401
-from scripts.sqlite_handler import SQLiteHandler
-from scripts.utils.logger_setup import setup_logging
+from app.monitor.monitor_handler import MonitorHandlerFactory
+from app.utils.sqlite_handler import SQLiteHandler
+from app.utils.logger_setup import setup_logging
 
 
 def run_monitor_main(argv=None) -> int:
@@ -39,7 +37,7 @@ def run_monitor_main(argv=None) -> int:
     Run a single monitor as a standalone entry point.
 
     Accepts an optional argv list (defaulting to sys.argv[1:]) so the same
-    logic can be reused both when invoked as ``python scripts/run_monitor.py``
+    logic can be reused both when invoked as ``python app/monitor/run_monitor.py``
     and when dispatched in-process from the frozen PyInstaller binary.
     """
     parser = argparse.ArgumentParser(

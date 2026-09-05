@@ -37,9 +37,9 @@ if TYPE_CHECKING:
     from mypy_boto3_s3.client import S3Client
     from mypy_boto3_s3.type_defs import ObjectIdentifierTypeDef
 
-from scripts.s3_factory import S3Factory
-from scripts.remote_handler import RemoteHandler
-from scripts.utils.path_filter import is_excluded
+from app.monitor.s3_factory import S3Factory
+from app.monitor.remote_handler import RemoteHandler
+from app.utils.path_filter import is_excluded
 
 
 class S3Handler(RemoteHandler):

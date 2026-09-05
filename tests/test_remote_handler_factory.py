@@ -1,7 +1,7 @@
 import unittest
 
-from scripts.rclone_handler import RcloneHandler
-from scripts.remote_handler_factory import RemoteHandlerFactory
+from app.monitor.rclone_handler import RcloneHandler
+from app.monitor.remote_handler_factory import RemoteHandlerFactory
 
 
 class _FakeHandler:

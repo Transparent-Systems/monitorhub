@@ -96,7 +96,7 @@ KNOWN_RLONE_PROFILE_TYPES: tuple[tuple[str, str], ...] = (
 
 def _remote_handler_factory():
     """Import RemoteHandlerFactory lazily to avoid circular imports."""
-    from scripts.remote_handler_factory import RemoteHandlerFactory
+    from app.monitor.remote_handler_factory import RemoteHandlerFactory
 
     return RemoteHandlerFactory
 

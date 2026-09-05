@@ -18,9 +18,9 @@ Notes:
 import argparse
 import sys
 
-from scripts.commands import build_commands
-from scripts.utils.app_config import AppConfig
-from scripts.utils.logger_setup import setup_logging
+from app.cli.commands import build_commands
+from app.cli.app_config import AppConfig
+from app.utils.logger_setup import setup_logging
 
 # Data-driven mapping of (command, subcommand) to the command object attribute
 # and method to invoke, together with a callable that builds the keyword
@@ -81,11 +81,11 @@ if __name__ == "__main__":
     # Hidden in-process dispatch used by the frozen PyInstaller binary.
     # When the binary re-invokes itself to start a monitor child process it
     # passes `run-monitor` as the first argument. Run the monitor logic
-    # directly (rather than invoking `python scripts/run_monitor.py`) so it
+    # directly (rather than invoking `python app/monitor/run_monitor.py`) so it
     # works inside the bundled executable.
     if len(sys.argv) > 1 and sys.argv[1] == "run-monitor":
         sys.argv.pop(1)
-        from scripts.run_monitor import run_monitor_main
+        from app.monitor.run_monitor import run_monitor_main
         run_monitor_main()
         sys.exit(0)
 

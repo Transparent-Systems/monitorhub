@@ -1,6 +1,6 @@
 import unittest
 
-from scripts.schema_versioning import (
+from app.cli.schema_versioning import (
     DATABASE_SCHEMA_VERSION,
     SCHEMA_MIGRATIONS,
     classify,

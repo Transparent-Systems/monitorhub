@@ -10,9 +10,9 @@ import time
 from pathlib import Path
 from typing import Any
 
-from scripts.remote_handler_factory import RemoteHandlerFactory
-from scripts.sqlite_handler import SQLiteHandler
-from scripts.utils.process_test_result import ProcessTestResult
+from app.monitor.remote_handler_factory import RemoteHandlerFactory
+from app.utils.sqlite_handler import SQLiteHandler
+from app.cli.process_test_result import ProcessTestResult
 
 
 class DiagnosticUtil:

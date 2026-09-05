@@ -4,8 +4,8 @@ import os
 
 from dotenv import load_dotenv
 
-from scripts.constants import MONITOR_TYPE_BACKUP, MONITOR_TYPE_INSTANT, MONITOR_TYPE_RESTORE
-from scripts.sqlite_handler import SQLiteHandler
+from app.utils.constants import MONITOR_TYPE_BACKUP, MONITOR_TYPE_INSTANT, MONITOR_TYPE_RESTORE
+from app.utils.sqlite_handler import SQLiteHandler
 
 
 class DatabaseTestData:

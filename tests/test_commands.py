@@ -11,7 +11,7 @@ import logging
 import unittest
 from unittest import mock
 
-from scripts.commands import Commands, build_commands
+from app.cli.commands import Commands, build_commands
 from tests.database_test_data import DatabaseTestData
 from tests.mock_prompt_service import MockPromptService
 

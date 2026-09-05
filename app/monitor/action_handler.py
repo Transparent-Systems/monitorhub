@@ -7,10 +7,10 @@ import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
-from scripts import reference_data
-from scripts.remote_handler import RemoteHandler
-from scripts.remote_handler_factory import RemoteHandlerFactory
-from scripts.utils.generic_util import convert_to_seconds
+from app.utils import reference_data
+from app.monitor.remote_handler import RemoteHandler
+from app.monitor.remote_handler_factory import RemoteHandlerFactory
+from app.utils.generic_util import convert_to_seconds
 
 
 @dataclass

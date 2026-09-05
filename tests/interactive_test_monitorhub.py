@@ -18,13 +18,13 @@ import time
 import unittest
 from pathlib import Path
 
-from scripts import reference_data
-from scripts.constants import MONITOR_STATUS_RUNNING, MONITOR_STATUS_STOP, MONITOR_STATUS_STOPPED, MONITOR_TYPE_INSTANT
-from scripts.rclone_handler import RcloneHandler
-from scripts.remote_handler import RemoteHandler
-from scripts.s3_handler import S3Handler
-from scripts.sqlite_handler import SQLiteHandler
-from scripts.utils.logger_setup import setup_logging
+from app.utils import reference_data
+from app.utils.constants import MONITOR_STATUS_RUNNING, MONITOR_STATUS_STOP, MONITOR_STATUS_STOPPED, MONITOR_TYPE_INSTANT
+from app.monitor.rclone_handler import RcloneHandler
+from app.monitor.remote_handler import RemoteHandler
+from app.monitor.s3_handler import S3Handler
+from app.utils.sqlite_handler import SQLiteHandler
+from app.utils.logger_setup import setup_logging
 
 from tests.util.testing_util import (
     create_big_file,
@@ -32,8 +32,8 @@ from tests.util.testing_util import (
     delete_test_data,
 )
 
-from scripts.prompt_service import PromptService
-from scripts.monitor_commands import MonitorCommands
+from app.cli.prompt_service import PromptService
+from app.cli.monitor_commands import MonitorCommands
 
 class CheckPath:
     """

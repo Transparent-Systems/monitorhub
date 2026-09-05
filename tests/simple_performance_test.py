@@ -5,9 +5,9 @@ import sys
 import time
 from pathlib import Path
 
-from scripts.remote_handler import RemoteHandler
-from scripts.rclone_handler import RcloneHandler
-from scripts.s3_handler import S3Handler
+from app.monitor.remote_handler import RemoteHandler
+from app.monitor.rclone_handler import RcloneHandler
+from app.monitor.s3_handler import S3Handler
 
 
 def main():

@@ -1,1 +1,0 @@
-"""MonitorHub application source package."""

@@ -1,7 +1,7 @@
 ## Start a single monitor
 1) Start as the main process.
 ```
-python scripts/run_monitor.py -d testdb/dev -m 1
+python app/monitor/run_monitor.py -d testdb/dev -m 1
 ```
 
 2) Start as a separate OS process

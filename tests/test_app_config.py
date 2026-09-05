@@ -3,7 +3,7 @@ import tempfile
 import shutil
 from pathlib import Path
 import yaml
-from scripts.utils.app_config import AppConfig
+from app.cli.app_config import AppConfig
 
 
 class TestAppConfig(unittest.TestCase):

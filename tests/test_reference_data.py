@@ -1,6 +1,6 @@
 import unittest
 
-from scripts import reference_data
+from app.utils import reference_data
 
 
 class TestReferenceDataProviders(unittest.TestCase):

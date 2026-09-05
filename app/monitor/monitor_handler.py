@@ -12,6 +12,8 @@ from abc import ABC, abstractmethod
 from collections.abc import Callable
 from typing import Any
 
+from app.utils.constants import MONITOR_TYPE_BACKUP, MONITOR_TYPE_RESTORE, MONITOR_TYPE_INSTANT
+
 
 class MonitorHandler(ABC):
     """
@@ -70,3 +72,25 @@ class MonitorHandlerFactory:
         if handler_factory is None:
             raise ValueError(f"Unsupported monitor_type: {monitor_type!r}")
         return handler_factory(monitor=monitor, profiles=profiles, log_config=log_config)
+
+
+# Register built-in monitor handlers. The concrete handler imports live here
+# (after the base class and factory are defined) to avoid circular imports, and
+# registration is explicit — mirroring RemoteHandlerFactory. Adding a new monitor
+# type means adding a subclass plus one register() call below.
+from app.monitor.instant_monitor_handler import InstantMonitorHandler
+from app.monitor.scheduled_monitor_handler import ScheduledMonitorHandler
+
+MonitorHandlerFactory.register(MONITOR_TYPE_INSTANT, InstantMonitorHandler)
+MonitorHandlerFactory.register(
+    MONITOR_TYPE_BACKUP,
+    lambda monitor, profiles, log_config: ScheduledMonitorHandler(
+        monitor, profiles, log_config, direction=MONITOR_TYPE_BACKUP
+    ),
+)
+MonitorHandlerFactory.register(
+    MONITOR_TYPE_RESTORE,
+    lambda monitor, profiles, log_config: ScheduledMonitorHandler(
+        monitor, profiles, log_config, direction=MONITOR_TYPE_RESTORE
+    ),
+)
