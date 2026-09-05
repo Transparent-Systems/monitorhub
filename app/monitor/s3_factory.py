@@ -50,8 +50,8 @@ class S3Factory:
         Docstring for get_s3_client
         
         :param self: instance of this class
-        :param profile_config: Profile configuration to use.
-        :type profile_name: str
+        :param profile_config: Profile config is JSON field in profile as stored in the database.
+        :type profile_name: dict
         :return: boto3 client
         :rtype: Any
         """
@@ -163,7 +163,7 @@ if __name__ == "__main__":
 
     profile_name = "s3-test"
     # Get profile
-    from sqlite_handler import SQLiteHandler
+    from app.utils.sqlite_handler import SQLiteHandler
     sqlite_handler = SQLiteHandler(
         logger=logger,
         db_dir="testdb/dev"

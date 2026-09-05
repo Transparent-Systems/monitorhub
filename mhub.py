@@ -171,7 +171,7 @@ if __name__ == "__main__":
 
     # Profile subcommands
     profile_show_parser = profile_subparsers.add_parser("show", help="Show all profiles")
-    profile_show_parser.add_argument("-p", "--profile-id",
+    profile_show_parser.add_argument("-i", "--profile-id",
         type=int,
         metavar="<ID>",
         help="ID of the profile to show (omit to show all profiles)"
@@ -184,7 +184,7 @@ if __name__ == "__main__":
     profile_subparsers.add_parser("import", help="Import profiles from rclone")
     profile_new_parser = profile_subparsers.add_parser("new", help="Create a new profile (select profile category interactively)")
     profile_edit_parser = profile_subparsers.add_parser("edit", help="Edit a profile")
-    profile_edit_parser.add_argument("-p", "--profile-id",
+    profile_edit_parser.add_argument("-i", "--profile-id",
         type=int,
         metavar="<ID>",
         help="ID of the profile to edit (omit to select interactively)"
@@ -195,7 +195,7 @@ if __name__ == "__main__":
         help="Name of the profile to edit (omit to select interactively)"
     )
     profile_delete_parser = profile_subparsers.add_parser("delete", help="Delete a profile")
-    profile_delete_parser.add_argument("-p", "--profile-id",
+    profile_delete_parser.add_argument("-i", "--profile-id",
         type=int,
         metavar="<ID>",
         help="ID of the profile to delete (omit to select interactively)"
@@ -206,7 +206,7 @@ if __name__ == "__main__":
         help="Name of the profile to delete (omit to select interactively)"
     )
     profile_test_parser = profile_subparsers.add_parser("test", help="Test a profile")
-    profile_test_parser.add_argument("-p", "--profile-id",
+    profile_test_parser.add_argument("-i", "--profile-id",
         type=int,
         metavar="<ID>",
         help="Profile ID of remote profile to test"
@@ -244,7 +244,7 @@ if __name__ == "__main__":
     monitor_new_parser = monitor_subparsers.add_parser("new", help="Create a new monitor")
     monitor_edit_parser = monitor_subparsers.add_parser("edit", help="Edit a monitor")
     monitor_delete_parser = monitor_subparsers.add_parser("delete", help="Delete a monitor")
-    monitor_delete_parser.add_argument("-m", "--monitor-id",
+    monitor_delete_parser.add_argument("-i", "--monitor-id",
         type=int,
         metavar="<ID>",
         help="ID of the monitor to delete (omit to select interactively)"
@@ -255,7 +255,7 @@ if __name__ == "__main__":
         help="Name of the monitor to delete (omit to select interactively)"
     )
     monitor_show_parser = monitor_subparsers.add_parser("show", help="Show all monitors")
-    monitor_show_parser.add_argument("-m", "--monitor-id",
+    monitor_show_parser.add_argument("-i", "--monitor-id",
         type=int,
         metavar="<ID>",
         help="ID of the monitor to show (omit to show all monitors)"
@@ -266,7 +266,7 @@ if __name__ == "__main__":
         help="Name of the monitor to show (omit to show all monitors)"
     )
     monitor_start_parser = monitor_subparsers.add_parser("start", help="Start a monitor")
-    monitor_start_parser.add_argument("-m", "--monitor-id",
+    monitor_start_parser.add_argument("-i", "--monitor-id",
         type=int,
         metavar="<ID>",
         help="ID of the monitor to start (omit to select interactively)"
@@ -277,7 +277,7 @@ if __name__ == "__main__":
         help="Name of the monitor to start (omit to select interactively)"
     )
     monitor_test_parser = monitor_subparsers.add_parser("test", help="Test a monitor")
-    monitor_test_parser.add_argument("-m", "--monitor-id",
+    monitor_test_parser.add_argument("-i", "--monitor-id",
         type=int,
         metavar="<ID>",
         help="ID of the monitor to test (omit to select interactively)"
@@ -288,7 +288,7 @@ if __name__ == "__main__":
         help="Name of the monitor to test (omit to select interactively)"
     )
     monitor_stop_parser = monitor_subparsers.add_parser("stop", help="Stop a running monitor")
-    monitor_stop_parser.add_argument("-m", "--monitor-id",
+    monitor_stop_parser.add_argument("-i", "--monitor-id",
         type=int,
         metavar="<ID>",
         help="ID of the monitor to stop (omit to select interactively)"
@@ -298,7 +298,7 @@ if __name__ == "__main__":
         metavar="<NAME>",
         help="Name of the monitor to stop (omit to select interactively)"
     )
-    monitor_stop_parser.add_argument("-i", "--immediate",
+    monitor_stop_parser.add_argument("--immediate",
         action="store_true",
         default=False,
         help="Force kill the monitor process immediately instead of graceful shutdown"
@@ -307,7 +307,7 @@ if __name__ == "__main__":
     monitor_start_all_parser = monitor_subparsers.add_parser("start-all", help="Clean up stale monitors and start all monitors that are not running")
 
     monitor_stop_all_parser = monitor_subparsers.add_parser("stop-all", help="Stop all running monitors")
-    monitor_stop_all_parser.add_argument("-i", "--immediate",
+    monitor_stop_all_parser.add_argument("--immediate",
         action="store_true",
         default=False,
         help="Force kill all monitor processes immediately instead of graceful shutdown"
