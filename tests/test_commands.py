@@ -81,6 +81,31 @@ class TestCommands(unittest.TestCase):
         self.assertIn("Backup Monitor 1", text)
         self.assertIn("Restore Monitor 1", text)
 
+    def test_monitor_show_by_id(self):
+        commands, mock_prompt = self._make_commands([])
+        monitors = commands.sqlite_handler.get_monitors()
+        target, other = monitors[0], monitors[1]
+        commands.monitor.show(monitor_id=target["id"])
+        text = mock_prompt.output_text
+        self.assertIn(target["name"], text)
+        self.assertNotIn(other["name"], text)
+
+    def test_monitor_show_by_name(self):
+        commands, mock_prompt = self._make_commands([])
+        monitors = commands.sqlite_handler.get_monitors()
+        target, other = monitors[0], monitors[1]
+        commands.monitor.show(monitor_name=target["name"])
+        text = mock_prompt.output_text
+        self.assertIn(target["name"], text)
+        self.assertNotIn(other["name"], text)
+
+    def test_monitor_show_both_id_and_name(self):
+        commands, mock_prompt = self._make_commands([])
+        monitors = commands.sqlite_handler.get_monitors()
+        target = monitors[0]
+        commands.monitor.show(monitor_id=target["id"], monitor_name=target["name"])
+        self.assertIn("Cannot specify both --monitor-id and --monitor-name.", mock_prompt.output_text)
+
     def test_monitor_new(self):
         commands, _ = self._make_commands(
             ["my-monitor", "/tmp/source", "remote:dest", "1", "", ""]
@@ -106,6 +131,27 @@ class TestCommands(unittest.TestCase):
         commands.monitor.delete()
         monitor = commands.sqlite_handler.get_monitor(monitor_id=first_id)
         self.assertFalse(monitor)
+
+    def test_monitor_delete_by_id(self):
+        commands, _ = self._make_commands([])
+        monitors = commands.sqlite_handler.get_monitors()
+        target = monitors[0]
+        commands.monitor.delete(monitor_id=target["id"])
+        self.assertFalse(commands.sqlite_handler.get_monitor(monitor_id=target["id"]))
+
+    def test_monitor_delete_by_name(self):
+        commands, _ = self._make_commands([])
+        monitors = commands.sqlite_handler.get_monitors()
+        target = monitors[0]
+        commands.monitor.delete(monitor_name=target["name"])
+        self.assertFalse(commands.sqlite_handler.get_monitor(monitor_name=target["name"]))
+
+    def test_monitor_delete_both_id_and_name(self):
+        commands, mock_prompt = self._make_commands([])
+        monitors = commands.sqlite_handler.get_monitors()
+        target = monitors[0]
+        commands.monitor.delete(monitor_id=target["id"], monitor_name=target["name"])
+        self.assertIn("Cannot specify both --monitor-id and --monitor-name.", mock_prompt.output_text)
 
     def test_profile_show(self):
         commands, mock_prompt = self._make_commands([])

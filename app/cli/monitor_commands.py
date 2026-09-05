@@ -465,8 +465,28 @@ class MonitorCommands:
     # Public monitor commands
     # ------------------------------------------------------------------
 
-    def delete(self):
+    def delete(self, monitor_id: int | None = None, monitor_name: str | None = None):
         """Delete monitor."""
+        if monitor_id is not None and monitor_name is not None:
+            self.prompt.print("Cannot specify both --monitor-id and --monitor-name.")
+            return
+
+        if monitor_id is not None:
+            monitor = self.sqlite_handler.get_monitor(monitor_id=monitor_id)
+            if not monitor:
+                self.prompt.print(f"Monitor with id={monitor_id} not found.")
+                return
+            self._delete_monitor(monitor)
+            return
+
+        if monitor_name is not None:
+            monitor = self.sqlite_handler.get_monitor(monitor_name=monitor_name)
+            if not monitor:
+                self.prompt.print(f"Monitor with name='{monitor_name}' not found.")
+                return
+            self._delete_monitor(monitor)
+            return
+
         monitors = self.sqlite_handler.get_monitors()
         if not monitors:
             self.prompt.print(f"No monitors found in {self.sqlite_handler.db_path}")
@@ -492,6 +512,10 @@ class MonitorCommands:
                 break
             self.prompt.print(f"Monitor ids do not match: {choice} is not {confirm}. Please try again.")
 
+        self._delete_monitor(monitor)
+
+    def _delete_monitor(self, monitor: dict) -> None:
+        """Delete a single monitor resolved by id or name."""
         if self.sqlite_handler.delete_monitor(monitor_id=monitor.get("id", 0)):
             self.prompt.print(f"Monitor name: {monitor.get('name', 'N/A')} deleted")
         else:
@@ -668,9 +692,27 @@ class MonitorCommands:
                     monitor_id=monitor_id, profile_id=profile_id
                 )
 
-    def show(self):
-        """Show all monitors."""
-        monitors = self.sqlite_handler.get_monitors()
+    def show(self, monitor_id: int | None = None, monitor_name: str | None = None):
+        """Show all monitors, or a single monitor when an id or name is given."""
+        if monitor_id is not None and monitor_name is not None:
+            self.prompt.print("Cannot specify both --monitor-id and --monitor-name.")
+            return
+
+        if monitor_id is not None:
+            monitor = self.sqlite_handler.get_monitor(monitor_id=monitor_id)
+            if not monitor:
+                self.prompt.print(f"Monitor with id={monitor_id} not found.")
+                return
+            monitors = [monitor]
+        elif monitor_name is not None:
+            monitor = self.sqlite_handler.get_monitor(monitor_name=monitor_name)
+            if not monitor:
+                self.prompt.print(f"Monitor with name='{monitor_name}' not found.")
+                return
+            monitors = [monitor]
+        else:
+            monitors = self.sqlite_handler.get_monitors()
+
         for monitor in monitors:
             self.prompt.print()
             self.prompt.print("=" * 50)

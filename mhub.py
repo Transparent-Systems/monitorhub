@@ -39,10 +39,24 @@ _SUBCOMMAND_DISPATCH = {
     ("profile", "edit"): ("profile", "edit", lambda _: {}),
     ("profile", "delete"): ("profile", "delete", lambda _: {}),
     ("profile", "import"): ("profile", "import_profiles", lambda _: {}),
-    ("monitor", "delete"): ("monitor", "delete", lambda _: {}),
+    ("monitor", "delete"): (
+        "monitor",
+        "delete",
+        lambda args: {
+            "monitor_id": getattr(args, "monitor_id", None),
+            "monitor_name": getattr(args, "monitor_name", None),
+        },
+    ),
     ("monitor", "edit"): ("monitor", "edit", lambda _: {}),
     ("monitor", "new"): ("monitor", "new", lambda _: {}),
-    ("monitor", "show"): ("monitor", "show", lambda _: {}),
+    ("monitor", "show"): (
+        "monitor",
+        "show",
+        lambda args: {
+            "monitor_id": getattr(args, "monitor_id", None),
+            "monitor_name": getattr(args, "monitor_name", None),
+        },
+    ),
     ("monitor", "start"): (
         "monitor",
         "start",
@@ -180,7 +194,27 @@ if __name__ == "__main__":
     monitor_new_parser = monitor_subparsers.add_parser("new", help="Create a new monitor")
     monitor_edit_parser = monitor_subparsers.add_parser("edit", help="Edit a monitor")
     monitor_delete_parser = monitor_subparsers.add_parser("delete", help="Delete a monitor")
+    monitor_delete_parser.add_argument("-m", "--monitor-id",
+        type=int,
+        metavar="<ID>",
+        help="ID of the monitor to delete (omit to select interactively)"
+    )
+    monitor_delete_parser.add_argument("-n", "--monitor-name",
+        type=str,
+        metavar="<NAME>",
+        help="Name of the monitor to delete (omit to select interactively)"
+    )
     monitor_show_parser = monitor_subparsers.add_parser("show", help="Show all monitors")
+    monitor_show_parser.add_argument("-m", "--monitor-id",
+        type=int,
+        metavar="<ID>",
+        help="ID of the monitor to show (omit to show all monitors)"
+    )
+    monitor_show_parser.add_argument("-n", "--monitor-name",
+        type=str,
+        metavar="<NAME>",
+        help="Name of the monitor to show (omit to show all monitors)"
+    )
     monitor_start_parser = monitor_subparsers.add_parser("start", help="Start a monitor")
     monitor_start_parser.add_argument("-m", "--monitor-id",
         type=int,

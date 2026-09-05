@@ -135,10 +135,10 @@ classDiagram
     logger : Logger
     prompt
     sqlite_handler
-    delete()
+    delete(monitor_id: int | None, monitor_name: str | None)
     edit()
     new()
-    show()
+    show(monitor_id: int | None, monitor_name: str | None)
     start(monitor_id: int | None, monitor_name: str | None)
     start_all()
     stop(monitor_id: int | None, immediate: bool, monitor_name: str | None)
