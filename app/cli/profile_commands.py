@@ -50,6 +50,11 @@ class ProfileCommands:
 
         while True:
             profile_id_entered = self.prompt.input("Enter profile id: ").strip()
+
+            if profile_id_entered == "":
+                self.prompt.print("No profile selected")
+                return {}
+
             self.prompt.print(f"You entered profile id: {profile_id_entered}")
             if not profile_id_entered.isdigit():
                 self.prompt.print(f"Invalid profile id: {profile_id_entered}. Please try again.")
@@ -315,6 +320,11 @@ class ProfileCommands:
         # Prompt user for profile id
         while True:
             profile_id_entered = self.prompt.input("Enter profile id to delete: ").strip()
+
+            if profile_id_entered == "":
+                self.prompt.print("No profile selected")
+                return
+
             self.prompt.print(f"You entered profile id: {profile_id_entered}")
             if not profile_id_entered.isdigit():
                 self.prompt.print(f"Invalid profile id: {profile_id_entered}. Please try again.")
