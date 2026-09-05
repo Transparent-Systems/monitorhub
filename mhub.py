@@ -150,7 +150,6 @@ if __name__ == "__main__":
 
     # Profile subcommands
     profile_subparsers.add_parser("show", help="Show all profiles")
-    profile_subparsers.add_parser("file", help="Show the file location of monitorhub.conf")
     profile_subparsers.add_parser("import", help="Import profiles from rclone")
     profile_new_parser = profile_subparsers.add_parser("new", help="Create a new profile (select profile category interactively)")
     profile_subparsers.add_parser("edit", help="Edit a profile")
