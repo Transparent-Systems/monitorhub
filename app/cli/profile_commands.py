@@ -272,10 +272,30 @@ class ProfileCommands:
         self.prompt.print("Test succeeded")
         return True
 
-    def delete(self):
+    def delete(self, profile_id: int | None = None, profile_name: str | None = None):
         """
-        Show all profiles and let user choose one to delete
+        Show all profiles and let user choose one to delete, or delete a
+        single profile when an id or name is given.
         """
+        if profile_id is not None and profile_name is not None:
+            self.prompt.print("Cannot specify both --profile-id and --profile-name.")
+            return
+
+        if profile_id is not None:
+            profile = self.sqlite_handler.get_profile(profile_id=profile_id)
+            if not profile:
+                self.prompt.print(f"Profile with id={profile_id} not found.")
+                return
+            self._delete_profile(profile, profile_id=profile_id)
+            return
+
+        if profile_name is not None:
+            profile = self.sqlite_handler.get_profile(profile_name=profile_name)
+            if not profile:
+                self.prompt.print(f"Profile with name='{profile_name}' not found.")
+                return
+            self._delete_profile(profile)
+            return
 
         # Show all profiles
         profiles = self.sqlite_handler.get_profiles()
@@ -300,10 +320,10 @@ class ProfileCommands:
                 self.prompt.print(f"Invalid profile id: {profile_id_entered}. Please try again.")
                 continue
 
-            profile_id = int(profile_id_entered)
-            profile = find_by_id(profiles, profile_id)
+            profile_id_selected = int(profile_id_entered)
+            profile = find_by_id(profiles, profile_id_selected)
             if profile is None:
-                self.prompt.print(f"Invalid profile id: {profile_id}. Please try again.")
+                self.prompt.print(f"Invalid profile id: {profile_id_selected}. Please try again.")
                 continue
 
             profile_id_repeat_entered = self.prompt.input("Repeat profile id to delete: ").strip()
@@ -313,57 +333,88 @@ class ProfileCommands:
                 continue
             profile_id_repeat = int(profile_id_repeat_entered)
 
-            if profile_id != profile_id_repeat:
-                self.prompt.print(f"Profile ids do not match: {profile_id} is not {profile_id_repeat}. Please try again.")
+            if profile_id_selected != profile_id_repeat:
+                self.prompt.print(f"Profile ids do not match: {profile_id_selected} is not {profile_id_repeat}. Please try again.")
                 continue
             break
 
         profile_name = profile.get("name", "N/A")
         self.prompt.print(f"You want to delete profile: {profile_name}")
 
-        if self.sqlite_handler.delete_profile(profile_name=profile_name):
+        self._delete_profile(profile)
+
+    def _delete_profile(self, profile: dict[str, Any], profile_id: int | None = None) -> None:
+        """Delete a single profile resolved by id or name."""
+        profile_name = profile.get("name", "N/A")
+        if profile_id is not None:
+            deleted = self.sqlite_handler.delete_profile(profile_id=profile_id)
+        else:
+            deleted = self.sqlite_handler.delete_profile(profile_name=profile_name)
+
+        if deleted:
             self.prompt.print(f"Profile name: {profile_name} deleted")
         else:
             self.prompt.print(f"Profile name: {profile_name} not deleted")
 
-    def edit(self):
+    def edit(self, profile_id: int | None = None, profile_name: str | None = None):
         """
-        Show all profiles and let user choose one to edit
+        Show all profiles and let user choose one to edit, or edit a single
+        profile when an id or name is given.
         """
-
-        implemented_profiles = reference_data.filter_implemented_profiles(self.sqlite_handler.get_profiles())
-        # If there are no implemented_profiles then we are done
-        if not implemented_profiles:
-            self.prompt.print(f"No implemented profiles found in {self.sqlite_handler.db_path}")
+        if profile_id is not None and profile_name is not None:
+            self.prompt.print("Cannot specify both --profile-id and --profile-name.")
             return
 
-        while True:
-            # Show all implemented profiles
-            self.prompt.print("List of profiles")
-            self.prompt.print("=" * 50)
-            for profile in implemented_profiles:
-                self.prompt.print(
-                    f"Id: {profile.get('id', 'N/A')}, Profile name: {profile.get('name', 'N/A')}"
-                )
-            self.prompt.print("=" * 50)
-
-            input_profile_id = self.prompt.input("Enter profile id: ").strip()
-
-            if input_profile_id == "":
-                self.prompt.print("No profile selected")
+        profile = None
+        if profile_id is not None:
+            profile = self.sqlite_handler.get_profile(profile_id=profile_id)
+            if not profile:
+                self.prompt.print(f"Profile with id={profile_id} not found.")
+                return
+        elif profile_name is not None:
+            profile = self.sqlite_handler.get_profile(profile_name=profile_name)
+            if not profile:
+                self.prompt.print(f"Profile with name='{profile_name}' not found.")
                 return
 
-            self.prompt.print(f"You entered profile id: {input_profile_id}")
-            if not input_profile_id.isdigit():
-                self.prompt.print(f"Invalid profile id: {input_profile_id}. Please try again.")
-                continue
+        if profile is not None:
+            if not reference_data.is_profile_type_implemented(profile.get("profile_type")):
+                self.prompt.print(f"Profile type '{profile.get('profile_type', 'N/A')}' is not implemented and cannot be edited.")
+                return
+        else:
+            implemented_profiles = reference_data.filter_implemented_profiles(self.sqlite_handler.get_profiles())
+            # If there are no implemented_profiles then we are done
+            if not implemented_profiles:
+                self.prompt.print(f"No implemented profiles found in {self.sqlite_handler.db_path}")
+                return
 
-            profile_id = int(input_profile_id)
-            profile = find_by_id(implemented_profiles, profile_id)
-            if profile is not None:
-                break
+            while True:
+                # Show all implemented profiles
+                self.prompt.print("List of profiles")
+                self.prompt.print("=" * 50)
+                for profile in implemented_profiles:
+                    self.prompt.print(
+                        f"Id: {profile.get('id', 'N/A')}, Profile name: {profile.get('name', 'N/A')}"
+                    )
+                self.prompt.print("=" * 50)
 
-            self.prompt.print(f"Invalid profile id: {profile_id}. Please try again.")
+                input_profile_id = self.prompt.input("Enter profile id: ").strip()
+
+                if input_profile_id == "":
+                    self.prompt.print("No profile selected")
+                    return
+
+                self.prompt.print(f"You entered profile id: {input_profile_id}")
+                if not input_profile_id.isdigit():
+                    self.prompt.print(f"Invalid profile id: {input_profile_id}. Please try again.")
+                    continue
+
+                selected_profile_id = int(input_profile_id)
+                profile = find_by_id(implemented_profiles, selected_profile_id)
+                if profile is not None:
+                    break
+
+                self.prompt.print(f"Invalid profile id: {selected_profile_id}. Please try again.")
 
         # Get profile name
         input_profile_name = profile.get("name", "N/A")
@@ -852,15 +903,32 @@ class ProfileCommands:
         self.prompt.print("Please test profile with one of the following commands:")
         self.prompt.print("   Command: mhub profile test")
 
-    def show(self):
+    def show(self, profile_id: int | None = None, profile_name: str | None = None):
         """
-        Show all profiles
+        Show all profiles, or a single profile when an id or name is given.
         """
+        if profile_id is not None and profile_name is not None:
+            self.prompt.print("Cannot specify both --profile-id and --profile-name.")
+            return
 
-        # Show all profiles
-        profiles = self.sqlite_handler.get_profiles()
+        if profile_id is not None:
+            profile = self.sqlite_handler.get_profile(profile_id=profile_id)
+            if not profile:
+                self.prompt.print(f"Profile with id={profile_id} not found.")
+                return
+            profiles = [profile]
+        elif profile_name is not None:
+            profile = self.sqlite_handler.get_profile(profile_name=profile_name)
+            if not profile:
+                self.prompt.print(f"Profile with name='{profile_name}' not found.")
+                return
+            profiles = [profile]
+        else:
+            profiles = self.sqlite_handler.get_profiles()
+
         for profile in profiles:
             self.prompt.print("=" * 50)
+            self.prompt.print(f"Profile id: {profile.get('id', 'N/A')}")
             self.prompt.print(f"Profile name: {profile.get('name', 'N/A')}")
             self.prompt.print(f"Profile type: {profile.get('profile_type', 'N/A')}")
             config = profile.get("config", {})

@@ -34,10 +34,31 @@ _SUBCOMMAND_DISPATCH = {
         "test",
         lambda args: {"profile_id": args.profile_id, "live": args.live},
     ),
-    ("profile", "show"): ("profile", "show", lambda _: {}),
+    ("profile", "show"): (
+        "profile",
+        "show",
+        lambda args: {
+            "profile_id": getattr(args, "profile_id", None),
+            "profile_name": getattr(args, "profile_name", None),
+        },
+    ),
     ("profile", "new"): ("profile", "new", lambda _: {}),
-    ("profile", "edit"): ("profile", "edit", lambda _: {}),
-    ("profile", "delete"): ("profile", "delete", lambda _: {}),
+    ("profile", "edit"): (
+        "profile",
+        "edit",
+        lambda args: {
+            "profile_id": getattr(args, "profile_id", None),
+            "profile_name": getattr(args, "profile_name", None),
+        },
+    ),
+    ("profile", "delete"): (
+        "profile",
+        "delete",
+        lambda args: {
+            "profile_id": getattr(args, "profile_id", None),
+            "profile_name": getattr(args, "profile_name", None),
+        },
+    ),
     ("profile", "import"): ("profile", "import_profiles", lambda _: {}),
     ("monitor", "delete"): (
         "monitor",
@@ -149,14 +170,44 @@ if __name__ == "__main__":
     profile_subparsers = profile_parser.add_subparsers(dest="profile_subcommand", help="Profile subcommands")
 
     # Profile subcommands
-    profile_subparsers.add_parser("show", help="Show all profiles")
+    profile_show_parser = profile_subparsers.add_parser("show", help="Show all profiles")
+    profile_show_parser.add_argument("-p", "--profile-id",
+        type=int,
+        metavar="<ID>",
+        help="ID of the profile to show (omit to show all profiles)"
+    )
+    profile_show_parser.add_argument("-n", "--profile-name",
+        type=str,
+        metavar="<NAME>",
+        help="Name of the profile to show (omit to show all profiles)"
+    )
     profile_subparsers.add_parser("import", help="Import profiles from rclone")
     profile_new_parser = profile_subparsers.add_parser("new", help="Create a new profile (select profile category interactively)")
-    profile_subparsers.add_parser("edit", help="Edit a profile")
-    profile_subparsers.add_parser("delete", help="Delete a profile")
+    profile_edit_parser = profile_subparsers.add_parser("edit", help="Edit a profile")
+    profile_edit_parser.add_argument("-p", "--profile-id",
+        type=int,
+        metavar="<ID>",
+        help="ID of the profile to edit (omit to select interactively)"
+    )
+    profile_edit_parser.add_argument("-n", "--profile-name",
+        type=str,
+        metavar="<NAME>",
+        help="Name of the profile to edit (omit to select interactively)"
+    )
+    profile_delete_parser = profile_subparsers.add_parser("delete", help="Delete a profile")
+    profile_delete_parser.add_argument("-p", "--profile-id",
+        type=int,
+        metavar="<ID>",
+        help="ID of the profile to delete (omit to select interactively)"
+    )
+    profile_delete_parser.add_argument("-n", "--profile-name",
+        type=str,
+        metavar="<NAME>",
+        help="Name of the profile to delete (omit to select interactively)"
+    )
     profile_test_parser = profile_subparsers.add_parser("test", help="Test a profile")
     profile_test_parser.add_argument("-p", "--profile-id",
-        type=str,
+        type=int,
         metavar="<ID>",
         help="Profile ID of remote profile to test"
         )

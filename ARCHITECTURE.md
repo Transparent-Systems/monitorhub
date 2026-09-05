@@ -150,11 +150,11 @@ classDiagram
     logger : Logger
     prompt
     sqlite_handler
-    delete()
-    edit()
+    delete(profile_id: int | None, profile_name: str | None)
+    edit(profile_id: int | None, profile_name: str | None)
     import_profiles()
     new()
-    show()
+    show(profile_id: int | None, profile_name: str | None)
     test(profile_id: int | None, live: bool) bool
   }
   class PromptService {

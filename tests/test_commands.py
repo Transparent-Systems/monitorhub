@@ -157,8 +157,34 @@ class TestCommands(unittest.TestCase):
         commands, mock_prompt = self._make_commands([])
         commands.profile.show()
         text = mock_prompt.output_text
+        self.assertIn("Profile id:", text)
         self.assertIn("s3-test", text)
         self.assertIn("command-profile-1", text)
+
+    def test_profile_show_by_id(self):
+        commands, mock_prompt = self._make_commands([])
+        profiles = commands.sqlite_handler.get_profiles()
+        target, other = profiles[0], profiles[1]
+        commands.profile.show(profile_id=target["id"])
+        text = mock_prompt.output_text
+        self.assertIn(target["name"], text)
+        self.assertNotIn(other["name"], text)
+
+    def test_profile_show_by_name(self):
+        commands, mock_prompt = self._make_commands([])
+        profiles = commands.sqlite_handler.get_profiles()
+        target, other = profiles[0], profiles[1]
+        commands.profile.show(profile_name=target["name"])
+        text = mock_prompt.output_text
+        self.assertIn(target["name"], text)
+        self.assertNotIn(other["name"], text)
+
+    def test_profile_show_both_id_and_name(self):
+        commands, mock_prompt = self._make_commands([])
+        profiles = commands.sqlite_handler.get_profiles()
+        target = profiles[0]
+        commands.profile.show(profile_id=target["id"], profile_name=target["name"])
+        self.assertIn("Cannot specify both --profile-id and --profile-name.", mock_prompt.output_text)
 
     def test_profile_new_command(self):
         commands, _ = self._make_commands(
@@ -181,12 +207,56 @@ class TestCommands(unittest.TestCase):
         profile = commands.sqlite_handler.get_profile(profile_id=profile_id)
         self.assertEqual(profile["config"]["command"], "echo updated")
 
+    def test_profile_edit_command_by_id(self):
+        profile_id = self.database_test_data.sqlite_handler.get_profile(
+            profile_name="command-profile-1"
+        )["id"]
+        commands, _ = self._make_commands(["echo updated", "", "", "", ""])
+        commands.profile.edit(profile_id=profile_id)
+        profile = commands.sqlite_handler.get_profile(profile_id=profile_id)
+        self.assertEqual(profile["config"]["command"], "echo updated")
+
+    def test_profile_edit_command_by_name(self):
+        commands, _ = self._make_commands(["echo updated", "", "", "", ""])
+        commands.profile.edit(profile_name="command-profile-1")
+        profile = commands.sqlite_handler.get_profile(profile_name="command-profile-1")
+        self.assertEqual(profile["config"]["command"], "echo updated")
+
+    def test_profile_edit_both_id_and_name(self):
+        profile_id = self.database_test_data.sqlite_handler.get_profile(
+            profile_name="command-profile-1"
+        )["id"]
+        commands, mock_prompt = self._make_commands([])
+        commands.profile.edit(profile_id=profile_id, profile_name="command-profile-1")
+        self.assertIn("Cannot specify both --profile-id and --profile-name.", mock_prompt.output_text)
+
     def test_profile_delete(self):
         first_id = self.database_test_data.sqlite_handler.get_profiles()[0]["id"]
         commands, _ = self._make_commands([str(first_id), str(first_id)])
         commands.profile.delete()
         profile = commands.sqlite_handler.get_profile(profile_id=first_id)
         self.assertFalse(profile)
+
+    def test_profile_delete_by_id(self):
+        commands, _ = self._make_commands([])
+        profiles = commands.sqlite_handler.get_profiles()
+        target = profiles[0]
+        commands.profile.delete(profile_id=target["id"])
+        self.assertFalse(commands.sqlite_handler.get_profile(profile_id=target["id"]))
+
+    def test_profile_delete_by_name(self):
+        commands, _ = self._make_commands([])
+        profiles = commands.sqlite_handler.get_profiles()
+        target = profiles[0]
+        commands.profile.delete(profile_name=target["name"])
+        self.assertFalse(commands.sqlite_handler.get_profile(profile_name=target["name"]))
+
+    def test_profile_delete_both_id_and_name(self):
+        commands, mock_prompt = self._make_commands([])
+        profiles = commands.sqlite_handler.get_profiles()
+        target = profiles[0]
+        commands.profile.delete(profile_id=target["id"], profile_name=target["name"])
+        self.assertIn("Cannot specify both --profile-id and --profile-name.", mock_prompt.output_text)
 
     def test_profile_test_command(self):
         profile_id = self.database_test_data.sqlite_handler.get_profile(
