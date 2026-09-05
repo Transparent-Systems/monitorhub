@@ -35,10 +35,10 @@ test-commands: check-env ## Run Commands unit tests only
 	$(UNITTEST) tests.test_commands -v
 
 lint: check-env ## Run ruff lint checks (report only)
-	$(RUFF) check --config scripts/ruff.toml .
+	$(RUFF) check --config app/ruff.toml .
 
 lint-fix: check-env ## Auto-fix safe ruff lint issues
-	$(RUFF) check --config scripts/ruff.toml . --fix
+	$(RUFF) check --config app/ruff.toml . --fix
 
 clean: ## Remove Python build/test artifacts
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true

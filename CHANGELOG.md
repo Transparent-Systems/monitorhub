@@ -14,7 +14,7 @@
 - The ``schema_version`` table is now an append-only history with a descriptive
   ``description`` column. The schema version is compared numerically, fixing a
   bug where ``9.0.0`` was treated as newer than ``10.0.0``.
-- New ``scripts/schema_versioning.py`` module centralises version comparison,
+- New ``app/cli/schema_versioning.py`` module centralises version comparison,
   compatibility classification, and the ordered migration registry.
 
 ## [1.0.0] - 2026-09-01
