@@ -1,0 +1,6 @@
+[tool.pytest.ini_options]
+pythonpath = ["."]
+# Automatically pass -s (show stdout/print calls)
+addopts = "-s"
+# Optionally tell pytest to collect files named *_stress_test.py
+python_files = ["test_*.py", "*_test.py"]
