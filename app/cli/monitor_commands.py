@@ -636,7 +636,7 @@ class MonitorCommands:
             monitor_config = {}
 
         selected_profiles = []
-        unselected_profiles: dict[int, Any] = {p.get("id"): p for p in profiles}
+        unselected_profiles: dict = {p.get("id"): p for p in profiles}
 
         while True:
             if not unselected_profiles:
@@ -912,7 +912,7 @@ class MonitorCommands:
 
             if immediate:
                 if current_pid and current_pid != 0:
-                    if not self._force_kill_process(current_pid, monitor_name):
+                    if not self._force_kill_process(current_pid, str(monitor_name)):
                         continue
                 else:
                     self.prompt.print(f"Monitor '{monitor_name}' has no stored PID — cannot force kill.")
@@ -949,7 +949,7 @@ class MonitorCommands:
 
             if immediate:
                 if current_pid and current_pid != 0:
-                    if not self._force_kill_process(current_pid, monitor_name):
+                    if not self._force_kill_process(current_pid, str(monitor_name)):
                         continue
                 else:
                     self.prompt.print(f"Monitor '{monitor_name}' has no stored PID — cannot force kill.")
