@@ -23,11 +23,6 @@ class ActionContext:
     is_directory: bool
     dest_path: str | None = None  # For moved events
 
-    @property
-    def action_type(self) -> str:
-        """Alias for backward compatibility."""
-        return self.event_type
-
 class ActionHandler(ABC):
     """
     Abstract base class for action handlers.
@@ -334,12 +329,7 @@ class CommandActionHandler(ActionHandler):
             "monitor_name": self.monitor_name,
             "profile_name": self.profile_name,
             "event_name": context.event_type,
-            "event_type": context.event_type,
-            "action_name": context.event_type,
-            "action_type": context.event_type,
             "src_path": context.src_path or "",
-            "dest_path": context.dest_path or "",
-            "is_directory": str(context.is_directory),
         }
 
     def _substitute_shell(self, values: dict[str, str]) -> str:

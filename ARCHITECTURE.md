@@ -8,7 +8,6 @@ Below is the automatically generated class hierarchy:
 ```mermaid
 classDiagram
   class ActionContext {
-    action_type : str
     dest_path : str | None
     event_type : str
     is_directory : bool

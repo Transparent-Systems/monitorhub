@@ -194,25 +194,26 @@ monitors). This makes it useful for a wide range of use cases, such as:
 * Starting an external program or pipeline
 * Intrusion detection and ransomware protection responses
 
-When creating or editing a monitor, answer **y** to "Attach a shell command to
-this monitor?" to configure a command.
+Create a **command profile** (profile category `command`, type `event_command`)
+and attach it to a monitor. The profile's command runs when the monitor fires a
+matching event.
 
 ### Placeholders
 
 A command template may contain placeholders that are replaced with event
 details before execution:
 
-| Placeholder    | Description                                            |
-|----------------|--------------------------------------------------------|
-| `{action_type}` | Event type: `created`, `deleted`, `modified`, `moved`, `closed`, `timer` |
-| `{src_path}`    | Absolute source path                                   |
-| `{dest_path}`   | Destination path (moved events only, empty otherwise)  |
-| `{is_directory}`| `true` or `false`                                      |
+| Placeholder      | Description                                            |
+|------------------|--------------------------------------------------------|
+| `{monitor_name}` | Name of the monitor                                    |
+| `{profile_name}` | Name of the attached profile                           |
+| `{event_name}`   | Event type: `created`, `deleted`, `modified`, `moved`, `closed`, `timer` |
+| `{src_path}`     | Absolute source path                                   |
 
 Example:
 
 ```bash
-notify-send "File {action_type}" "{src_path}"
+notify-send "File {event_name}" "{src_path}"
 ```
 
 ### Safety
@@ -225,8 +226,9 @@ notify-send "File {action_type}" "{src_path}"
 * Cooldown: a global interval (default `0s`) suppresses repeat firings of any
   event within the window. `0s` disables throttling.
 
-Configuration is stored in the monitor's `config` under the keys `command`,
-`command_events`, `command_cooldown`, and `command_shell`.
+Configuration is stored in the command profile's `config` under the keys
+`command`, `command_events`, `command_cooldown`, `command_timeout`, and
+`command_shell`.
 
 `command_events` may include `timer` to fire on scheduled (backup/restore)
 timer ticks in addition to file system events. For a timer event, the command

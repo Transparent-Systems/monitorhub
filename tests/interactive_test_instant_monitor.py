@@ -17,6 +17,11 @@ import time
 import unittest
 from pathlib import Path
 
+# Add project root to sys.path to allow imports from app package
+project_root = Path(__file__).resolve().parents[1]  # One level up to reach the project root
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
+
 from app.utils import reference_data
 from app.utils.constants import MONITOR_STATUS_RUNNING, MONITOR_STATUS_STOP, MONITOR_STATUS_STOPPED, MONITOR_TYPE_INSTANT
 from app.monitor.rclone_handler import RcloneHandler
