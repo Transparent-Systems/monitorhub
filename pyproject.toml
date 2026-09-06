@@ -1,3 +1,23 @@
+[project]
+name = "monitorhub"
+version = "1.0.0"
+dependencies = [
+    "watchdog",
+    "PyYAML",
+    "python-dotenv",
+    "boto3",
+    "boto3-stubs[s3]",
+    "pyinstaller",
+    "ruff",
+]
+
+# Separate development tools (like pytest) into optional dependencies
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pip-tools",
+]
+
 [tool.pytest.ini_options]
 pythonpath = ["."]
 # Automatically pass -s (show stdout/print calls)
