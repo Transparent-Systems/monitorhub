@@ -371,7 +371,7 @@ class CommandActionHandler(ActionHandler):
 
         now = time.time()
         with self._lock:
-            if self._last_fired is not None and self.cooldown_seconds > 0:
+            if self._last_fired is not None and self.cooldown_seconds > 0:  #noga SIM102
                 if now - self._last_fired < self.cooldown_seconds:
                     self.logger.debug(
                         f"Command suppressed by cooldown for '{context.event_type}'"
@@ -435,7 +435,7 @@ class CommandActionHandler(ActionHandler):
         except subprocess.TimeoutExpired:
             self.logger.error(f"Command timed out after {self.timeout_seconds}s")
         except Exception as e:
-            self.logger.exception(f"Error executing command: {e}")
+            self.logger.error(f"Error executing command: {e}")
 
 
 class ActionHandlerFactory:
