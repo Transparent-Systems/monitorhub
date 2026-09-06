@@ -73,3 +73,6 @@ lib/
 
 # Log files
 *.log
+
+# uv files
+uv.lock
