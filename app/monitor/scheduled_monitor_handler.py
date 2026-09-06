@@ -110,55 +110,52 @@ class ScheduledMonitorHandler(MonitorHandler):
 
         # Iterate over profiles
         for profile in profiles:
-            try:
-                # Handler depends on profile category: command or remote
-                profile_type = profile.get("profile_type", "")
-                category = reference_data.get_profile_category(profile_type=profile_type)
-                self.logger.debug(
-                    f"[{monitor_name}] Using profile '{profile.get('name')}' for {self.direction}."
+            # Handler depends on profile category: command or remote
+            profile_type = profile.get("profile_type", "")
+            category = reference_data.get_profile_category(profile_type=profile_type)
+            self.logger.debug(
+                f"[{monitor_name}] Using profile '{profile.get('name')}' for {self.direction}."
+            )
+
+            if category == "remote":
+                remote_handler = RemoteHandlerFactory.get_handler(
+                    logger=self.logger,
+                    monitor_path=monitor_path,
+                    remote_path=remote_path,
+                    profile=profile,
+                    exclude_patterns=self.exclude_patterns,
                 )
 
-                if category == "remote":
-                    remote_handler = RemoteHandlerFactory.get_handler(
-                        logger=self.logger,
-                        monitor_path=monitor_path,
-                        remote_path=remote_path,
-                        profile=profile,
-                        exclude_patterns=self.exclude_patterns,
+                if remote_handler is None:
+                    self.logger.error(
+                        f"[{monitor_name}] Could not instantiate handler for {self.direction}."
                     )
+                    return
 
-                    if remote_handler is None:
-                        self.logger.error(
-                            f"[{monitor_name}] Could not instantiate handler for {self.direction}."
-                        )
-                        return
-
-                    if self.direction == MONITOR_TYPE_BACKUP:
-                        remote_handler.copy_folder(monitor_path=monitor_path)
-                    else:
-                        remote_handler.restore_folder(remote_path=remote_path)
-
-                    self.logger.debug(f"[{monitor_name}] Finished {self.direction} folder copy.")
-                elif category == "command":
-                    command_handler = self.command_handlers.get(profile.get("name"))
-                    if command_handler is None:
-                        self.logger.error(
-                            f"Profile {profile.get('name')} could not be instantiated by ActionHandlerFactory"
-                        )
-                        continue
-                    # Fire the handler directly; CommandActionHandler runs the
-                    # command on its own thread, so this never blocks the loop.
-                    action_context = ActionContext(
-                        event_type="timer",
-                        src_path=monitor_path,
-                        dest_path=remote_path,
-                        is_directory=True
-                    )
-                    command_handler.handle_action(action_context)
+                if self.direction == MONITOR_TYPE_BACKUP:
+                    remote_handler.copy_folder(monitor_path=monitor_path)
                 else:
-                    self.logger.warning(f"Unknown profile category: {category}")
-            except Exception as e:
-                self.logger.error(f"[{monitor_name}] {self.direction.capitalize()} failed: {e}")
+                    remote_handler.restore_folder(remote_path=remote_path)
+
+                self.logger.debug(f"[{monitor_name}] Finished {self.direction} folder copy.")
+            elif category == "command":
+                command_handler = self.command_handlers.get(profile.get("name"))
+                if command_handler is None:
+                    self.logger.error(
+                        f"Profile {profile.get('name')} could not be instantiated by ActionHandlerFactory"
+                    )
+                    continue
+                # Fire the handler directly; CommandActionHandler runs the
+                # command on its own thread, so this never blocks the loop.
+                action_context = ActionContext(
+                    event_type="timer",
+                    src_path=monitor_path,
+                    dest_path=remote_path,
+                    is_directory=True
+                )
+                command_handler.handle_action(action_context)
+            else:
+                self.logger.warning(f"Unknown profile category: {category}")
             
 
     def _run_loop(self):

@@ -435,7 +435,7 @@ class CommandActionHandler(ActionHandler):
         except subprocess.TimeoutExpired:
             self.logger.error(f"Command timed out after {self.timeout_seconds}s")
         except Exception as e:
-            self.logger.error(f"Error executing command: {e}")
+            self.logger.exception(f"Error executing command: {e}")
 
 
 class ActionHandlerFactory:
