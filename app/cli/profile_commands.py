@@ -392,8 +392,9 @@ class ProfileCommands:
                 return
 
         if profile is not None:
-            if not reference_data.is_profile_type_implemented(profile.get("profile_type")):
-                self.prompt.print(f"Profile type '{profile.get('profile_type', 'N/A')}' is not implemented and cannot be edited.")
+            profile_type: str = str(profile.get("profile_type"))
+            if not reference_data.is_profile_type_implemented(profile_type):
+                self.prompt.print(f"Profile type '{profile_type}' is not implemented and cannot be edited.")
                 return
         else:
             implemented_profiles = reference_data.filter_implemented_profiles(self.sqlite_handler.get_profiles())
@@ -819,8 +820,8 @@ class ProfileCommands:
                 continue
             break
 
-        input_region = None
-        input_endpoint = None
+        input_region:str = ""
+        input_endpoint:str = ""
         if "Amazon AWS" in input_provider_name:
             while True:
                 input_region = self.prompt.input(f"Enter S3 region of your provider: {input_provider_name}: ")
