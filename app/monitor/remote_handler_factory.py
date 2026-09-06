@@ -1,8 +1,8 @@
 import logging
 from collections.abc import Callable
 
-from app.monitor.remote_handler import RemoteHandler
 from app.monitor.rclone_handler import RcloneHandler
+from app.monitor.remote_handler import RemoteHandler
 from app.monitor.s3_handler import S3Handler
 
 

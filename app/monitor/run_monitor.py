@@ -27,8 +27,8 @@ if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
 from app.monitor.monitor_handler import MonitorHandlerFactory
-from app.utils.sqlite_handler import SQLiteHandler
 from app.utils.logger_setup import setup_logging
+from app.utils.sqlite_handler import SQLiteHandler
 
 
 def run_monitor_main(argv=None) -> int:
@@ -100,13 +100,13 @@ def run_monitor_main(argv=None) -> int:
     sqlite_handler.update_monitor_status(monitor_id=monitor_id, status="running")
     sqlite_handler.update_monitor_pid(monitor_id=monitor_id, pid=pid)
 
-    last_run = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    last_run = datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%d %H:%M:%S")
     sqlite_handler.update_monitor_last_run(monitor_id=monitor_id, last_run=last_run)
 
     # Write the initial heartbeat immediately so the monitor is not misdetected
     # as stale during the window before the status poller's first tick (which
     # otherwise would not happen for another 10 seconds).
-    last_heartbeat = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    last_heartbeat = datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%d %H:%M:%S")
     sqlite_handler.update_monitor_last_heartbeat(monitor_id=monitor_id, last_heartbeat=last_heartbeat)
 
     logger.info(f"Monitor '{monitor.get('name')}' (id={monitor_id}) status set to 'running' with PID {pid}")
@@ -179,7 +179,7 @@ def run_monitor_main(argv=None) -> int:
 
             try:
                 last_heartbeat = datetime.datetime.now(
-                    datetime.timezone.utc
+                    datetime.UTC
                 ).strftime("%Y-%m-%d %H:%M:%S")
                 sqlite_handler.update_monitor_last_heartbeat(
                     monitor_id=monitor_id, last_heartbeat=last_heartbeat

@@ -12,7 +12,11 @@ from abc import ABC, abstractmethod
 from collections.abc import Callable
 from typing import Any
 
-from app.utils.constants import MONITOR_TYPE_BACKUP, MONITOR_TYPE_RESTORE, MONITOR_TYPE_INSTANT
+from app.utils.constants import (
+    MONITOR_TYPE_BACKUP,
+    MONITOR_TYPE_INSTANT,
+    MONITOR_TYPE_RESTORE,
+)
 
 
 class MonitorHandler(ABC):

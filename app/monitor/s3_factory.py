@@ -1,4 +1,5 @@
 import logging
+import sys
 from typing import TYPE_CHECKING
 
 import boto3
@@ -171,7 +172,7 @@ if __name__ == "__main__":
     profile = sqlite_handler.get_profile(profile_name=profile_name)
     if profile is None:
         print(f"Profile {profile_name} not found")
-        exit(1)
+        sys.exit(1)
 
     profile_config = profile.get("config", {})
     print(f"Profile config: {profile_config}")

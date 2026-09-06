@@ -7,9 +7,9 @@ import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
-from app.utils import reference_data
 from app.monitor.remote_handler import RemoteHandler
 from app.monitor.remote_handler_factory import RemoteHandlerFactory
+from app.utils import reference_data
 from app.utils.generic_util import convert_to_seconds
 
 
@@ -420,6 +420,7 @@ class CommandActionHandler(ActionHandler):
                     timeout=self.timeout_seconds,
                     capture_output=True,
                     text=True,
+                    check=False,
                 )
 
             if result.returncode != 0:

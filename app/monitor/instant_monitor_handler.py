@@ -28,10 +28,10 @@ from app.monitor.action_handler import (
     ActionDispatcher,
     ActionHandlerFactory,
 )
-from app.utils.constants import MONITOR_TYPE_INSTANT
 from app.monitor.monitor_handler import MonitorHandler
-
+from app.utils.constants import MONITOR_TYPE_INSTANT
 from app.utils.path_filter import is_excluded
+
 
 class MonitorEventHandler(FileSystemEventHandler):
     """
