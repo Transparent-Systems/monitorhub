@@ -27,6 +27,9 @@ class AppConfig:
                         self._data = content
                     else:
                         self._data = {}
+            except yaml.YAMLError as e:
+                self.logger.warning(f"Failed to parse YAML configuration file at {self.config_path}: {e}")
+                self._data = {}
             except Exception as e:
                 self.logger.warning(f"Failed to read configuration file at {self.config_path}: {e}")
                 self._data = {}

@@ -1,2 +1,2 @@
 [lint]
-extend-ignore = ["E402"]
+extend-ignore = ["E402","SIM102"]

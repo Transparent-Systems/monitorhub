@@ -4,13 +4,13 @@ import logging
 import shlex
 from typing import Any
 
-from app.utils import reference_data
 from app.cli.prompt_service import PromptService
 from app.monitor.rclone_handler import RcloneHandler
 from app.monitor.s3_factory import S3Factory
-from app.utils.sqlite_handler import SQLiteHandler
+from app.utils import reference_data
 from app.utils.diagnostic_util import DiagnosticUtil
 from app.utils.generic_util import find_by_id
+from app.utils.sqlite_handler import SQLiteHandler
 
 
 class ProfileCommands:
@@ -257,6 +257,7 @@ class ProfileCommands:
                         timeout=30,
                         capture_output=True,
                         text=True,
+                        check=False,
                     )
                 self.prompt.print(f"Exit code: {result.returncode}")
                 if result.stdout:

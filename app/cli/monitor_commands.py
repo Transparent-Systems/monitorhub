@@ -7,8 +7,8 @@ import signal
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any
 
+from app.cli.prompt_service import PromptService
 from app.utils import reference_data
 from app.utils.constants import (
     MONITOR_STATUS_RUNNING,
@@ -18,9 +18,8 @@ from app.utils.constants import (
     MONITOR_TYPE_INSTANT,
     MONITOR_TYPE_RESTORE,
 )
-from app.cli.prompt_service import PromptService
-from app.utils.sqlite_handler import SQLiteHandler
 from app.utils.generic_util import find_by_id
+from app.utils.sqlite_handler import SQLiteHandler
 
 STALE_HEARTBEAT_SECONDS = 60
 
@@ -78,11 +77,12 @@ class MonitorCommands:
         if not heartbeat:
             return None
         try:
-            heartbeat_dt = datetime.datetime.strptime(heartbeat, "%Y-%m-%d %H:%M:%S")
+            heartbeat_dt = datetime.datetime.strptime(heartbeat, "%Y-%m-%d %H:%M:%S%z")
+                
         except (ValueError, TypeError):
             return None
-        heartbeat_dt = heartbeat_dt.replace(tzinfo=datetime.timezone.utc)
-        now = datetime.datetime.now(datetime.timezone.utc)
+        heartbeat_dt = heartbeat_dt.replace(tzinfo=datetime.UTC)
+        now = datetime.datetime.now(datetime.UTC)
         return (now - heartbeat_dt).total_seconds()
 
     def _force_kill_process(self, pid: int, name: str) -> bool:
@@ -729,7 +729,7 @@ class MonitorCommands:
             self.prompt.print(f"Remote path: {monitor.get('remote_path', 'N/A')}")
             self.prompt.print(f"Status: {monitor.get('status', 'N/A')}")
             config = monitor.get("config", {})
-            for key in config.keys():
+            for key in config:
                 self.prompt.print(f"   {key}: {config.get(key, 'N/A')}")
             self.prompt.print("=" * 50)
 
