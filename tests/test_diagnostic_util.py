@@ -10,8 +10,8 @@ import argparse
 import logging
 import sys
 
-from app.utils.sqlite_handler import SQLiteHandler
 from app.utils.diagnostic_util import DiagnosticUtil
+from app.utils.sqlite_handler import SQLiteHandler
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="MonitorHub diagnostics runner")

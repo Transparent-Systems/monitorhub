@@ -1,7 +1,8 @@
-import unittest
-import tempfile
 import shutil
+import tempfile
+import unittest
 from pathlib import Path
+
 import yaml
 from app.cli.app_config import AppConfig
 

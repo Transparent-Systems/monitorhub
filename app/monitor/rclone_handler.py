@@ -144,7 +144,7 @@ class RcloneHandler(RemoteHandler):
                 prompt.print(f"Error output: {result_output}")
                 prompt.print("Test failed")
             return result_code, result_output
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             prompt.print(f"Connection failed to remote: {profile_name}")
             prompt.print(f"Error: {e}")
             return (1, f"Connection failed to remote: {profile_name}. Error: {e}")

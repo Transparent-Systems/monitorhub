@@ -13,10 +13,11 @@ import logging.handlers
 import sys
 import unittest
 from pathlib import Path
+from typing import ClassVar
 
 import yaml
-from app.utils import reference_data
 from app.monitor.rclone_handler import RcloneHandler
+from app.utils import reference_data
 from app.utils.sqlite_handler import SQLiteHandler
 
 from tests.database_test_data import DatabaseTestData
@@ -24,8 +25,8 @@ from tests.util.testing_util import create_test_data
 
 
 class TestRcloneHandlerIntegration(unittest.TestCase):
-    monitor = {}
-    profile_name : str
+    monitor: ClassVar[dict] = {}
+    profile_name: ClassVar[str] = {}
     logger : logging.Logger
     
     @classmethod
@@ -67,7 +68,7 @@ class TestRcloneHandlerIntegration(unittest.TestCase):
     def test_01_get_version(self):
         """Get Version"""
         self.logger.debug(f"==> Monitor {self.monitor_name} -> {self._testMethodName}")
-        (result_code, result_output) = self.rclone_handler.get_rclone_version()
+        (_, result_output) = self.rclone_handler.get_rclone_version()
         self.assertIn("rclone", result_output.lower(), "Output should contain 'rclone'")
 
     def test_02_list_remotes(self):

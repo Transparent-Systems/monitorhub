@@ -129,7 +129,7 @@ class DebounceManager:
             for path in triggered_files:
                 try:
                     self.callback(path)
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001
                     self.logger.error(f"Error in DebounceManager callback for {path}: {e}")
             
 
@@ -171,7 +171,7 @@ class RemoteActionHandler(ActionHandler):
                 self._handle_moved(context)
             elif context.event_type == "closed":
                 self._handle_closed(context)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             self.logger.error(f"Error handling action {context.event_type} for {context.src_path}: {e}")
 
     def _execute_copy(self, src_path: str):
@@ -276,7 +276,7 @@ class ActionDispatcher:
                 for handler in self.handlers:
                     try:
                         handler.handle_action(context)
-                    except Exception as e:
+                    except Exception as e:  # noqa: BLE001
                         self.logger.error(f"Error in handler {type(handler).__name__}: {e}")
             finally:
                 self.queue.task_done()
@@ -361,7 +361,7 @@ class CommandActionHandler(ActionHandler):
 
         now = time.time()
         with self._lock:
-            if self._last_fired is not None and self.cooldown_seconds > 0:  #noga SIM102
+            if self._last_fired is not None and self.cooldown_seconds > 0:  # noqa: SIM102
                 if now - self._last_fired < self.cooldown_seconds:
                     self.logger.debug(
                         f"Command suppressed by cooldown for '{context.event_type}'"
@@ -424,7 +424,7 @@ class CommandActionHandler(ActionHandler):
                 )
         except subprocess.TimeoutExpired:
             self.logger.error(f"Command timed out after {self.timeout_seconds}s")
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             self.logger.error(f"Error executing command: {e}")
 
 

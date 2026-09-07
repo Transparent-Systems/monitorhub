@@ -5,12 +5,17 @@ import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
+
 # Add project root to sys.path to allow imports from app package
 project_root = Path(__file__).resolve().parents[1]  # One level up to reach the project root
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-from app.utils.constants import MONITOR_TYPE_BACKUP, MONITOR_TYPE_INSTANT, MONITOR_TYPE_RESTORE
+from app.utils.constants import (
+    MONITOR_TYPE_BACKUP,
+    MONITOR_TYPE_INSTANT,
+    MONITOR_TYPE_RESTORE,
+)
 from app.utils.sqlite_handler import SQLiteHandler
 
 
@@ -177,7 +182,7 @@ class DatabaseTestData:
             for profile in profiles:
                 self.sqlite_handler.delete_profile(profile["id"])
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             self.logger.error(f"Error during teardown: {e}")
         finally:    
             self.logger.info("Cleanup database completed")

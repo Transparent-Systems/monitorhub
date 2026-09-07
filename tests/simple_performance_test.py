@@ -10,9 +10,10 @@ project_root = Path(__file__).resolve().parents[1]  # One level up to reach the 
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-from app.monitor.remote_handler import RemoteHandler
 from app.monitor.rclone_handler import RcloneHandler
+from app.monitor.remote_handler import RemoteHandler
 from app.monitor.s3_handler import S3Handler
+
 
 def main():
     logger = logging.getLogger()

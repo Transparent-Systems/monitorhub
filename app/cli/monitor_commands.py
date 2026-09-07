@@ -289,7 +289,7 @@ class MonitorCommands:
                     start_new_session=True,
                     env=child_env,
                 )
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             self.prompt.print(f"Failed to start monitor '{monitor_name}' (id={monitor_id_val}): {e}")
             return False
 

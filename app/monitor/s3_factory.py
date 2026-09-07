@@ -145,7 +145,7 @@ class S3Factory:
             else:
                 prompt.print(f"Error: {e}")
                 prompt.print("Test failed")
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             prompt.print(f"Error: {e}")
             prompt.print("Test failed")
 
@@ -188,5 +188,5 @@ if __name__ == "__main__":
         key_count = response.get('KeyCount', 0)
         print(f"Connected to {profile_name}:{bucket}. Objects found: {key_count}")
         
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         print(f"Error: {e}")

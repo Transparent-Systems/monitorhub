@@ -10,9 +10,9 @@ import time
 from pathlib import Path
 from typing import Any
 
+from app.cli.process_test_result import ProcessTestResult
 from app.monitor.remote_handler_factory import RemoteHandlerFactory
 from app.utils.sqlite_handler import SQLiteHandler
-from app.cli.process_test_result import ProcessTestResult
 
 
 class DiagnosticUtil:
@@ -213,8 +213,9 @@ class DiagnosticUtil:
                 version = subprocess.check_output(["rclone", "version"], text=True).split('\n')[0]
                 print(f"    ({version})")
                 return True
-            except Exception:
+            except Exception as e:  # noqa: BLE001
                 print("    [!] Warning: Could not execute rclone version.")
+                print(f"    Error: {e}")
                 return False
         else:
             print("[!] ERROR: 'rclone' not found in system PATH. Please install it from rclone.org.")
@@ -414,7 +415,7 @@ class DiagnosticUtil:
             temp_file_path = Path(tmp_file.name)
             if temp_file_path.exists():
                 os.unlink(temp_file_path)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
 
             self.logger.warning(f"Failed to delete local temp file {temp_file_name}: {e}")
 

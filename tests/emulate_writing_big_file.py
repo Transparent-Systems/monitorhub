@@ -56,7 +56,7 @@ def emulate_writing_big_file(
         print(f"Total bytes written: {total_bytes_written / (1024 * 1024):.2f} MB")
         print(f"Final file size: {os.path.getsize(filepath) / (1024 * 1024):.2f} MB")
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         print(f"An error occurred during file emulation: {e}")
     finally:
         # The 'with open(...)' block ensures the file is closed automatically

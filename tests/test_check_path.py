@@ -9,6 +9,7 @@ if str(project_root) not in sys.path:
 
 from app.utils.path_filter import is_excluded
 
+
 class TestCheckPathIsExcluded(unittest.TestCase):
 
     def test_no_exclude_patterns(self):

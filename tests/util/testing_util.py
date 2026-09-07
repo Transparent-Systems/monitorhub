@@ -51,11 +51,6 @@ def create_big_file(
     # Ensure the directory exists
     os.makedirs(path, exist_ok=True)
 
-    # print(f"Emulating writing to: {filepath}")
-    # print(f"Duration: {write_duration_seconds} seconds")
-    # print(f"Write interval: {write_interval_seconds} seconds")
-    # print(f"Chunk size: {chunk_size_bytes / 1024:.1f} KB per write")
-
     start_time = time.time()
     total_bytes_written = 0
     data_chunk = b"A" * chunk_size_bytes  # A simple repeating chunk for consistency
@@ -71,13 +66,12 @@ def create_big_file(
                 #     f"  Written {chunk_size_bytes / 1024:.1f} KB. Total: {total_bytes_written / (1024 * 1024):.2f} MB. Current size: {os.path.getsize(file_path) / (1024 * 1024):.2f} MB"
                 # )
                 time.sleep(write_interval_seconds)
-
-        # print(f"\nFinished writing to {filepath}.")
-        # print(f"Total bytes written: {total_bytes_written / (1024 * 1024):.2f} MB")
-        # print(f"Final file size: {os.path.getsize(filepath) / (1024 * 1024):.2f} MB")
-
-    except Exception as e:
-        print(f"An error occurred during file emulation: {e}")
+    except KeyboardInterrupt:
+        print("File writing interrupted by user.")
+    except OSError as e:
+        print(f"IOError occurred during file emulation: {e}")
+    except Exception as e: # noqa: BLE001
+        print(f"An unexpected error occurred during file emulation: {e}")
     finally:
         # The 'with open(...)' block ensures the file is closed automatically
         # print(f"File handle for {filepath} is now closed (if it was opened).")
@@ -104,7 +98,7 @@ def delete_test_data(path: str | Path, files: list[str]) -> Path:
                     file_path.unlink()
                 else:
                     shutil.rmtree(path=file_path)
-        except Exception:
+        except FileNotFoundError:
             continue
 
     return last_path

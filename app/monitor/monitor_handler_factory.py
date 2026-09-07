@@ -4,6 +4,7 @@ from typing import Any
 from app.monitor.monitor_handler import MonitorHandler
 from app.monitor.monitor_handler_registry import MonitorHandlerRegistry
 
+
 class MonitorHandlerFactory:
     """
     Factory for creating a MonitorHandler subclass based on monitor_type.

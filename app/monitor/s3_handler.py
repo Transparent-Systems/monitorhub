@@ -125,7 +125,7 @@ class S3Handler(RemoteHandler):
             for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
                 if 'Contents' in page:
                     objects.extend(page['Contents'])
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             self.logger.error(f"Error listing objects: {e}")
         return objects
 
@@ -163,7 +163,7 @@ class S3Handler(RemoteHandler):
             self.logger.debug(f"Check if path exists: s3://{bucket}/{key}")
             self.client.head_object(Bucket=bucket, Key=key)
             return (0, "")
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             self.logger.debug(f"Path does not exist: s3://{bucket}/{key}")
             return (1, str(e))
 
@@ -211,7 +211,7 @@ class S3Handler(RemoteHandler):
             self.logger.debug(f"Uploading {monitor_path} to s3://{bucket}/{key}")
             self.client.upload_file(monitor_path, bucket, key, ExtraArgs=extra_args, Config=self.transfer_config)
             return (0, "")
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             self.logger.error(f"Error uploading file {monitor_path}: {e}")
             return (1, str(e))
 
@@ -314,7 +314,7 @@ class S3Handler(RemoteHandler):
         errors = []
         try:
             objects = self._list_objects(bucket, prefix)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             self.logger.error(f"Error listing objects for restore: {e}")
             return (1, str(e))
 
@@ -343,7 +343,7 @@ class S3Handler(RemoteHandler):
                     str(local_path),
                     Config=self.transfer_config,
                 )
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 self.logger.error(f"Error restoring s3://{bucket}/{key}: {e}")
                 errors.append(str(e))
 
@@ -361,7 +361,7 @@ class S3Handler(RemoteHandler):
             self.logger.debug(f"Deleting s3://{bucket}/{key}")
             self.client.delete_object(Bucket=bucket, Key=key)
             return (0, "")
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             self.logger.error(f"Error deleting file {remote_path}: {e}")
             return (1, str(e))
 
@@ -391,7 +391,7 @@ class S3Handler(RemoteHandler):
                 self.client.delete_objects(Bucket=bucket, Delete={'Objects': batch})
             
             return (0, "")
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             self.logger.error(f"Error deleting folder {remote_path}: {e}")
             return (1, str(e))
 
@@ -442,6 +442,6 @@ class S3Handler(RemoteHandler):
 
             return (0, "")
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             self.logger.error(f"Error during sync cleanup: {e}")
             return (1, str(e))

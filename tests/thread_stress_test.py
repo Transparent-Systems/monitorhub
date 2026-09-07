@@ -6,6 +6,7 @@ import threading
 
 from app.utils.sqlite_handler import SQLiteHandler
 
+
 def test_sqlite_handler_thread_safety():
 
     logging.basicConfig(level=logging.WARNING)
@@ -18,9 +19,9 @@ def test_sqlite_handler_thread_safety():
         try:
             for i in range(20):
                 h.update_monitor_status(monitor_id=5, status='running')
-                m = h.get_monitor(monitor_id=5)
+                _ = h.get_monitor(monitor_id=5)
                 _ = h.get_monitors()
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             errs.append((n, str(e)))
 
     threads = [threading.Thread(target=work, args=(i,)) for i in range(4)]

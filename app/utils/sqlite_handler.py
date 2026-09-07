@@ -1,13 +1,12 @@
-import datetime
 import json
 import logging
 import sqlite3
 import threading
 from pathlib import Path
-from typing import Any
+from typing import Any, Self
 
-from app.utils.constants import DB_FILENAME
 from app.cli.schema_versioning import SCHEMA_MIGRATIONS, compare_versions, parse_version
+from app.utils.constants import DB_FILENAME
 
 
 class _LockedConnection:
@@ -99,7 +98,7 @@ class SQLiteHandler:
         if self.connection:
             self.connection.close()
 
-    def __enter__(self) -> "SQLiteHandler":
+    def __enter__(self) -> Self:
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
@@ -413,7 +412,7 @@ class SQLiteHandler:
             row = self.cursor.fetchone()
             if row:
                 return self._row_to_monitor(row)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             self.logger.error(f"Error fetching monitor: {e}")
         return {}
 
@@ -436,7 +435,7 @@ class SQLiteHandler:
             )
             self.connection.commit()
             return True
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             self.connection.rollback()
             self.logger.error(f"Error updating monitor status: {e}")
             return False
@@ -452,7 +451,7 @@ class SQLiteHandler:
             )
             self.connection.commit()
             return True
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             self.connection.rollback()
             self.logger.error(f"Error updating monitor pid: {e}")
             return False
@@ -468,7 +467,7 @@ class SQLiteHandler:
             )
             self.connection.commit()
             return True
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             self.connection.rollback()
             self.logger.error(f"Error updating monitor last_run: {e}")
             return False
@@ -484,7 +483,7 @@ class SQLiteHandler:
             )
             self.connection.commit()
             return True
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             self.connection.rollback()
             self.logger.error(f"Error updating monitor last_heartbeat: {e}")
             return False
@@ -501,7 +500,7 @@ class SQLiteHandler:
             )
             self.connection.commit()
             return True
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             self.connection.rollback()
             self.logger.error(f"Error updating monitor config: {e}")
             return False
@@ -515,7 +514,7 @@ class SQLiteHandler:
             self.cursor.execute("DELETE FROM monitors WHERE id = :id", {"id": monitor_id})
             self.connection.commit()
             return True
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             self.connection.rollback()
             self.logger.error(f"Error occurred while deleting monitor: {e}")
             return False
@@ -561,7 +560,7 @@ class SQLiteHandler:
             row = self.cursor.fetchone()
             if row:
                 return self._row_to_profile(row)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             self.logger.error(f"Error occurred while fetching profile: {e}")
         return {}
 
@@ -604,7 +603,7 @@ class SQLiteHandler:
                 raise ValueError("Either profile_id or profile_name must be provided")
             self.connection.commit()
             return True
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             self.connection.rollback()
             self.logger.error(f"Error deleting profile: {e}")
             return False
@@ -628,7 +627,7 @@ class SQLiteHandler:
             """, {"monitor_id": monitor_id, "profile_id": profile_id})
             self.connection.commit()
             return True
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             self.connection.rollback()
             self.logger.error(f"Error mapping monitor {monitor_id} to profile {profile_id}: {e}")
             return False
@@ -644,7 +643,7 @@ class SQLiteHandler:
             """, {"monitor_id": monitor_id, "profile_id": profile_id})
             self.connection.commit()
             return True
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             self.connection.rollback()
             self.logger.error(f"Error unmapping monitor {monitor_id} from profile {profile_id}: {e}")
             return False

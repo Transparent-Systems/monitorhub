@@ -22,13 +22,20 @@ project_root = Path(__file__).resolve().parents[1]  # One level up to reach the 
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-from app.utils import reference_data
-from app.utils.constants import MONITOR_STATUS_RUNNING, MONITOR_STATUS_STOP, MONITOR_STATUS_STOPPED, MONITOR_TYPE_INSTANT
+from app.cli.monitor_commands import MonitorCommands
+from app.cli.prompt_service import PromptService
 from app.monitor.rclone_handler import RcloneHandler
 from app.monitor.remote_handler import RemoteHandler
 from app.monitor.s3_handler import S3Handler
-from app.utils.sqlite_handler import SQLiteHandler
+from app.utils import reference_data
+from app.utils.constants import (
+    MONITOR_STATUS_RUNNING,
+    MONITOR_STATUS_STOP,
+    MONITOR_STATUS_STOPPED,
+    MONITOR_TYPE_INSTANT,
+)
 from app.utils.logger_setup import setup_logging
+from app.utils.sqlite_handler import SQLiteHandler
 
 from tests.util.testing_util import (
     create_big_file,
@@ -36,8 +43,6 @@ from tests.util.testing_util import (
     delete_test_data,
 )
 
-from app.cli.prompt_service import PromptService
-from app.cli.monitor_commands import MonitorCommands
 
 class CheckPath:
     """
@@ -489,9 +494,7 @@ if __name__ == "__main__":
         loader = unittest.TestLoader()
         full_suite = loader.loadTestsFromTestCase(TestMonitorHubIntegration)
 
-        if args.test_cases is None:
-            suite = full_suite
-        elif len(args.test_cases) == 1 and (args.test_cases[0] == "" or args.test_cases[0] == "*"):
+        if args.test_cases is None or len(args.test_cases) == 1 and (args.test_cases[0] == "" or args.test_cases[0] == "*"):
             suite = full_suite
         elif args.test_cases:    # Flatten arguments in case they were passed as a single string with spaces
             patterns = []

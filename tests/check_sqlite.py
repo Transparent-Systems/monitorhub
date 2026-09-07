@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Check SQLite version and capabilities.
 Save as: check_sqlite.py
@@ -51,11 +50,10 @@ def main():
             try:
                 conn.execute("SELECT json_valid('invalid json')").fetchone()
                 print("   JSON validation: works with invalid too")
-            except:
-                print("   JSON validation: not completely supported")
-                
-        except sqlite3.OperationalError:
-            print("❌ JSON validation: not available")
+            except Exception as e:  # noqa: BLE001
+                print(f"❌ JSON validation: invalid JSON correctly raised error: {e}")
+        except sqlite3.OperationalError as e:
+            print(f"❌ JSON validation test error: {e}")                
         
         # Test JSONB support (SQLite 3.45.0+)
         try:
@@ -92,7 +90,7 @@ def main():
         if sqlite3.sqlite_version >= '3.45.0':
             print(f"   ✅ JSONB binary format is available (version {sqlite3.sqlite_version})")
         
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         print(f"❌ Error testing JSON: {e}")
     
     print("\n" + "=" * 60)

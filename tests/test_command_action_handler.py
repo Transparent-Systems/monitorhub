@@ -138,8 +138,10 @@ class TestCommandActionHandler(unittest.TestCase):
             stdout = ""
             stderr = "boom"
 
-        with patch("subprocess.run", return_value=DummyResult()) as run_mock:
-            with patch.object(handler.logger, "warning") as warn_mock:
+        with (
+            patch("subprocess.run", return_value=DummyResult()) as run_mock,
+            patch.object(handler.logger, "warning") as warn_mock
+            ):
                 handler._run_command(
                     {"event_name": "created", "src_path": "/tmp/x", "profile_name": "P", "monitor_name": "M"}
                 )
@@ -154,8 +156,10 @@ class TestCommandActionHandler(unittest.TestCase):
             stdout = ""
             stderr = ""
 
-        with patch("subprocess.run", return_value=DummyResult()) as run_mock:
-            with patch.object(handler.logger, "warning") as warn_mock:
+        with (
+            patch("subprocess.run", return_value=DummyResult()) as run_mock,
+            patch.object(handler.logger, "warning") as warn_mock
+            ):
                 handler._run_command(
                     {"event_name": "created", "src_path": "/tmp/x", "profile_name": "P", "monitor_name": "M"}
                 )

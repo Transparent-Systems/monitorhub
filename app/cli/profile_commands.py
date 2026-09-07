@@ -268,7 +268,7 @@ class ProfileCommands:
                 self.prompt.print("Command timed out after 30s")
                 self.prompt.print("Test failed")
                 return False
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 self.prompt.print(f"Error executing command: {e}")
                 self.prompt.print("Test failed")
                 return False

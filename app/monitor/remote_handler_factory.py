@@ -1,5 +1,6 @@
 import logging
 from collections.abc import Callable
+from typing import ClassVar
 
 from app.monitor.rclone_handler import RcloneHandler
 from app.monitor.remote_handler import RemoteHandler
@@ -21,7 +22,7 @@ class RemoteHandlerFactory:
     ``a/reference_data.py``.
     """
 
-    _handlers: dict[str, Callable[..., RemoteHandler]] = {}
+    _handlers: ClassVar[dict[str, Callable[..., RemoteHandler]]] = {}
 
     @classmethod
     def register(cls, profile_type: str, handler_factory: Callable[..., RemoteHandler]) -> None:

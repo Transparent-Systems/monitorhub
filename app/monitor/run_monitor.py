@@ -194,7 +194,7 @@ def run_monitor_main(argv=None) -> int:
                     )
                     do_shutdown("stop command received via DB poll")
                     break
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 logger.warning(f"Status poller error for monitor_id={monitor_id}: {e}")
 
     poller_thread = threading.Thread(target=status_poller, daemon=True, name="status-poller")

@@ -9,8 +9,9 @@ import logging
 import tempfile
 import unittest
 
-from tests.base_test_class import BaseTestClass
 from app.utils.sqlite_handler import SQLiteHandler
+
+from tests.base_test_class import BaseTestClass
 
 
 class TestSqliteHandler(BaseTestClass):
@@ -48,7 +49,7 @@ class TestSqliteHandler(BaseTestClass):
         try:
             self.sqlite_handler.create_schema()
             self.logger.info("Schema created successfully.")
-        except Exception as e:
+        except Exception as e: # noqa: BLE001
             self.fail(f"create_schema raised an exception: {e}")
 
     def test_01_01_is_initialized_true_after_create_schema(self):
@@ -115,14 +116,14 @@ class TestSqliteHandler(BaseTestClass):
         try:
             self.sqlite_handler.update_schema_version(version="2.0.0")
             self.logger.info("Scheme version updated successfully.")
-        except Exception as e:
+        except Exception as e: # noqa: BLE001
             self.fail(f"update_schema_version raised an exception: {e}")
 
     def test_03_get_current_schema_version(self):
         try:
             current_version = self.sqlite_handler.get_current_schema_version()
             self.logger.info(f"Current scheme version: {current_version}")
-        except Exception as e:
+        except Exception as e: # noqa: BLE001
             self.fail(f"get_current_schema_version raised an exception: {e}")
 
     def test_03_01_get_schema_versions(self):
@@ -130,7 +131,7 @@ class TestSqliteHandler(BaseTestClass):
             schema_versions = self.sqlite_handler.get_schema_versions()
             for schema_version in schema_versions:
                 self.logger.info(f"Schema version: {schema_version}")
-        except Exception as e:
+        except Exception as e: # noqa: BLE001
             self.fail(f"get_current_schema_version raised an exception: {e}")
 
     def test_04_add_monitor(self):
@@ -151,7 +152,7 @@ class TestSqliteHandler(BaseTestClass):
 
             TestSqliteHandler.profile_id = monitor_id
             self.logger.info(f"Monitor added with ID: {monitor_id}")
-        except Exception as e:
+        except Exception as e: # noqa: BLE001
             self.fail(f"add_monitor raised an exception: {e}")
 
     def test_05_get_monitor(self):
@@ -165,7 +166,7 @@ class TestSqliteHandler(BaseTestClass):
             self.assertIsInstance(config, dict, "config should be a dictionary")
             self.assertEqual(config.get("monitor_period"), "10m", "config monitor_period value mismatch")
             self.assertEqual(config.get("test"), "value", "config test value mismatch")
-        except Exception as e:
+        except Exception as e: # noqa: BLE001
             self.fail(f"get_monitor raised an exception: {e}")
 
     def test_06_update_monitor_status(self):
@@ -174,7 +175,7 @@ class TestSqliteHandler(BaseTestClass):
             status = "stopped"
             self.sqlite_handler.update_monitor_status(monitor_id, status)
             self.logger.info(f"Monitor status updated to: {status}")
-        except Exception as e:
+        except Exception as e: # noqa: BLE001
             self.fail(f"update_monitor_status raised an exception: {e}")
     
     def test_07_update_monitor_last_run(self):
@@ -183,7 +184,7 @@ class TestSqliteHandler(BaseTestClass):
             last_run = "2023-01-01 00:00:00"
             self.sqlite_handler.update_monitor_last_run(monitor_id, last_run)
             self.logger.info(f"Monitor last run updated to: {last_run}")
-        except Exception as e:
+        except Exception as e: # noqa: BLE001
             self.fail(f"update_monitor_last_run raised an exception: {e}")
 
     def test_08_update_monitor_last_heartbeat(self):
@@ -192,7 +193,7 @@ class TestSqliteHandler(BaseTestClass):
             last_heartbeat = "2023-01-01 00:00:00"
             self.sqlite_handler.update_monitor_last_heartbeat(monitor_id, last_heartbeat)
             self.logger.info(f"Monitor last heartbeat updated to: {last_heartbeat}")
-        except Exception as e:
+        except Exception as e: # noqa: BLE001
             self.fail(f"update_monitor_last_heartbeat raised an exception: {e}")
 
     def test_09_update_monitor_config(self):
@@ -201,7 +202,7 @@ class TestSqliteHandler(BaseTestClass):
             config = {"new_config": "value"}
             self.sqlite_handler.update_monitor_config(monitor_id, config)
             self.logger.info(f"Monitor config updated to: {config}")
-        except Exception as e:
+        except Exception as e: # noqa: BLE001
             self.fail(f"update_monitor_config raised an exception: {e}")
 
 
@@ -209,7 +210,7 @@ class TestSqliteHandler(BaseTestClass):
         try:
             monitors = self.sqlite_handler.get_monitors()
             self.logger.info(f"All monitors retrieved: {monitors}")
-        except Exception as e:
+        except Exception as e: # noqa: BLE001
             self.fail(f"get_all_monitors raised an exception: {e}")
 
     def test_11_delete_monitor(self):
@@ -217,7 +218,7 @@ class TestSqliteHandler(BaseTestClass):
             monitor_id = TestSqliteHandler.profile_id
             self.sqlite_handler.delete_monitor(monitor_id)
             self.logger.info(f"Monitor deleted with ID: {monitor_id}")
-        except Exception as e:
+        except Exception as e: # noqa: BLE001
             self.fail(f"delete_monitor raised an exception: {e}")
 
     def test_20_add_profile(self):
@@ -256,7 +257,7 @@ class TestSqliteHandler(BaseTestClass):
             TestSqliteHandler.profile_id = complex_profile_id if complex_profile_id is not None else 0
             TestSqliteHandler.profile_name = "test_profile"
             self.logger.info(f"Complex profile added with ID: {complex_profile_id}")
-        except Exception as e:
+        except Exception as e: # noqa: BLE001
             self.fail(f"add_profile raised an exception: {e}")
 
     def test_21_get_profile_by_id(self):
@@ -274,7 +275,7 @@ class TestSqliteHandler(BaseTestClass):
             expected_access_token = "fake-access-token"
             access_token = token.get("access_token")
             self.assertEqual(access_token, expected_access_token, "config access_token value mismatch")
-        except Exception as e:
+        except Exception as e: # noqa: BLE001
             self.fail(f"get_profile_by_id raised an exception: {e}")
 
     def test_21_get_profile_by_name(self):
@@ -286,7 +287,7 @@ class TestSqliteHandler(BaseTestClass):
             # Now check the config is correctly deserialized
             config = profile.get("config", {})
             self.assertIsInstance(config, dict, "config should be a dictionary")
-        except Exception as e:
+        except Exception as e: # noqa: BLE001
             self.fail(f"get_profile_by_name raised an exception: {e}")
             
     def test_22_update_profile(self):
@@ -305,14 +306,14 @@ class TestSqliteHandler(BaseTestClass):
             
             )
             self.logger.info(f"Profile updated with ID: {profile_id}")
-        except Exception as e:
+        except Exception as e: # noqa: BLE001
             self.fail(f"update_profile raised an exception: {e}")
 
     def test_23_get_all_profiles(self):
         try:
             profiles = self.sqlite_handler.get_profiles()
             self.logger.info(f"All profiles retrieved: {profiles}")
-        except Exception as e:
+        except Exception as e: # noqa: BLE001
             self.fail(f"get_all_profiles raised an exception: {e}")
 
     def test_24_delete_profile(self):
@@ -320,7 +321,7 @@ class TestSqliteHandler(BaseTestClass):
             profile_id = TestSqliteHandler.profile_id
             self.sqlite_handler.delete_profile(profile_id)
             self.logger.info(f"Profile deleted with ID: {profile_id}")
-        except Exception as e:
+        except Exception as e: # noqa: BLE001
             self.fail(f"delete_profile raised an exception: {e}")
 
     def test_30_get_nonexistent_monitor(self):
@@ -329,7 +330,7 @@ class TestSqliteHandler(BaseTestClass):
             monitor = self.sqlite_handler.get_monitor(monitor_id)
             self.logger.info(f"Non-existent monitor retrieved: {monitor}")
             self.assertEqual(monitor, {}, "Expected empty dict for non-existent monitor")
-        except Exception as e:
+        except Exception as e: # noqa: BLE001
             self.fail(f"get_monitor raised an exception for non-existent monitor: {e}")
 
     def test_31_get_nonexistent_profile_id(self):
@@ -338,7 +339,7 @@ class TestSqliteHandler(BaseTestClass):
             profile = self.sqlite_handler.get_profile(profile_id)
             self.logger.info(f"Non-existent profile retrieved: {profile}")
             self.assertEqual(profile, {}, "Expected empty dict for non-existent profile")
-        except Exception as e:
+        except Exception as e: # noqa: BLE001
             self.fail(f"get_profile raised an exception for non-existent profile: {e}")     
 
     def test_32_update_nonexistent_monitor(self):
@@ -347,7 +348,7 @@ class TestSqliteHandler(BaseTestClass):
             status = "stopped"
             self.sqlite_handler.update_monitor_status(monitor_id, status)
             self.logger.info(f"Attempted to update non-existent monitor with ID: {monitor_id}")
-        except Exception as e:
+        except Exception as e: # noqa: BLE001
             self.fail(f"update_monitor_status raised an exception for non-existent monitor: {e}")
 
     def test_33_delete_nonexistent_monitor(self):
@@ -355,7 +356,7 @@ class TestSqliteHandler(BaseTestClass):
             monitor_id = 9999
             self.sqlite_handler.delete_monitor(monitor_id)
             self.logger.info(f"Attempted to delete non-existent monitor with ID: {monitor_id}")
-        except Exception as e:
+        except Exception as e: # noqa: BLE001
             self.fail(f"delete_monitor raised an exception for non-existent monitor: {e}")  
     
     def test_34_delete_nonexistent_profile(self):
@@ -363,7 +364,7 @@ class TestSqliteHandler(BaseTestClass):
             profile_id = 9999
             self.sqlite_handler.delete_profile(profile_id)
             self.logger.info(f"Attempted to delete non-existent profile with ID: {profile_id}")
-        except Exception as e:
+        except Exception as e: # noqa: BLE001
             self.fail(f"delete_profile raised an exception for non-existent profile: {e}")
 
     def test_40_map_monitor_to_profile(self):
@@ -378,7 +379,7 @@ class TestSqliteHandler(BaseTestClass):
                 status="active"
             )
             self.logger.info(f"Monitor added with ID: {monitor_id}")
-        except Exception as e:
+        except Exception as e: # noqa: BLE001   # noqa: BLE001
             self.fail(f"add_monitor raised an exception: {e}")
 
         try:
@@ -393,7 +394,7 @@ class TestSqliteHandler(BaseTestClass):
                     }
             )
             self.logger.info(f"Profile added with ID: {profile_id}")
-        except Exception as e:
+        except Exception as e: # noqa: BLE001   # noqa: BLE001
             self.fail(f"add_profile raised an exception: {e}")
 
         try:
@@ -402,7 +403,7 @@ class TestSqliteHandler(BaseTestClass):
 
             self.sqlite_handler.add_monitor_profile_map(monitor_id, profile_id)
             self.logger.info(f"Mapped monitor ID {monitor_id} to profile ID {profile_id}")
-        except Exception as e:
+        except Exception as e: # noqa: BLE001   # noqa: BLE001
             self.fail(f"map_monitor_to_profile raised an exception: {e}")
 
     def test_41_get_profiles_for_monitor(self):
@@ -414,7 +415,7 @@ class TestSqliteHandler(BaseTestClass):
             monitor_id = monitors[0]["id"]
             profiles = self.sqlite_handler.get_profiles_for_monitor(monitor_id)
             self.logger.info(f"Profiles mapped to monitor ID {monitor_id}: {profiles}")
-        except Exception as e:
+        except Exception as e: # noqa: BLE001
             self.fail(f"get_monitor_profiles raised an exception: {e}")
 
     def test_42_get_monitors_for_profile(self):
@@ -426,7 +427,7 @@ class TestSqliteHandler(BaseTestClass):
             profile_id = profiles[0]["id"]
             monitors = self.sqlite_handler.get_monitors_for_profile(profile_id)
             self.logger.info(f"Monitors mapped to profile ID {profile_id}: {monitors}")
-        except Exception as e:
+        except Exception as e: # noqa: BLE001
             self.fail(f"get_monitors_for_profile raised an exception: {e}")
             
     def test_43_unmap_monitor_from_profile(self):
@@ -435,7 +436,7 @@ class TestSqliteHandler(BaseTestClass):
             profile_id = 1
             self.sqlite_handler.delete_monitor_profile_map(monitor_id, profile_id)
             self.logger.info(f"Unmapped monitor ID {monitor_id} from profile ID {profile_id}")
-        except Exception as e:
+        except Exception as e: # noqa: BLE001
             self.fail(f"unmap_monitor_from_profile raised an exception: {e}")
 
     def test_50_cleanup(self):
@@ -454,7 +455,7 @@ class TestSqliteHandler(BaseTestClass):
                 self.sqlite_handler.delete_profile(profile["id"])
                 self.logger.info(f"Deleted profile with ID: {profile['id']}")
 
-        except Exception as e:
+        except Exception as e: # noqa: BLE001
             self.fail(f"Cleanup raised an exception: {e}")
 
 

@@ -2,6 +2,7 @@ import logging
 from abc import ABC, abstractmethod
 from typing import Any
 
+
 class MonitorHandler(ABC):
     """
     Abstract base class and factory for monitor handlers.

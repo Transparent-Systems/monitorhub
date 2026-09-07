@@ -30,7 +30,7 @@ class AppConfig:
             except yaml.YAMLError as e:
                 self.logger.warning(f"Failed to parse YAML configuration file at {self.config_path}: {e}")
                 self._data = {}
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 self.logger.warning(f"Failed to read configuration file at {self.config_path}: {e}")
                 self._data = {}
         else:

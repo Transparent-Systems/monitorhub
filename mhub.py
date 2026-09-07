@@ -18,8 +18,8 @@ Notes:
 import argparse
 import sys
 
-from app.cli.commands import build_commands
 from app.cli.app_config import AppConfig
+from app.cli.commands import build_commands
 from app.utils.logger_setup import setup_logging
 
 # Data-driven mapping of (command, subcommand) to the command object attribute

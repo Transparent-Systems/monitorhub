@@ -1,6 +1,7 @@
 from collections.abc import Callable
-from typing import Any
+from typing import ClassVar
 
+from app.monitor.monitor_handler import MonitorHandler
 from app.monitor.scheduled_monitor_handler import ScheduledMonitorHandler
 from app.utils.constants import (
     MONITOR_TYPE_BACKUP,
@@ -8,7 +9,6 @@ from app.utils.constants import (
     MONITOR_TYPE_RESTORE,
 )
 
-from app.monitor.monitor_handler import MonitorHandler
 
 class MonitorHandlerRegistry:
     """
@@ -20,7 +20,7 @@ class MonitorHandlerRegistry:
     from app.monitor.instant_monitor_handler import InstantMonitorHandler
     from app.monitor.scheduled_monitor_handler import ScheduledMonitorHandler
 
-    _handlers: dict[str, Callable[..., MonitorHandler]] = {}
+    _handlers: ClassVar[dict[str, Callable[..., MonitorHandler]]] = {}
     _handlers[MONITOR_TYPE_INSTANT] = InstantMonitorHandler
     _handlers[MONITOR_TYPE_BACKUP] = lambda monitor, profiles, log_config: ScheduledMonitorHandler(
          monitor, profiles, log_config, direction=MONITOR_TYPE_BACKUP
