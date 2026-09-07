@@ -148,27 +148,21 @@ It handles S3 compatible cloud storage providers, like:
 - Alibaba Cloud OSS
   
 The S3Handler is a builtin file handler. It eliminates the need for Rclone when using S3 compatible cloud storage.  
-This makes it much easier to use MonitorHub without having to depend on Rclone.  
-For small files the S3Handler is between 2 - 3 times as fast as rclone.  
-For files of about 1Mb the data transfer is a fraction faster.  
-MonitorHub will use S3Handler if the remote profile is in monitorhub.conf  
-You can import the rclone S3 profiles with command:  
+A builtin S3 handler makes it easier to use MonitorHub.
+You can import the rclone profiles with command:  
 python mhub.py profile import
 
-Any remote profile not in monitorhub.conf will use Rclone.
-
 Over time we will add native handlers for common cloud storage providers and other storage types.  
-This will reduce dependency on Rclone, and simplifies deployment and configuration. 
 
 ### Rclone
 
-Rclone is the swiss knife of copying file to and from cloud storage.
-Any remote profile not in monitorhub.conf will use Rclone.
+Rclone is the swiss knife of copying file to and from cloud storage. 
+Any remote profile not implemented in this application will be hndled by a call to Rclone.
 
 
 ## Acknowledgments
 
-This project was developed with the assistance of Google Gemini and Deepseek V4 Pro.
+This project was developed with the assistance of several AI agents, mainly Deepseek V4 Pro and Google Gemini.
 Later on in the project I started using OpenRouter which makes it easy to try out different models.
 
 
@@ -213,7 +207,7 @@ details before execution:
 Example:
 
 ```bash
-notify-send "File {event_name}" "{src_path}"
+notify-send "Testing command of monitor = {monitor_name}, profile = {profile_name}, event = {event_name}, source path = {src_path}"
 ```
 
 ### Safety
@@ -254,7 +248,7 @@ I wanted the solve the many issues I experienced with common Windows desktop sol
 - Up to 100% CPU usage (what was it doing?)
 - Tool made PC hang if several explorer windows were open
 
-Initially I used rclone, whihc is the swiss knife of (cloud) file transfer.
+Initially I used rclone, which is the swiss knife of (cloud) file transfer.
 I scheduled an rclone job every few hours and this was just fine for my purposes.  
 Until one day I wanted to upload my security videos to the cloud as well.  
 It was critical to upload those videos instantly and build a simple PowerShell script to do the job.  
