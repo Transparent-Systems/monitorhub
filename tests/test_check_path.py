@@ -7,8 +7,7 @@ project_root = Path(__file__).resolve().parents[1]  # One level up to reach the 
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-from app.monitor.instant_monitor_handler import is_excluded
-
+from app.utils.path_filter import is_excluded
 
 class TestCheckPathIsExcluded(unittest.TestCase):
 
