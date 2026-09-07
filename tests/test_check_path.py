@@ -1,4 +1,11 @@
+import sys
 import unittest
+from pathlib import Path
+
+# Add project root to sys.path to allow imports from app package
+project_root = Path(__file__).resolve().parents[1]  # One level up to reach the project root
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
 
 from app.monitor.instant_monitor_handler import is_excluded
 
