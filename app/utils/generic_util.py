@@ -8,10 +8,9 @@ from typing import Any
 
 class BoundedLRUDict(OrderedDict):
     """
-    A dictionary with a maximum size that evicts the least recently used (oldest)
-    items when its capacity is reached.
+    A dictionary with a maximum size that evicts the least recently accessed
+    item when its capacity is reached.
     """
-
     def __init__(self, maxsize: int = 1000, *args: Any, **kwargs: Any) -> None:
         if maxsize < 1:
             raise ValueError("maxsize must be at least 1")
