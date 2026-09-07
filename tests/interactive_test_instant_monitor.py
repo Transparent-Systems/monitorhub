@@ -328,7 +328,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--log-file-name",
         type=str,
-        default="monitor_integration_test.log",
+        default="interactive_test_instant_monitor.log",
         help="Log file name."
     )
     parser.add_argument(

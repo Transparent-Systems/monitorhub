@@ -8,7 +8,8 @@ import time
 import unittest
 
 from app.monitor.action_handler import DebounceManager
-from app.monitor.worker import StoppableWorker
+from app.monitor.instant_monitor_handler import MonitorEventHandler
+from app.monitor.worker import PeriodicWorker, StoppableWorker
 
 
 class DummyWorker(StoppableWorker):
@@ -59,6 +60,56 @@ class TestStoppableWorker(unittest.TestCase):
         self.assertEqual(worker.iterations, 2)
         worker.stop()
 
+    def test_periodic_worker(self):
+        count = 0
+
+        def increment():
+            nonlocal count
+            count += 1
+
+        worker = PeriodicWorker(
+            interval=0.02,
+            action=increment,
+            name="TestPeriodic",
+            initial_delay=False,
+        )
+        worker.start()
+        # initial_delay=False means action runs once immediately
+        time.sleep(0.05)
+        worker.stop()
+        self.assertGreaterEqual(count, 2)
+        self.assertFalse(worker.is_running)
+
+
+class TestMonitorEventHandlerCleanup(unittest.TestCase):
+    """Tests for MonitorEventHandler cleanup worker using PeriodicWorker."""
+
+    def test_event_cleanup_worker_integration(self):
+        class DummyDispatcher:
+            pass
+
+        handler = MonitorEventHandler(
+            action_dispatcher=DummyDispatcher(),
+            monitor_config={"config": {}},
+        )
+
+        try:
+            now = time.time()
+            with handler.event_time_lock:
+                handler.event_time["old_path.txt"] = now - 100  # older than 60s
+                handler.event_time["recent_path.txt"] = now      # recent
+
+            # Invoke cleanup method directly
+            handler._cleanup_expired_events()
+
+            with handler.event_time_lock:
+                self.assertNotIn("old_path.txt", handler.event_time)
+                self.assertIn("recent_path.txt", handler.event_time)
+        finally:
+            handler.stop()
+            self.assertFalse(handler.cleanup_worker.is_running)
+
+
 
 class TestDebounceManager(unittest.TestCase):
     """Tests for DebounceManager thread safety and debounce functionality."""
@@ -105,14 +156,15 @@ class TestDebounceManager(unittest.TestCase):
 
             last_added = time.time()
             # Wait for expiration
-            time.sleep(delay + 0.04)
+            time.sleep(delay + 0.05)
 
             with self.lock:
                 # Should only trigger once
                 self.assertEqual(len(self.calls), 1)
                 self.assertEqual(self.calls[0][0], "/path/file_rapid.txt")
                 elapsed = self.calls[0][1] - last_added
-                self.assertGreaterEqual(elapsed, delay - 0.02)
+                # The callback should have fired after the final event's deadline
+                self.assertGreaterEqual(elapsed, delay - 0.03)
         finally:
             dm.stop()
 

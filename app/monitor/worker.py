@@ -95,3 +95,36 @@ class StoppableWorker(ABC):
     @abstractmethod
     def run(self) -> None:
         """Main worker loop to be implemented by subclasses."""
+
+
+class PeriodicWorker(StoppableWorker):
+    """
+    A worker that runs a callback periodically at a specified interval
+    until stopped.
+
+    Provides an initial delay option (default True: wait before first execution)
+    and uses wait_stop() for responsive shutdown without busy-waiting.
+    """
+
+    def __init__(
+        self,
+        interval: float,
+        action,
+        name: str | None = None,
+        logger: logging.Logger | None = None,
+        initial_delay: bool = True,
+    ):
+        super().__init__(name=name or self.__class__.__name__, logger=logger)
+        self.interval = interval
+        self.action = action
+        self.initial_delay = initial_delay
+
+    def run(self) -> None:
+        if not self.initial_delay and not self.is_stopped:
+            self.action()
+
+        while not self.is_stopped:
+            if self.wait_stop(self.interval):
+                break
+            self.action()
+

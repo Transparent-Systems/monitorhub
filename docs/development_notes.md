@@ -12,3 +12,10 @@ Log file monitorhub.log shows:
 
 The reason is that the VS Code debuggers stops all processes started during the debug session.
 This can be confusing initially, but this is hwo the debugger works.
+
+## Run all non-interactive tests
+
+```bash
+pytest -k "not interactive"
+```
+

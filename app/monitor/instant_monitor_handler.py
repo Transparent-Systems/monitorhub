@@ -29,6 +29,7 @@ from app.monitor.action_handler import (
     ActionHandlerFactory,
 )
 from app.monitor.monitor_handler import MonitorHandler
+from app.monitor.worker import PeriodicWorker
 from app.utils.constants import MONITOR_TYPE_INSTANT
 from app.utils.path_filter import is_excluded
 
@@ -54,33 +55,35 @@ class MonitorEventHandler(FileSystemEventHandler):
         self.logger = logger or logging.getLogger(__name__)
         self.event_time: dict[str, float] = {}  # Dictionary to store event times
         self.event_time_lock = threading.Lock()
-        self.stop_event = threading.Event()
-        self.cleanup_thread = threading.Thread(target=self._cleanup_worker, daemon=True)
-        self.cleanup_thread.start()
+        self.cleanup_worker = PeriodicWorker(
+            interval=60.0,
+            action=self._cleanup_expired_events,
+            name="MonitorEventCleanupWorker",
+            logger=self.logger,
+            initial_delay=True,
+        )
+        self.cleanup_worker.start()
         self.logger.debug("MonitorEventHandler initialized")
 
     def stop(self):
         """Stops the cleanup worker thread."""
-        self.stop_event.set()
-        if self.cleanup_thread.is_alive():
-            self.cleanup_thread.join(timeout=2)
+        self.cleanup_worker.stop()
 
-    def _cleanup_worker(self):
-        """Periodically removes event times older than 1 minute."""
-        while not self.stop_event.is_set():
-            # wait() returns True if the flag is set (stop requested),
-            # and False if the timeout expires (time to run cleanup).
-            if self.stop_event.wait(60):
-                break
+    def _cleanup_expired_events(self):
+        """
+        Periodically removes event times older than 1 minute.
+        `_cleanup_expired_events` was added solely as a garbage collector
+        so that diagnostic dictionary event_time (`{path: last_modified_timestamp}`) wouldn't grow unbounded in memory over days/months if thousands of distinct files are touched.
+        It does not affect any business logic.
+        """
+        now = time.time()
+        cutoff = now - 60
 
-            now = time.time()
-            cutoff = now - 60
-
-            with self.event_time_lock:
-                keys_to_remove = [k for k, v in self.event_time.items() if v < cutoff]
-                for k in keys_to_remove:
-                    self.logger.debug(f"Removing event time for {k}")
-                    del self.event_time[k]
+        with self.event_time_lock:
+            keys_to_remove = [k for k, v in self.event_time.items() if v < cutoff]
+            for k in keys_to_remove:
+                self.logger.debug(f"Removing event time for {k}")
+                del self.event_time[k]
 
     def on_any_event(self, event):
         """
