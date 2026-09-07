@@ -26,7 +26,8 @@ project_root = Path(__file__).resolve().parents[2]  # Two levels up to reach the
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-from app.monitor.monitor_handler import MonitorHandlerFactory
+from app.monitor.monitor_handler import MonitorHandler
+from app.monitor.monitor_handler_factory import MonitorHandlerFactory
 from app.utils.logger_setup import setup_logging
 from app.utils.sqlite_handler import SQLiteHandler
 
@@ -114,7 +115,7 @@ def run_monitor_main(argv=None) -> int:
     # Create and start the monitor handler based on its monitor_type
     monitor_type = monitor.get("monitor_type", "")
     try:
-        monitor_handler = MonitorHandlerFactory.create(
+        monitor_handler: MonitorHandler = MonitorHandlerFactory.create(
             monitor_type=monitor_type,
             monitor=monitor,
             profiles=profiles,
