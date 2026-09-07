@@ -9,6 +9,7 @@ from dataclasses import dataclass
 
 from app.monitor.remote_handler import RemoteHandler
 from app.monitor.remote_handler_factory import RemoteHandlerFactory
+from app.monitor.worker import StoppableWorker
 from app.utils import reference_data
 from app.utils.generic_util import convert_to_seconds
 
@@ -31,7 +32,7 @@ class ActionHandler(ABC):
     def handle_action(self, context: ActionContext):
         pass
 
-class DebounceManager:
+class DebounceManager(StoppableWorker):
     """
     Manages delayed execution of events to prevent duplicates (debouncing)
     and handle file stability waiting.
@@ -42,34 +43,20 @@ class DebounceManager:
 
     The worker thread blocks on a threading.Condition and is woken when a
     new event is added, an event is cancelled, or a shutdown is requested.
-    This avoids busy-waiting/polling.
+    This avoids busy-waiting/polling. Inherits unified lifecycle management
+    from StoppableWorker.
     """
     def __init__(self, callback, logger: logging.Logger, delay: float = 2.0):
+        super().__init__(name="DebounceManager", logger=logger)
         self.callback = callback
-        self.logger = logger
         self.delay = delay
         self.pending_files: dict[str, float] = {}  # {file_path: execute_timestamp}
         self.condition = threading.Condition()
-        self.running = False
-        self.thread: threading.Thread | None = None
 
-    def start(self):
+    def _on_stop(self) -> None:
+        """Wakes up the worker waiting on condition when stop is requested."""
         with self.condition:
-            if self.running:
-                return
-            self.running = True
-
-        self.thread = threading.Thread(target=self._worker, daemon=True)
-        self.thread.start()
-        self.logger.info("DebounceManager started.")
-
-    def stop(self):
-        with self.condition:
-            self.running = False
             self.condition.notify_all()
-        if self.thread and self.thread.is_alive():
-            self.thread.join(timeout=2)
-        self.logger.info("DebounceManager stopped.")
 
     def add_event(self, file_path: str):
         """
@@ -105,13 +92,12 @@ class DebounceManager:
             del self.pending_files[path]
         return triggered
 
-    def _worker(self):
-        while True:
+    def run(self):
+        """Main debounce loop running in a background thread."""
+        while not self.is_stopped:
             triggered_files: list[str] = []
             with self.condition:
-                while True:
-                    if not self.running:
-                        return
+                while not self.is_stopped:
                     now = time.time()
                     triggered_files = self._collect_expired(now)
                     if triggered_files:
