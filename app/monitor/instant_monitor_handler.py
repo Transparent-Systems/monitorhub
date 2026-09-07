@@ -29,8 +29,8 @@ from app.monitor.action_handler import (
     ActionHandlerFactory,
 )
 from app.monitor.monitor_handler import MonitorHandler
-from app.monitor.worker import PeriodicWorker
 from app.utils.constants import MONITOR_TYPE_INSTANT
+from app.utils.generic_util import BoundedLRUDict
 from app.utils.path_filter import is_excluded
 
 
@@ -53,37 +53,12 @@ class MonitorEventHandler(FileSystemEventHandler):
         self.action_dispatcher = action_dispatcher
         self.exclude_patterns = (monitor_config.get("config") or {}).get("exclude_patterns", [])
         self.logger = logger or logging.getLogger(__name__)
-        self.event_time: dict[str, float] = {}  # Dictionary to store event times
+        self.event_time: BoundedLRUDict = BoundedLRUDict(maxsize=1000)
         self.event_time_lock = threading.Lock()
-        self.cleanup_worker = PeriodicWorker(
-            interval=60.0,
-            action=self._cleanup_expired_events,
-            name="MonitorEventCleanupWorker",
-            logger=self.logger,
-            initial_delay=True,
-        )
-        self.cleanup_worker.start()
         self.logger.debug("MonitorEventHandler initialized")
 
     def stop(self):
-        """Stops the cleanup worker thread."""
-        self.cleanup_worker.stop()
-
-    def _cleanup_expired_events(self):
-        """
-        Periodically removes event times older than 1 minute.
-        `_cleanup_expired_events` was added solely as a garbage collector
-        so that diagnostic dictionary event_time (`{path: last_modified_timestamp}`) wouldn't grow unbounded in memory over days/months if thousands of distinct files are touched.
-        It does not affect any business logic.
-        """
-        now = time.time()
-        cutoff = now - 60
-
-        with self.event_time_lock:
-            keys_to_remove = [k for k, v in self.event_time.items() if v < cutoff]
-            for k in keys_to_remove:
-                self.logger.debug(f"Removing event time for {k}")
-                del self.event_time[k]
+        """Stops event handler resources (if any)."""
 
     def on_any_event(self, event):
         """
@@ -162,10 +137,8 @@ class MonitorEventHandler(FileSystemEventHandler):
 
         now = time.time()
         with self.event_time_lock:
-            if event.src_path in self.event_time:
-                time_diff = now - self.event_time[event.src_path]
-            else:
-                time_diff = 0
+            prev_time = self.event_time.get(event.src_path)
+            time_diff = (now - prev_time) if prev_time is not None else 0
             self.event_time[event.src_path] = now
         # Convert now into hh:mm:ss
         time_diff_ms = int(time_diff * 1000)    # Convert to milliseconds

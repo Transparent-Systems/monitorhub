@@ -1,6 +1,29 @@
 """
-This script contains utility static methods
+This script contains utility static methods and data structures.
 """
+
+from collections import OrderedDict
+from typing import Any
+
+
+class BoundedLRUDict(OrderedDict):
+    """
+    A dictionary with a maximum size that evicts the least recently used (oldest)
+    items when its capacity is reached.
+    """
+
+    def __init__(self, maxsize: int = 1000, *args: Any, **kwargs: Any) -> None:
+        if maxsize < 1:
+            raise ValueError("maxsize must be at least 1")
+        self.maxsize = maxsize
+        super().__init__(*args, **kwargs)
+
+    def __setitem__(self, key: Any, value: Any) -> None:
+        super().__setitem__(key, value)
+        self.move_to_end(key)
+        if len(self) > self.maxsize:
+            self.popitem(last=False)
+
 
 def convert_to_seconds(time_str: str | int | None) -> int:
     """
