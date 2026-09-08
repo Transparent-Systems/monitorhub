@@ -4,7 +4,12 @@ Unit tests for app.utils.generic_util.
 
 import unittest
 
-from app.utils.generic_util import BoundedLRUDict, convert_to_seconds, find_by_id
+from app.utils.generic_util import (
+    BoundedLRUDict,
+    convert_to_seconds,
+    find_by_id,
+    is_interval_valid,
+)
 
 
 class TestBoundedLRUDict(unittest.TestCase):
@@ -54,6 +59,38 @@ class TestGenericUtilFunctions(unittest.TestCase):
         self.assertEqual(find_by_id(items, 2), items[1])
         self.assertIsNone(find_by_id(items, 99))
         self.assertIsNone(find_by_id([], 1))
+
+    def test_is_interval_valid(self):
+        # Valid non-negative intervals (zero, plain digits, or digits with s/m/h/d)
+        self.assertTrue(is_interval_valid("0"))
+        self.assertTrue(is_interval_valid("0s"))
+        self.assertTrue(is_interval_valid("0m"))
+        self.assertTrue(is_interval_valid("0h"))
+        self.assertTrue(is_interval_valid("0d"))
+        self.assertTrue(is_interval_valid("10"))
+        self.assertTrue(is_interval_valid("15s"))
+        self.assertTrue(is_interval_valid("5m"))
+        self.assertTrue(is_interval_valid("2h"))
+        self.assertTrue(is_interval_valid("1d"))
+        self.assertTrue(is_interval_valid(" 10m "))
+        self.assertTrue(is_interval_valid("10M"))
+        self.assertTrue(is_interval_valid("00"))
+
+        # Invalid negative intervals
+        self.assertFalse(is_interval_valid("-1"))
+        self.assertFalse(is_interval_valid("-10s"))
+        self.assertFalse(is_interval_valid("-5m"))
+        self.assertFalse(is_interval_valid("-0"))
+
+        # Invalid strings and types
+        self.assertFalse(is_interval_valid(""))
+        self.assertFalse(is_interval_valid("   "))
+        self.assertFalse(is_interval_valid("abc"))
+        self.assertFalse(is_interval_valid("10x"))
+        self.assertFalse(is_interval_valid("1.5h"))
+        self.assertFalse(is_interval_valid("s"))
+        self.assertFalse(is_interval_valid(None))
+        self.assertFalse(is_interval_valid(10))
 
 
 if __name__ == "__main__":

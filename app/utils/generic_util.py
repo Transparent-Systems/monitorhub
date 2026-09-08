@@ -3,6 +3,7 @@ This script contains utility static methods and data structures.
 """
 
 from collections import OrderedDict
+import re
 from typing import Any
 
 
@@ -22,6 +23,13 @@ class BoundedLRUDict(OrderedDict):
         self.move_to_end(key)
         if len(self) > self.maxsize:
             self.popitem(last=False)
+
+
+def is_interval_valid(interval: str | None) -> bool:
+    """Check if interval string is a valid non-negative interval (e.g. 0, 10, 10s, 10m, 10h, 10d)."""
+    if not isinstance(interval, str):
+        return False
+    return bool(re.fullmatch(r"\d+[smhd]?", interval.strip().lower()))
 
 
 def convert_to_seconds(time_str: str | int | None) -> int:

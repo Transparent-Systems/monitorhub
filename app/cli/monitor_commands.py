@@ -18,7 +18,7 @@ from app.utils.constants import (
     MONITOR_TYPE_INSTANT,
     MONITOR_TYPE_RESTORE,
 )
-from app.utils.generic_util import find_by_id
+from app.utils.generic_util import find_by_id, is_interval_valid
 from app.utils.sqlite_handler import SQLiteHandler
 
 STALE_HEARTBEAT_SECONDS = 60
@@ -61,15 +61,6 @@ class MonitorCommands:
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
-
-    def _is_interval_valid(self, interval: str) -> bool:
-        """Check if interval string is valid (e.g. 10, 10m, 10h, 10d)."""
-        if interval.isdigit():
-            return True
-        if len(interval) > 1:
-            if interval[-1].lower() in ("m", "h", "d") and interval[:-1].isdigit():
-                return True
-        return False
 
     @staticmethod
     def _heartbeat_age_seconds(heartbeat: str | None) -> float | None:
@@ -201,7 +192,7 @@ class MonitorCommands:
                     self.prompt.print("Interval cannot be just spaces")
                     continue
 
-            if not self._is_interval_valid(input_interval):
+            if not is_interval_valid(input_interval):
                 self.prompt.print(f"Invalid interval: {input_interval}. Please try again.")
                 continue
 

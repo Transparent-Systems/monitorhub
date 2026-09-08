@@ -9,7 +9,7 @@ from app.monitor.rclone_handler import RcloneHandler
 from app.monitor.s3_factory import S3Factory
 from app.utils import reference_data
 from app.utils.diagnostic_util import DiagnosticUtil
-from app.utils.generic_util import find_by_id
+from app.utils.generic_util import find_by_id, is_interval_valid
 from app.utils.sqlite_handler import SQLiteHandler
 
 
@@ -165,7 +165,7 @@ class ProfileCommands:
         # Validate cooldown
         cooldown = config.get("command_cooldown", "0s")
         self.prompt.print(f"Cooldown: {cooldown}")
-        if not self._is_interval_valid(cooldown):
+        if not is_interval_valid(cooldown):
             errors.append(f"Invalid command_cooldown: {cooldown!r}")
 
         # Validate events
@@ -565,17 +565,6 @@ class ProfileCommands:
         self.prompt.print("Please test profile with one of the following commands:")
         self.prompt.print("   Command: mhub profile test")
 
-    def _is_interval_valid(self, interval: str) -> bool:
-        """Check if interval string is valid (e.g. 10, 10m, 10h, 10d)."""
-        if interval.isdigit():
-            return True
-        if len(interval) > 1:
-            unit = interval[-1].lower()
-            value = interval[:-1]
-            if unit in ("s", "m", "h", "d") and value.isdigit():
-                return True
-        return False
-
     def _prompt_command_config(self, existing: dict | None = None) -> dict:
         """Prompt the user for a shell command configuration stored on a profile."""
 
@@ -647,7 +636,7 @@ class ProfileCommands:
             if input_cooldown == "":
                 cooldown = current_cooldown if current_command else "0s"
                 break
-            if not self._is_interval_valid(input_cooldown):
+            if not is_interval_valid(input_cooldown):
                 self.prompt.print(f"Invalid cooldown: {input_cooldown}. Please try again.")
                 continue
             cooldown = input_cooldown
@@ -661,7 +650,7 @@ class ProfileCommands:
             if input_timeout == "":
                 timeout = current_timeout if current_timeout else "10s"
                 break
-            if not self._is_interval_valid(input_timeout):
+            if not is_interval_valid(input_timeout):
                 self.prompt.print(f"Invalid timeout: {input_timeout}. Please try again.")
                 continue
             timeout = input_timeout
