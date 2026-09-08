@@ -201,7 +201,7 @@ class ScheduledMonitorHandler(MonitorHandler):
                     )
                     continue
                 # Fire the handler directly; CommandActionHandler runs the
-                # command on its own thread, so this never blocks the loop.
+                # command asynchronously on its own thread without blocking.
                 action_context = ActionContext(
                     event_type="timer",
                     src_path=monitor_path,
