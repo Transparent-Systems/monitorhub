@@ -354,6 +354,10 @@ class RcloneHandler(RemoteHandler):
         The direction is reversed compared to copy_folder: remote_path is
         the source and the destination is base_monitor_path.
         """
+
+        # Prefix the profile name first if it's not already present in the remote_path
+        if self.profile_name and not remote_path.startswith(self.profile_name + ":"):
+            remote_path = f"{self.profile_name}:{remote_path}"
         return self.run_command(
             ["copy", remote_path, str(self.base_monitor_path)] + self._exclude_args()
         )
