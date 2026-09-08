@@ -10,7 +10,6 @@ Backup and restore differ only in the direction of the file flow:
 The `direction` parameter selects between them, so the same class handles both.
 """
 
-import threading
 import time
 
 from app.monitor.action_handler import (
@@ -19,9 +18,22 @@ from app.monitor.action_handler import (
 )
 from app.monitor.monitor_handler import MonitorHandler
 from app.monitor.remote_handler_factory import RemoteHandlerFactory
+from app.monitor.worker import PeriodicWorker, StoppableWorker
 from app.utils import reference_data
 from app.utils.constants import MONITOR_TYPE_BACKUP, MONITOR_TYPE_RESTORE
 from app.utils.generic_util import convert_to_seconds
+
+
+class _OneOffWorker(StoppableWorker):
+    """Worker for executing a one-off task on a stoppable background thread."""
+
+    def __init__(self, action, name: str | None = None, logger=None):
+        super().__init__(name=name, logger=logger)
+        self.action = action
+
+    def run(self) -> None:
+        if not self.is_stopped:
+            self.action()
 
 
 class ScheduledMonitorHandler(MonitorHandler):
@@ -46,30 +58,62 @@ class ScheduledMonitorHandler(MonitorHandler):
             "exclude_patterns", []
         )
         self.monitor_name = monitor.get("name")
-        self.worker_thread = None
-        self.stop_event = threading.Event()
+        self.worker: StoppableWorker | None = None
         self.command_handlers = self._build_command_handlers()
 
     def start(self) -> bool:
         """
         Starts the backup/restore task.
         """
-        self.stop_event.clear()
-        self.worker_thread = threading.Thread(
-            target=self._run_loop,
-            daemon=True,
-            name=f"Scheduled-{self.monitor_name}",
+        monitor_config = self.monitor.get("config", {})
+        if not monitor_config:
+            self.logger.debug(
+                f"{self.direction.capitalize()} for monitor '{self.monitor_name}' "
+                f"not configured. {self.direction.capitalize()} is disabled."
+            )
+            return True
+
+        raw_interval = monitor_config.get("interval", "0")
+        interval_seconds = convert_to_seconds(raw_interval)
+        self.logger.debug(
+            f"[{self.monitor_name}] {self.direction.capitalize()} interval is "
+            f"{interval_seconds} seconds"
         )
-        self.worker_thread.start()
+
+        worker_name = f"Scheduled-{self.monitor_name}"
+
+        if interval_seconds == 0:
+            self.logger.debug(
+                f"[{self.monitor_name}] Performing one-off {self.direction}."
+            )
+            self.worker = _OneOffWorker(
+                action=lambda: self._perform_operation(reason="one-off (interval 0)"),
+                name=worker_name,
+                logger=self.logger,
+            )
+        else:
+            self.logger.debug(
+                f"[{self.monitor_name}] {self.direction.capitalize()} scheduled "
+                f"every {interval_seconds} seconds."
+            )
+            self.worker = PeriodicWorker(
+                interval=interval_seconds,
+                action=lambda: self._perform_operation(reason="scheduled"),
+                name=worker_name,
+                logger=self.logger,
+                initial_delay=False,
+            )
+
+        self.worker.start()
         return True
 
     def stop(self) -> None:
         """
         Stops the backup/restore task.
         """
-        self.stop_event.set()
-        if self.worker_thread and self.worker_thread.is_alive():
-            self.worker_thread.join(timeout=2)
+        if self.worker is not None:
+            self.worker.stop(timeout=2.0)
+            self.worker = None
 
     def _build_command_handlers(self) -> dict:
         """
@@ -156,44 +200,3 @@ class ScheduledMonitorHandler(MonitorHandler):
                 command_handler.handle_action(action_context)
             else:
                 self.logger.warning(f"Unknown profile category: {category}")
-            
-
-    def _run_loop(self):
-        """
-        The main loop for the backup/restore task.
-        """
-        monitor_config = self.monitor.get("config", {})
-        if not monitor_config:
-            self.logger.debug(
-                f"{self.direction.capitalize()} for monitor '{self.monitor_name}' "
-                f"not configured. {self.direction.capitalize()} is disabled."
-            )
-            return
-
-        raw_interval = monitor_config.get("interval", "0")
-        interval_seconds = convert_to_seconds(raw_interval)
-        self.logger.debug(
-            f"[{self.monitor_name}] {self.direction.capitalize()} interval is "
-            f"{interval_seconds} seconds"
-        )
-
-        if interval_seconds == 0:
-            self.logger.debug(
-                f"[{self.monitor_name}] Performing one-off {self.direction}."
-            )
-            self._perform_operation(reason="one-off (interval 0)")
-            return
-
-        # Initial operation before loop
-        self.logger.debug(f"[{self.monitor_name}] Performing initial {self.direction}.")
-        self._perform_operation(reason=f"initial {self.direction}")
-
-        self.logger.debug(
-            f"[{self.monitor_name}] {self.direction.capitalize()} scheduled "
-            f"every {interval_seconds} seconds."
-        )
-        while not self.stop_event.is_set():
-            # Wait for interval OR stop event
-            if self.stop_event.wait(interval_seconds):
-                break
-            self._perform_operation(reason="scheduled")
