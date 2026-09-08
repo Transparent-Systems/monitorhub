@@ -102,6 +102,55 @@ class TestScheduledMonitorHandler(unittest.TestCase):
             handler.stop()
             self.assertIsNone(handler.worker)
 
+    def test_start_invokes_on_complete_callback_when_interval_zero(self):
+        monitor = dict(self.mock_monitor)
+        monitor["config"] = {"interval": "0"}
+
+        handler = ScheduledMonitorHandler(
+            monitor=monitor,
+            profiles=self.mock_profiles,
+            log_config=self.mock_log_config,
+            direction=MONITOR_TYPE_BACKUP,
+        )
+
+        completed_reason = []
+
+        def on_complete(reason):
+            completed_reason.append(reason)
+
+        with patch.object(handler, "_perform_operation") as mock_op:
+            started = handler.start(on_complete=on_complete)
+            self.assertTrue(started)
+
+            time.sleep(0.05)
+            mock_op.assert_called_once_with(reason="one-off (interval 0)")
+            self.assertEqual(completed_reason, ["one-off task finished"])
+
+            handler.stop()
+
+    def test_start_does_not_invoke_on_complete_when_interval_positive(self):
+        handler = ScheduledMonitorHandler(
+            monitor=self.mock_monitor,
+            profiles=self.mock_profiles,
+            log_config=self.mock_log_config,
+            direction=MONITOR_TYPE_BACKUP,
+        )
+
+        completed_reason = []
+
+        def on_complete(reason):
+            completed_reason.append(reason)
+
+        with patch.object(handler, "_perform_operation"):
+            started = handler.start(on_complete=on_complete)
+            self.assertTrue(started)
+
+            time.sleep(0.05)
+            self.assertEqual(completed_reason, [])
+
+            handler.stop()
+            self.assertEqual(completed_reason, [])
+
     def test_stop_idempotent_when_not_started(self):
         handler = ScheduledMonitorHandler(
             monitor=self.mock_monitor,

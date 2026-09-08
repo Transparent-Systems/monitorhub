@@ -236,7 +236,7 @@ class InstantMonitorHandler(MonitorHandler):
 
         self.logger.debug("InstantMonitorHandler: exiting __init__")
 
-    def start(self) -> bool:
+    def start(self, on_complete=None) -> bool:
         """
         Starts monitoring the specified folder for changes.
 
@@ -244,6 +244,8 @@ class InstantMonitorHandler(MonitorHandler):
         the observer to monitor the `monitor_path` recursively, filtering out
         `DirModifiedEvent` to reduce noise.
         """
+        if on_complete is not None:
+            self._on_complete = on_complete
 
         # If no remote profiles are specified, log an error and exit.
         if not self.profiles:

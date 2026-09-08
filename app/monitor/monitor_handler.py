@@ -1,5 +1,6 @@
 import logging
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from typing import Any
 
 
@@ -21,10 +22,23 @@ class MonitorHandler(ABC):
         self.profiles = profiles or []
         self.log_config = log_config or {}
         self.logger = logging.getLogger(self.__class__.__name__)
+        self._on_complete: Callable[[str], None] | None = None
+
+    def notify_complete(self, reason: str = "completed") -> None:
+        """
+        Notify the registered completion callback that the monitor has naturally finished.
+        Subclasses should call this when their task lifecycle has concluded.
+        """
+        if self._on_complete is not None:
+            self._on_complete(reason)
 
     @abstractmethod
-    def start(self) -> bool:
-        """Start the monitor and return True on success."""
+    def start(self, on_complete: Callable[[str], None] | None = None) -> bool:
+        """
+        Start the monitor and return True on success.
+
+        :param on_complete: Optional callback invoked when the monitor naturally completes its task.
+        """
 
     @abstractmethod
     def stop(self) -> None:

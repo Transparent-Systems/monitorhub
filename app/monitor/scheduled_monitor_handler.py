@@ -27,13 +27,18 @@ from app.utils.generic_util import convert_to_seconds
 class _OneOffWorker(StoppableWorker):
     """Worker for executing a one-off task on a stoppable background thread."""
 
-    def __init__(self, action, name: str | None = None, logger=None):
+    def __init__(self, action, on_complete=None, name: str | None = None, logger=None):
         super().__init__(name=name, logger=logger)
         self.action = action
+        self.on_complete = on_complete
 
     def run(self) -> None:
-        if not self.is_stopped:
-            self.action()
+        try:
+            if not self.is_stopped:
+                self.action()
+        finally:
+            if not self.is_stopped and self.on_complete:
+                self.on_complete("one-off task finished")
 
 
 class ScheduledMonitorHandler(MonitorHandler):
@@ -61,10 +66,15 @@ class ScheduledMonitorHandler(MonitorHandler):
         self.worker: StoppableWorker | None = None
         self.command_handlers = self._build_command_handlers()
 
-    def start(self) -> bool:
+    def start(self, on_complete=None) -> bool:
         """
         Starts the backup/restore task.
+
+        :param on_complete: Optional callback invoked when a one-off task finishes.
         """
+        if on_complete is not None:
+            self._on_complete = on_complete
+
         monitor_config = self.monitor.get("config", {})
         if not monitor_config:
             self.logger.debug(
@@ -88,6 +98,7 @@ class ScheduledMonitorHandler(MonitorHandler):
             )
             self.worker = _OneOffWorker(
                 action=lambda: self._perform_operation(reason="one-off (interval 0)"),
+                on_complete=self.notify_complete,
                 name=worker_name,
                 logger=self.logger,
             )

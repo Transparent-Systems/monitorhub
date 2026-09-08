@@ -130,13 +130,6 @@ def run_monitor_main(argv=None) -> int:
         sqlite_handler.close()
         sys.exit(1)
 
-    if not monitor_handler.start():
-        logger.error(f"Failed to start monitor '{monitor.get('name')}' (id={monitor_id}). Exiting.")
-        sqlite_handler.update_monitor_status(monitor_id=monitor_id, status="stopped")
-        sqlite_handler.update_monitor_pid(monitor_id=monitor_id, pid=0)
-        sqlite_handler.close()
-        sys.exit(1)
-
     # Event used to signal the poller thread to stop
     stop_event = threading.Event()
 
@@ -166,10 +159,17 @@ def run_monitor_main(argv=None) -> int:
         sqlite_handler.close()
 
         # sys.exit() only stops the current thread. When do_shutdown is called
-        # from the background status-poller thread, it would leave the main
-        # thread blocked in signal.pause(). Use os._exit() to terminate the
-        # whole process after cleanup, from any thread.
+        # from the background status-poller thread or completion callback, it
+        # would leave the main thread blocked in signal.pause(). Use os._exit()
+        # to terminate the whole process after cleanup, from any thread.
         os._exit(0)
+
+    if not monitor_handler.start(on_complete=do_shutdown):
+        logger.error(f"Failed to start monitor '{monitor.get('name')}' (id={monitor_id}). Exiting.")
+        sqlite_handler.update_monitor_status(monitor_id=monitor_id, status="stopped")
+        sqlite_handler.update_monitor_pid(monitor_id=monitor_id, pid=0)
+        sqlite_handler.close()
+        sys.exit(1)
 
     def status_poller():
         """Background thread: periodically checks DB for a 'stop' command."""
