@@ -61,6 +61,27 @@ class TestStoppableWorker(unittest.TestCase):
         self.assertEqual(worker.iterations, 2)
         worker.stop()
 
+    def test_worker_stop_from_own_thread(self):
+        """Verify calling stop() from inside the worker thread does not raise RuntimeError."""
+        worker = None
+
+        class SelfStoppingWorker(StoppableWorker):
+            def __init__(self):
+                super().__init__(name="SelfStoppingWorker")
+                self.stopped_cleanly = False
+
+            def run(self):
+                # Call stop() from inside its own thread
+                self.stop()
+                self.stopped_cleanly = True
+
+        worker = SelfStoppingWorker()
+        worker.start()
+        time.sleep(0.05)
+        self.assertTrue(worker.is_stopped)
+        self.assertTrue(worker.stopped_cleanly)
+        worker.stop()  # External stop call should also be safe
+
     def test_periodic_worker(self):
         count = 0
 

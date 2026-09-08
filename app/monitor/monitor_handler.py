@@ -1,4 +1,5 @@
 import logging
+import threading
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from typing import Any
@@ -28,9 +29,17 @@ class MonitorHandler(ABC):
         """
         Notify the registered completion callback that the monitor has naturally finished.
         Subclasses should call this when their task lifecycle has concluded.
+        The callback is dispatched asynchronously on a separate daemon thread to decouple
+        completion handling (which may invoke stop() or join()) from the worker thread.
         """
         if self._on_complete is not None:
-            self._on_complete(reason)
+            callback = self._on_complete
+            threading.Thread(
+                target=callback,
+                args=(reason,),
+                name=f"{self.__class__.__name__}-completion",
+                daemon=True,
+            ).start()
 
     @abstractmethod
     def start(self, on_complete: Callable[[str], None] | None = None) -> bool:

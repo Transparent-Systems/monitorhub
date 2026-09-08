@@ -61,10 +61,15 @@ class StoppableWorker(ABC):
         self._on_stop()
 
         if self.thread and self.thread.is_alive():
-            self.thread.join(timeout=timeout)
-            if self.thread.is_alive():
-                self.logger.warning(
-                    f"{self.name} thread did not terminate within {timeout}s timeout."
+            if threading.current_thread() != self.thread:
+                self.thread.join(timeout=timeout)
+                if self.thread.is_alive():
+                    self.logger.warning(
+                        f"{self.name} thread did not terminate within {timeout}s timeout."
+                    )
+            else:
+                self.logger.debug(
+                    f"{self.name} stop() called from within its own worker thread; skipping self-join."
                 )
 
         self.logger.info(f"{self.name} stopped.")
