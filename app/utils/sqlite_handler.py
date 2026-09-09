@@ -2,6 +2,8 @@ import json
 import logging
 import sqlite3
 import threading
+from collections.abc import Generator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Self
 
@@ -9,94 +11,61 @@ from app.cli.schema_versioning import SCHEMA_MIGRATIONS, compare_versions, parse
 from app.utils.constants import DB_FILENAME
 
 
-class _LockedConnection:
-    """
-    Thread-safe wrapper around a sqlite3.Connection.
-
-    check_same_thread=False allows the underlying connection to be shared
-    across threads. The shared RLock ensures only one operation runs at a
-    time, preventing interleaved cursor/commit/rollback use across threads.
-    """
-
-    def __init__(self, connection: sqlite3.Connection, lock: threading.RLock) -> None:
-        self._connection = connection
-        self._lock = lock
-
-    def commit(self) -> None:
-        with self._lock:
-            self._connection.commit()
-
-    def rollback(self) -> None:
-        with self._lock:
-            self._connection.rollback()
-
-    def close(self) -> None:
-        with self._lock:
-            self._connection.close()
-
-
-class _LockedCursor:
-    """
-    Thread-safe wrapper around a sqlite3.Cursor.
-
-    Delegates the operations used by SQLiteHandler to the underlying cursor
-    while holding the shared RLock, so existing `self.cursor.execute(...)`
-    call sites remain valid and thread-safe.
-    """
-
-    def __init__(self, cursor: sqlite3.Cursor, lock: threading.RLock) -> None:
-        self._cursor = cursor
-        self._lock = lock
-
-    def execute(self, query: str, params: Any = None):
-        with self._lock:
-            if params is None:
-                return self._cursor.execute(query)
-            return self._cursor.execute(query, params)
-
-    def executemany(self, query: str, seq_of_params: Any):
-        with self._lock:
-            return self._cursor.executemany(query, seq_of_params)
-
-    def fetchone(self) -> Any:
-        with self._lock:
-            return self._cursor.fetchone()
-
-    def fetchall(self) -> list[Any]:
-        with self._lock:
-            return self._cursor.fetchall()
-
-    @property
-    def lastrowid(self) -> int | None:
-        with self._lock:
-            return self._cursor.lastrowid
-
-    @property
-    def rowcount(self) -> int:
-        with self._lock:
-            return self._cursor.rowcount
-
-
 class SQLiteHandler:
     def __init__(self, logger: logging.Logger, db_dir: str) -> None:
         self.logger = logger
         self.db_path = Path(db_dir) / DB_FILENAME
         self._lock = threading.RLock()
-        
+
         # Ensure parent directory exists
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
 
-        raw_connection = sqlite3.connect(self.db_path, check_same_thread=False)
-        raw_connection.row_factory = sqlite3.Row
+        # Open standard connection with busy timeout for multi-process safety
+        self.connection: sqlite3.Connection = sqlite3.connect(
+            self.db_path,
+            timeout=30.0,
+            check_same_thread=False,
+        )
+        self.connection.row_factory = sqlite3.Row
         # Enable Foreign Key support in SQLite
-        raw_connection.execute("PRAGMA foreign_keys = ON;")
+        self.connection.execute("PRAGMA foreign_keys = ON;")
+        # Enable Write-Ahead Logging (WAL) for concurrent read/write across processes
+        self.connection.execute("PRAGMA journal_mode = WAL;")
+        self.connection.execute("PRAGMA busy_timeout = 30000;")
 
-        self.connection = _LockedConnection(raw_connection, self._lock)
-        self.cursor = _LockedCursor(raw_connection.cursor(), self._lock)
+    @property
+    def cursor(self) -> sqlite3.Cursor:
+        """
+        Return a standard sqlite3.Cursor on the connection.
+
+        Provided for backward compatibility with direct cursor usages
+        (e.g., test setup/teardown).
+        """
+        return self.connection.cursor()
+
+    @contextmanager
+    def transaction(self) -> Generator[sqlite3.Cursor, None, None]:
+        """
+        Context manager for thread-safe atomic transactions.
+
+        Acquires the handler's RLock, yields a standard cursor, commits on
+        successful completion, or rolls back if an unhandled exception is raised.
+        """
+        with self._lock:
+            cur = self.connection.cursor()
+            try:
+                yield cur
+                self.connection.commit()
+            except Exception:
+                self.connection.rollback()
+                raise
+            finally:
+                cur.close()
 
     def close(self) -> None:
-        if self.connection:
-            self.connection.close()
+        with self._lock:
+            if self.connection:
+                self.connection.close()
 
     def __enter__(self) -> Self:
         return self
@@ -111,10 +80,15 @@ class SQLiteHandler:
         The database is considered initialised when the 'monitors' table
         exists in sqlite_master.
         """
-        self.cursor.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='monitors'"
-        )
-        return self.cursor.fetchone() is not None
+        with self._lock:
+            cur = self.connection.cursor()
+            try:
+                cur.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name='monitors'"
+                )
+                return cur.fetchone() is not None
+            finally:
+                cur.close()
 
     def drop_schema(self) -> None:
         """
@@ -124,65 +98,65 @@ class SQLiteHandler:
         scratch. Table names are hard-coded, so no untrusted input reaches the
         SQL statements.
         """
-        for table in (
-            "monitor_profile_map",
-            "monitors",
-            "profiles",
-            "schema_version",
-        ):
-            self.cursor.execute(f"DROP TABLE IF EXISTS {table}")
-        self.connection.commit()
+        with self.transaction() as cur:
+            for table in (
+                "monitor_profile_map",
+                "monitors",
+                "profiles",
+                "schema_version",
+            ):
+                cur.execute(f"DROP TABLE IF EXISTS {table}")
 
     def create_schema(self) -> None:
         """
         Create the database schema if it doesn't exist
         """
-        self.cursor.execute("""
-            CREATE TABLE IF NOT EXISTS schema_version (
-                version TEXT PRIMARY KEY,
-                description TEXT,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
+        with self.transaction() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS schema_version (
+                    version TEXT PRIMARY KEY,
+                    description TEXT,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
 
-        self.cursor.execute("""
-            CREATE TABLE IF NOT EXISTS monitors (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL UNIQUE,
-                monitor_path TEXT NOT NULL,
-                remote_path TEXT,
-                monitor_type TEXT NOT NULL,
-                config JSON,
-                status TEXT,
-                pid INTEGER DEFAULT 0,
-                last_run DATETIME,
-                last_heartbeat DATETIME,
-                last_modified DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS monitors (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL UNIQUE,
+                    monitor_path TEXT NOT NULL,
+                    remote_path TEXT,
+                    monitor_type TEXT NOT NULL,
+                    config JSON,
+                    status TEXT,
+                    pid INTEGER DEFAULT 0,
+                    last_run DATETIME,
+                    last_heartbeat DATETIME,
+                    last_modified DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
 
-        self.cursor.execute("""
-            CREATE TABLE IF NOT EXISTS profiles (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL,
-                profile_type TEXT NOT NULL,
-                config JSON,
-                date_created DATETIME DEFAULT CURRENT_TIMESTAMP,
-                last_modified DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS profiles (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    profile_type TEXT NOT NULL,
+                    config JSON,
+                    date_created DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    last_modified DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
 
-        self.cursor.execute("""
-            CREATE TABLE IF NOT EXISTS monitor_profile_map (
-                monitor_id INTEGER NOT NULL,
-                profile_id INTEGER NOT NULL,
-                PRIMARY KEY (monitor_id, profile_id),
-                FOREIGN KEY (monitor_id) REFERENCES monitors (id) ON DELETE CASCADE,
-                FOREIGN KEY (profile_id) REFERENCES profiles (id) ON DELETE CASCADE
-            )
-        """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS monitor_profile_map (
+                    monitor_id INTEGER NOT NULL,
+                    profile_id INTEGER NOT NULL,
+                    PRIMARY KEY (monitor_id, profile_id),
+                    FOREIGN KEY (monitor_id) REFERENCES monitors (id) ON DELETE CASCADE,
+                    FOREIGN KEY (profile_id) REFERENCES profiles (id) ON DELETE CASCADE
+                )
+            """)
 
-        self.connection.commit()
         self.apply_pending_migrations()
 
     def _record_schema_version(self, version: str, description: str | None) -> None:
@@ -192,13 +166,18 @@ class SQLiteHandler:
         Rows are never overwritten, so the table remains an audit trail of every
         schema version that has been applied to this database.
         """
-        self.cursor.execute(
-            """
-            INSERT OR IGNORE INTO schema_version (version, description)
-            VALUES (:version, :description)
-            """,
-            {"version": version, "description": description},
-        )
+        with self._lock:
+            cur = self.connection.cursor()
+            try:
+                cur.execute(
+                    """
+                    INSERT OR IGNORE INTO schema_version (version, description)
+                    VALUES (:version, :description)
+                    """,
+                    {"version": version, "description": description},
+                )
+            finally:
+                cur.close()
 
     def apply_pending_migrations(self) -> list[str]:
         """
@@ -208,30 +187,31 @@ class SQLiteHandler:
         ascending version order and recorded in the ``schema_version`` table.
         Returns the list of schema versions that were applied (possibly empty).
         """
-        current = self.get_current_schema_version()
-        applied: list[str] = []
+        with self._lock:
+            current = self.get_current_schema_version()
+            applied: list[str] = []
 
-        # Apply migrations in ascending version order regardless of how
-        # ``SCHEMA_MIGRATIONS`` is ordered, so a mis-ordered registry entry can
-        # never cause a migration to be skipped or applied out of sequence.
-        ordered = sorted(SCHEMA_MIGRATIONS, key=lambda entry: parse_version(entry[0]))
-        for version, description, apply_fn in ordered:
-            if current and compare_versions(version, current) <= 0:
-                continue
+            # Apply migrations in ascending version order regardless of how
+            # ``SCHEMA_MIGRATIONS`` is ordered, so a mis-ordered registry entry can
+            # never cause a migration to be skipped or applied out of sequence.
+            ordered = sorted(SCHEMA_MIGRATIONS, key=lambda entry: parse_version(entry[0]))
+            for version, description, apply_fn in ordered:
+                if current and compare_versions(version, current) <= 0:
+                    continue
 
-            try:
-                if apply_fn is not None:
-                    apply_fn(self)
-                self._record_schema_version(version, description)
-                self.connection.commit()
-                applied.append(version)
-                self.logger.info(f"Applied schema migration {version}: {description}")
-            except Exception as exc:
-                self.connection.rollback()
-                self.logger.error(f"Schema migration {version} failed: {exc}")
-                raise
+                try:
+                    if apply_fn is not None:
+                        apply_fn(self)
+                    self._record_schema_version(version, description)
+                    self.connection.commit()
+                    applied.append(version)
+                    self.logger.info(f"Applied schema migration {version}: {description}")
+                except Exception as exc:
+                    self.connection.rollback()
+                    self.logger.error(f"Schema migration {version} failed: {exc}")
+                    raise
 
-        return applied
+            return applied
 
     def update_schema_version(self, version: str, description: str | None = None) -> None:
         """
@@ -240,8 +220,9 @@ class SQLiteHandler:
         Kept as a thin wrapper for callers that want to record a version
         directly; prefer :meth:`apply_pending_migrations` for normal upgrades.
         """
-        self._record_schema_version(version, description)
-        self.connection.commit()
+        with self._lock:
+            self._record_schema_version(version, description)
+            self.connection.commit()
 
     def get_current_schema_version(self) -> str:
         """
@@ -251,16 +232,21 @@ class SQLiteHandler:
         ``"10.0.0"``), not lexicographically. Returns ``""`` when the database
         does not yet have a ``schema_version`` table.
         """
-        self.cursor.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='schema_version'"
-        )
-        if self.cursor.fetchone() is None:
-            return ""
-        self.cursor.execute("SELECT version FROM schema_version")
-        rows = self.cursor.fetchall()
-        if not rows:
-            return ""
-        return max((row["version"] for row in rows), key=parse_version)
+        with self._lock:
+            cur = self.connection.cursor()
+            try:
+                cur.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name='schema_version'"
+                )
+                if cur.fetchone() is None:
+                    return ""
+                cur.execute("SELECT version FROM schema_version")
+                rows = cur.fetchall()
+                if not rows:
+                    return ""
+                return max((row["version"] for row in rows), key=parse_version)
+            finally:
+                cur.close()
 
     def get_schema_versions(self) -> list[dict[str, Any]]:
         """
@@ -270,26 +256,31 @@ class SQLiteHandler:
         'updated_at'. Returns an empty list when the database does not yet have
         a ``schema_version`` table.
         """
-        self.cursor.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='schema_version'"
-        )
-        if self.cursor.fetchone() is None:
-            return []
-        self.cursor.execute("""
-            SELECT version, description, updated_at
-            FROM schema_version
-        """)
-        rows = self.cursor.fetchall()
-        entries = [
-            {
-                "version": row["version"],
-                "description": row["description"],
-                "updated_at": row["updated_at"],
-            }
-            for row in rows
-        ]
-        entries.sort(key=lambda entry: parse_version(entry["version"]))
-        return entries
+        with self._lock:
+            cur = self.connection.cursor()
+            try:
+                cur.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name='schema_version'"
+                )
+                if cur.fetchone() is None:
+                    return []
+                cur.execute("""
+                    SELECT version, description, updated_at
+                    FROM schema_version
+                """)
+                rows = cur.fetchall()
+                entries = [
+                    {
+                        "version": row["version"],
+                        "description": row["description"],
+                        "updated_at": row["updated_at"],
+                    }
+                    for row in rows
+                ]
+                entries.sort(key=lambda entry: parse_version(entry["version"]))
+                return entries
+            finally:
+                cur.close()
 
     def _row_to_monitor(self, row: sqlite3.Row) -> dict[str, Any]:
         """Convert a monitors table sqlite3.Row to a monitor dictionary."""
@@ -334,22 +325,21 @@ class SQLiteHandler:
         """
         config_str = json.dumps(config)
         try:
-            self.cursor.execute("""
-                INSERT INTO monitors (name, monitor_path, remote_path, monitor_type, config, status, pid)
-                VALUES (:name, :monitor_path, :remote_path, :monitor_type, :config, :status, :pid)
-            """, {
-                "name": name,
-                "monitor_path": monitor_path,
-                "remote_path": remote_path,
-                "monitor_type": monitor_type,
-                "config": config_str,
-                "status": status,
-                "pid": pid,
-            })
-            self.connection.commit()
-            return self.cursor.lastrowid
+            with self.transaction() as cur:
+                cur.execute("""
+                    INSERT INTO monitors (name, monitor_path, remote_path, monitor_type, config, status, pid)
+                    VALUES (:name, :monitor_path, :remote_path, :monitor_type, :config, :status, :pid)
+                """, {
+                    "name": name,
+                    "monitor_path": monitor_path,
+                    "remote_path": remote_path,
+                    "monitor_type": monitor_type,
+                    "config": config_str,
+                    "status": status,
+                    "pid": pid,
+                })
+                return cur.lastrowid
         except Exception as e:
-            self.connection.rollback()
             self.logger.error(f"Error adding monitor '{name}': {e}")
             raise
 
@@ -369,31 +359,30 @@ class SQLiteHandler:
         """
         config_str = json.dumps(config)
         try:
-            self.cursor.execute("""
-                UPDATE monitors
-                SET name = :name, 
-                    monitor_path = :monitor_path, 
-                    remote_path = :remote_path, 
-                    monitor_type = :monitor_type, 
-                    config = :config, 
-                    status = :status,
-                    pid = :pid,
-                    last_modified = CURRENT_TIMESTAMP
-                WHERE id = :id
-            """, {
-                "name": name,
-                "monitor_path": monitor_path,
-                "remote_path": remote_path,
-                "monitor_type": monitor_type,
-                "config": config_str,
-                "status": status,
-                "pid": pid,
-                "id": monitor_id,
-            })
-            self.connection.commit()
-            return monitor_id
+            with self.transaction() as cur:
+                cur.execute("""
+                    UPDATE monitors
+                    SET name = :name, 
+                        monitor_path = :monitor_path, 
+                        remote_path = :remote_path, 
+                        monitor_type = :monitor_type, 
+                        config = :config, 
+                        status = :status,
+                        pid = :pid,
+                        last_modified = CURRENT_TIMESTAMP
+                    WHERE id = :id
+                """, {
+                    "name": name,
+                    "monitor_path": monitor_path,
+                    "remote_path": remote_path,
+                    "monitor_type": monitor_type,
+                    "config": config_str,
+                    "status": status,
+                    "pid": pid,
+                    "id": monitor_id,
+                })
+                return monitor_id
         except Exception as e:
-            self.connection.rollback()
             self.logger.error(f"Error updating monitor id={monitor_id}: {e}")
             raise
 
@@ -402,16 +391,21 @@ class SQLiteHandler:
         Get a monitor from the database by id or name
         """
         try:
-            if monitor_id is not None:
-                self.cursor.execute("SELECT * FROM monitors WHERE id = :id", {"id": monitor_id})
-            elif monitor_name is not None:
-                self.cursor.execute("SELECT * FROM monitors WHERE name = :name", {"name": monitor_name})
-            else:
-                raise ValueError("Either monitor_id or monitor_name must be provided")
+            with self._lock:
+                cur = self.connection.cursor()
+                try:
+                    if monitor_id is not None:
+                        cur.execute("SELECT * FROM monitors WHERE id = :id", {"id": monitor_id})
+                    elif monitor_name is not None:
+                        cur.execute("SELECT * FROM monitors WHERE name = :name", {"name": monitor_name})
+                    else:
+                        raise ValueError("Either monitor_id or monitor_name must be provided")
 
-            row = self.cursor.fetchone()
-            if row:
-                return self._row_to_monitor(row)
+                    row = cur.fetchone()
+                    if row:
+                        return self._row_to_monitor(row)
+                finally:
+                    cur.close()
         except Exception as e:  # noqa: BLE001
             self.logger.error(f"Error fetching monitor: {e}")
         return {}
@@ -420,23 +414,27 @@ class SQLiteHandler:
         """
         Get all monitors from the database
         """
-        self.cursor.execute("SELECT * FROM monitors")
-        rows = self.cursor.fetchall()
-        return [self._row_to_monitor(row) for row in rows]
+        with self._lock:
+            cur = self.connection.cursor()
+            try:
+                cur.execute("SELECT * FROM monitors")
+                rows = cur.fetchall()
+                return [self._row_to_monitor(row) for row in rows]
+            finally:
+                cur.close()
 
     def update_monitor_status(self, monitor_id: int, status: str) -> bool:
         """
         Update the status of a monitor in the database
         """
         try:
-            self.cursor.execute(
-                "UPDATE monitors SET status = :status, last_modified = CURRENT_TIMESTAMP WHERE id = :id",
-                {"status": status, "id": monitor_id},
-            )
-            self.connection.commit()
-            return True
+            with self.transaction() as cur:
+                cur.execute(
+                    "UPDATE monitors SET status = :status, last_modified = CURRENT_TIMESTAMP WHERE id = :id",
+                    {"status": status, "id": monitor_id},
+                )
+                return True
         except Exception as e:  # noqa: BLE001
-            self.connection.rollback()
             self.logger.error(f"Error updating monitor status: {e}")
             return False
 
@@ -445,14 +443,13 @@ class SQLiteHandler:
         Update the pid of a monitor in the database
         """
         try:
-            self.cursor.execute(
-                "UPDATE monitors SET pid = :pid, last_modified = CURRENT_TIMESTAMP WHERE id = :id",
-                {"pid": pid, "id": monitor_id},
-            )
-            self.connection.commit()
-            return True
+            with self.transaction() as cur:
+                cur.execute(
+                    "UPDATE monitors SET pid = :pid, last_modified = CURRENT_TIMESTAMP WHERE id = :id",
+                    {"pid": pid, "id": monitor_id},
+                )
+                return True
         except Exception as e:  # noqa: BLE001
-            self.connection.rollback()
             self.logger.error(f"Error updating monitor pid: {e}")
             return False
 
@@ -461,14 +458,13 @@ class SQLiteHandler:
         Update the last run time of a monitor in the database
         """
         try:
-            self.cursor.execute(
-                "UPDATE monitors SET last_run = :last_run WHERE id = :id",
-                {"last_run": last_run, "id": monitor_id},
-            )
-            self.connection.commit()
-            return True
+            with self.transaction() as cur:
+                cur.execute(
+                    "UPDATE monitors SET last_run = :last_run WHERE id = :id",
+                    {"last_run": last_run, "id": monitor_id},
+                )
+                return True
         except Exception as e:  # noqa: BLE001
-            self.connection.rollback()
             self.logger.error(f"Error updating monitor last_run: {e}")
             return False
 
@@ -477,14 +473,13 @@ class SQLiteHandler:
         Update the last heartbeat time of a monitor in the database
         """
         try:
-            self.cursor.execute(
-                "UPDATE monitors SET last_heartbeat = :last_heartbeat WHERE id = :id",
-                {"last_heartbeat": last_heartbeat, "id": monitor_id},
-            )
-            self.connection.commit()
-            return True
+            with self.transaction() as cur:
+                cur.execute(
+                    "UPDATE monitors SET last_heartbeat = :last_heartbeat WHERE id = :id",
+                    {"last_heartbeat": last_heartbeat, "id": monitor_id},
+                )
+                return True
         except Exception as e:  # noqa: BLE001
-            self.connection.rollback()
             self.logger.error(f"Error updating monitor last_heartbeat: {e}")
             return False
 
@@ -494,14 +489,13 @@ class SQLiteHandler:
         """
         config_str = json.dumps(config)
         try:
-            self.cursor.execute(
-                "UPDATE monitors SET config = :config, last_modified = CURRENT_TIMESTAMP WHERE id = :id",
-                {"config": config_str, "id": monitor_id},
-            )
-            self.connection.commit()
-            return True
+            with self.transaction() as cur:
+                cur.execute(
+                    "UPDATE monitors SET config = :config, last_modified = CURRENT_TIMESTAMP WHERE id = :id",
+                    {"config": config_str, "id": monitor_id},
+                )
+                return True
         except Exception as e:  # noqa: BLE001
-            self.connection.rollback()
             self.logger.error(f"Error updating monitor config: {e}")
             return False
 
@@ -511,11 +505,10 @@ class SQLiteHandler:
         Foreign key CASCADE automatically cleans up monitor_profile_map entries.
         """
         try:
-            self.cursor.execute("DELETE FROM monitors WHERE id = :id", {"id": monitor_id})
-            self.connection.commit()
-            return True
+            with self.transaction() as cur:
+                cur.execute("DELETE FROM monitors WHERE id = :id", {"id": monitor_id})
+                return True
         except Exception as e:  # noqa: BLE001
-            self.connection.rollback()
             self.logger.error(f"Error occurred while deleting monitor: {e}")
             return False
 
@@ -524,42 +517,46 @@ class SQLiteHandler:
         Add a profile to the database
         """
         try:
-            self.cursor.execute("""
-                INSERT INTO profiles (
-                    name, 
-                    profile_type,
-                    config, 
-                    date_created, last_modified
-                )
-                VALUES (
-                    :name, :profile_type, :config, 
-                    CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
-                )
-            """, {
-                "name": name,
-                "profile_type": profile_type,
-                "config": json.dumps(config),
-            })
-            self.connection.commit()
-            return self.cursor.lastrowid
+            with self.transaction() as cur:
+                cur.execute("""
+                    INSERT INTO profiles (
+                        name, 
+                        profile_type,
+                        config, 
+                        date_created, last_modified
+                    )
+                    VALUES (
+                        :name, :profile_type, :config, 
+                        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                    )
+                """, {
+                    "name": name,
+                    "profile_type": profile_type,
+                    "config": json.dumps(config),
+                })
+                return cur.lastrowid
         except Exception as e:
-            self.connection.rollback()
             self.logger.error(f"Error adding profile '{name}': {e}")
             raise
 
     def get_profile(self, profile_id: int | None = None, profile_name: str | None = None) -> dict[str, Any]:
         """Get a profile from the database by id or name"""
         try:
-            if profile_id is not None:
-                self.cursor.execute("SELECT * FROM profiles WHERE id = :id", {"id": profile_id})
-            elif profile_name is not None:
-                self.cursor.execute("SELECT * FROM profiles WHERE name = :name", {"name": profile_name})
-            else:
-                raise ValueError("Either profile_id or profile_name must be provided")
+            with self._lock:
+                cur = self.connection.cursor()
+                try:
+                    if profile_id is not None:
+                        cur.execute("SELECT * FROM profiles WHERE id = :id", {"id": profile_id})
+                    elif profile_name is not None:
+                        cur.execute("SELECT * FROM profiles WHERE name = :name", {"name": profile_name})
+                    else:
+                        raise ValueError("Either profile_id or profile_name must be provided")
 
-            row = self.cursor.fetchone()
-            if row:
-                return self._row_to_profile(row)
+                    row = cur.fetchone()
+                    if row:
+                        return self._row_to_profile(row)
+                finally:
+                    cur.close()
         except Exception as e:  # noqa: BLE001
             self.logger.error(f"Error occurred while fetching profile: {e}")
         return {}
@@ -569,23 +566,22 @@ class SQLiteHandler:
         Update a profile in the database
         """
         try:
-            self.cursor.execute("""
-                UPDATE profiles
-                SET name = :name, 
-                    profile_type = :profile_type, 
-                    config = :config, 
-                    last_modified = CURRENT_TIMESTAMP
-                WHERE id = :id
-            """, {
-                "name": name,
-                "profile_type": profile_type,
-                "config": json.dumps(config),
-                "id": profile_id,
-            })
-            self.connection.commit()
-            return profile_id
+            with self.transaction() as cur:
+                cur.execute("""
+                    UPDATE profiles
+                    SET name = :name, 
+                        profile_type = :profile_type, 
+                        config = :config, 
+                        last_modified = CURRENT_TIMESTAMP
+                    WHERE id = :id
+                """, {
+                    "name": name,
+                    "profile_type": profile_type,
+                    "config": json.dumps(config),
+                    "id": profile_id,
+                })
+                return profile_id
         except Exception as e:
-            self.connection.rollback()
             self.logger.error(f"Error updating profile id={profile_id}: {e}")
             raise
 
@@ -595,16 +591,15 @@ class SQLiteHandler:
         Foreign key CASCADE automatically cleans up monitor_profile_map entries.
         """
         try:
-            if profile_id is not None:
-                self.cursor.execute("DELETE FROM profiles WHERE id = :id", {"id": profile_id})
-            elif profile_name is not None:
-                self.cursor.execute("DELETE FROM profiles WHERE name = :name", {"name": profile_name})
-            else:
-                raise ValueError("Either profile_id or profile_name must be provided")
-            self.connection.commit()
-            return True
+            with self.transaction() as cur:
+                if profile_id is not None:
+                    cur.execute("DELETE FROM profiles WHERE id = :id", {"id": profile_id})
+                elif profile_name is not None:
+                    cur.execute("DELETE FROM profiles WHERE name = :name", {"name": profile_name})
+                else:
+                    raise ValueError("Either profile_id or profile_name must be provided")
+                return True
         except Exception as e:  # noqa: BLE001
-            self.connection.rollback()
             self.logger.error(f"Error deleting profile: {e}")
             return False
 
@@ -612,23 +607,27 @@ class SQLiteHandler:
         """
         Get all profiles from the database
         """
-        self.cursor.execute("SELECT * FROM profiles")
-        rows = self.cursor.fetchall()
-        return [self._row_to_profile(row) for row in rows]
+        with self._lock:
+            cur = self.connection.cursor()
+            try:
+                cur.execute("SELECT * FROM profiles")
+                rows = cur.fetchall()
+                return [self._row_to_profile(row) for row in rows]
+            finally:
+                cur.close()
 
     def add_monitor_profile_map(self, monitor_id: int, profile_id: int) -> bool:
         """
         Add a mapping between a monitor and a profile in the database.
         """
         try:
-            self.cursor.execute("""
-                INSERT OR IGNORE INTO monitor_profile_map (monitor_id, profile_id)
-                VALUES (:monitor_id, :profile_id)
-            """, {"monitor_id": monitor_id, "profile_id": profile_id})
-            self.connection.commit()
-            return True
+            with self.transaction() as cur:
+                cur.execute("""
+                    INSERT OR IGNORE INTO monitor_profile_map (monitor_id, profile_id)
+                    VALUES (:monitor_id, :profile_id)
+                """, {"monitor_id": monitor_id, "profile_id": profile_id})
+                return True
         except Exception as e:  # noqa: BLE001
-            self.connection.rollback()
             self.logger.error(f"Error mapping monitor {monitor_id} to profile {profile_id}: {e}")
             return False
 
@@ -637,14 +636,13 @@ class SQLiteHandler:
         Delete a mapping between a monitor and a profile from the database
         """
         try:
-            self.cursor.execute("""
-                DELETE FROM monitor_profile_map
-                WHERE monitor_id = :monitor_id AND profile_id = :profile_id
-            """, {"monitor_id": monitor_id, "profile_id": profile_id})
-            self.connection.commit()
-            return True
+            with self.transaction() as cur:
+                cur.execute("""
+                    DELETE FROM monitor_profile_map
+                    WHERE monitor_id = :monitor_id AND profile_id = :profile_id
+                """, {"monitor_id": monitor_id, "profile_id": profile_id})
+                return True
         except Exception as e:  # noqa: BLE001
-            self.connection.rollback()
             self.logger.error(f"Error unmapping monitor {monitor_id} from profile {profile_id}: {e}")
             return False
 
@@ -652,27 +650,37 @@ class SQLiteHandler:
         """
         Get all profiles linked to a specific monitor from the database
         """
-        self.cursor.execute("""
-            SELECT p.*
-            FROM profiles p
-            JOIN monitor_profile_map mpm ON p.id = mpm.profile_id
-            WHERE mpm.monitor_id = :monitor_id
-        """, {"monitor_id": monitor_id})
-        rows = self.cursor.fetchall()
-        return [self._row_to_profile(row) for row in rows]
+        with self._lock:
+            cur = self.connection.cursor()
+            try:
+                cur.execute("""
+                    SELECT p.*
+                    FROM profiles p
+                    JOIN monitor_profile_map mpm ON p.id = mpm.profile_id
+                    WHERE mpm.monitor_id = :monitor_id
+                """, {"monitor_id": monitor_id})
+                rows = cur.fetchall()
+                return [self._row_to_profile(row) for row in rows]
+            finally:
+                cur.close()
 
     def get_monitors_for_profile(self, profile_id: int) -> list[dict[str, Any]]:
         """
         Get all monitors linked to a profile from the database
         """
-        self.cursor.execute("""
-            SELECT m.*
-            FROM monitors m
-            JOIN monitor_profile_map mpm ON m.id = mpm.monitor_id
-            WHERE mpm.profile_id = :profile_id
-        """, {"profile_id": profile_id})
-        rows = self.cursor.fetchall()
-        return [self._row_to_monitor(row) for row in rows]
+        with self._lock:
+            cur = self.connection.cursor()
+            try:
+                cur.execute("""
+                    SELECT m.*
+                    FROM monitors m
+                    JOIN monitor_profile_map mpm ON m.id = mpm.monitor_id
+                    WHERE mpm.profile_id = :profile_id
+                """, {"profile_id": profile_id})
+                rows = cur.fetchall()
+                return [self._row_to_monitor(row) for row in rows]
+            finally:
+                cur.close()
 
     def __del__(self) -> None:
         self.close()

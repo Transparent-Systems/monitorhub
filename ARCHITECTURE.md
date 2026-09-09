@@ -161,8 +161,8 @@ classDiagram
     print() None
   }
   class SQLiteHandler {
-    connection : _LockedConnection
-    cursor : _LockedCursor
+    connection : Connection
+    cursor : Cursor
     db_path
     logger : Logger
     add_monitor(name: str, monitor_path: str, remote_path: str, monitor_type: str, config: dict[str, Any], status: str, pid: int) int | None
