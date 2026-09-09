@@ -126,6 +126,43 @@ class TestCommands(unittest.TestCase):
         monitor = commands.sqlite_handler.get_monitor(monitor_id=first_id)
         self.assertEqual(monitor["name"], "renamed-monitor")
 
+    def test_monitor_edit_by_id(self):
+        monitors = self.database_test_data.sqlite_handler.get_monitors()
+        target = monitors[0]
+        commands, _ = self._make_commands(["renamed-by-id", "", "", "", "", ""])
+        commands.monitor.edit(monitor_id=target["id"])
+        monitor = commands.sqlite_handler.get_monitor(monitor_id=target["id"])
+        self.assertEqual(monitor["name"], "renamed-by-id")
+
+    def test_monitor_edit_by_name(self):
+        monitors = self.database_test_data.sqlite_handler.get_monitors()
+        target = monitors[0]
+        commands, _ = self._make_commands(["renamed-by-name", "", "", "", "", ""])
+        commands.monitor.edit(monitor_name=target["name"])
+        monitor = commands.sqlite_handler.get_monitor(monitor_id=target["id"])
+        self.assertEqual(monitor["name"], "renamed-by-name")
+
+    def test_monitor_edit_both_id_and_name(self):
+        monitors = self.database_test_data.sqlite_handler.get_monitors()
+        target = monitors[0]
+        commands, mock_prompt = self._make_commands([])
+        commands.monitor.edit(monitor_id=target["id"], monitor_name=target["name"])
+        self.assertIn("Cannot specify both --monitor-id and --monitor-name.", mock_prompt.output_text)
+
+    def test_monitor_edit_invalid_interval(self):
+        # Backup Monitor 1 has an interval config
+        monitor = self.database_test_data.sqlite_handler.get_monitor(monitor_name="Backup Monitor 1")
+        self.assertIsNotNone(monitor)
+        # Inputs: keep name, keep monitor path, keep remote path, keep monitor type,
+        # interval: '-1s' (invalid), then '15m' (valid), then keep exclude patterns, no profiles to delete, no profiles to add
+        commands, mock_prompt = self._make_commands(
+            ["", "", "", "", "-1s", "15m", "", "", ""]
+        )
+        commands.monitor.edit(monitor_id=monitor["id"])
+        self.assertIn("Invalid interval: '-1s'", mock_prompt.output_text)
+        updated_monitor = commands.sqlite_handler.get_monitor(monitor_id=monitor["id"])
+        self.assertEqual(updated_monitor["config"]["interval"], "15m")
+
     def test_monitor_delete(self):
         first_id = self.database_test_data.sqlite_handler.get_monitors()[0]["id"]
         commands, _ = self._make_commands([str(first_id), str(first_id)])

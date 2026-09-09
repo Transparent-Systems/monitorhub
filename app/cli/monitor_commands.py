@@ -193,7 +193,10 @@ class MonitorCommands:
                     continue
 
             if not is_interval_valid(input_interval):
-                self.prompt.print(f"Invalid interval: {input_interval}. Please try again.")
+                self.prompt.print(
+                    f"\nInvalid interval: '{input_interval}'. "
+                    "Interval must be a non-negative number with an optional unit (e.g. 10, 10s, 10m, 2h, 1d).\n"
+                )
                 continue
 
             return input_interval + "m" if input_interval.isdigit() else input_interval
@@ -515,23 +518,39 @@ class MonitorCommands:
         else:
             self.prompt.print(f"Monitor name: {monitor.get('name', 'N/A')} not deleted")
 
-    def edit(self):
+    def edit(self, monitor_id: int | None = None, monitor_name: str | None = None):
         """Edit monitor."""
-        monitors = self.sqlite_handler.get_monitors()
-        if not monitors:
-            self.prompt.print(f"No monitors found in {self.sqlite_handler.db_path}")
+        if monitor_id is not None and monitor_name is not None:
+            self.prompt.print("Cannot specify both --monitor-id and --monitor-name.")
             return
 
-        self.prompt.print("\nList of monitors to edit")
-        choice = self._select_monitor_interactive(monitors=monitors)
-        if choice is None:
-            self.prompt.print("No monitor selected")
-            return
+        if monitor_id is None and monitor_name is None:
+            monitors = self.sqlite_handler.get_monitors()
+            if not monitors:
+                self.prompt.print(f"No monitors found in {self.sqlite_handler.db_path}")
+                return
 
-        monitor = find_by_id(monitors, choice)
-        if monitor is None:
-            self.prompt.print(f"Monitor with id={choice} not found.")
-            return
+            self.prompt.print("\nList of monitors to edit")
+            choice = self._select_monitor_interactive(monitors=monitors)
+            if choice is None:
+                self.prompt.print("No monitor selected")
+                return
+
+            monitor = find_by_id(monitors, choice)
+            if monitor is None:
+                self.prompt.print(f"Monitor with id={choice} not found.")
+                return
+        elif monitor_id is not None:
+            monitor = self.sqlite_handler.get_monitor(monitor_id=monitor_id)
+            if not monitor:
+                self.prompt.print(f"Monitor with id={monitor_id} not found.")
+                return
+        else:
+            monitor = self.sqlite_handler.get_monitor(monitor_name=monitor_name)
+            if not monitor:
+                self.prompt.print(f"Monitor with name='{monitor_name}' not found.")
+                return
+
         monitor_id = monitor.get("id", "N/A")
         monitor["config"] = monitor.get("config") or {}
 

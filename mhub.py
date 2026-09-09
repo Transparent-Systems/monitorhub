@@ -68,7 +68,14 @@ _SUBCOMMAND_DISPATCH = {
             "monitor_name": getattr(args, "monitor_name", None),
         },
     ),
-    ("monitor", "edit"): ("monitor", "edit", lambda _: {}),
+    ("monitor", "edit"): (
+        "monitor",
+        "edit",
+        lambda args: {
+            "monitor_id": getattr(args, "monitor_id", None),
+            "monitor_name": getattr(args, "monitor_name", None),
+        },
+    ),
     ("monitor", "new"): ("monitor", "new", lambda _: {}),
     ("monitor", "show"): (
         "monitor",
@@ -243,6 +250,16 @@ if __name__ == "__main__":
 
     monitor_new_parser = monitor_subparsers.add_parser("new", help="Create a new monitor")
     monitor_edit_parser = monitor_subparsers.add_parser("edit", help="Edit a monitor")
+    monitor_edit_parser.add_argument("-i", "--monitor-id",
+        type=int,
+        metavar="<ID>",
+        help="ID of the monitor to edit (omit to select interactively)"
+    )
+    monitor_edit_parser.add_argument("-n", "--monitor-name",
+        type=str,
+        metavar="<NAME>",
+        help="Name of the monitor to edit (omit to select interactively)"
+    )
     monitor_delete_parser = monitor_subparsers.add_parser("delete", help="Delete a monitor")
     monitor_delete_parser.add_argument("-i", "--monitor-id",
         type=int,

@@ -135,7 +135,7 @@ classDiagram
     prompt
     sqlite_handler
     delete(monitor_id: int | None, monitor_name: str | None)
-    edit()
+    edit(monitor_id: int | None, monitor_name: str | None)
     new()
     show(monitor_id: int | None, monitor_name: str | None)
     start(monitor_id: int | None, monitor_name: str | None)
