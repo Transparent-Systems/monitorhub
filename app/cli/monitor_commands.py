@@ -173,13 +173,14 @@ class MonitorCommands:
 
             self.prompt.print(f"Invalid monitor id: {choice_int}. Please try again.")
 
-    def _prompt_interval(self, current_interval: str | None = None) -> str:
+    def _prompt_interval(self, current_interval: str | None = None, monitor_type: str | None = None) -> str:
         """Prompt the user for a monitor interval and return the normalized value."""
+        label = f"{monitor_type} interval" if monitor_type else "interval"
         while True:
             if current_interval is not None:
-                self.prompt.print(f"Current interval: {current_interval}")
-                self.prompt.print("Press Enter to keep current interval")
-                input_interval = self.prompt.input("Enter interval: ").strip()
+                self.prompt.print(f"Current {label}: {current_interval}")
+                self.prompt.print(f"Press Enter to keep current {label}")
+                input_interval = self.prompt.input(f"Enter {label}: ").strip()
                 if input_interval == "":
                     return current_interval
             else:
@@ -187,7 +188,7 @@ class MonitorCommands:
                     "Interval is in minutes(m), hours(h) or days(d). "
                     "Default is minutes. For example 10m means 10 minutes."
                 )
-                input_interval = self.prompt.input("Please enter interval: ").strip()
+                input_interval = self.prompt.input(f"Please enter {label}: ").strip()
                 if input_interval == "":
                     self.prompt.print("Interval cannot be just spaces")
                     continue
@@ -349,9 +350,11 @@ class MonitorCommands:
             config = monitor.get("config", {})
             if "interval" in config:
                 current_interval = config.get("interval", "N/A")
-                monitor["config"]["interval"] = self._prompt_interval(current_interval=current_interval)
+                monitor["config"]["interval"] = self._prompt_interval(
+                    current_interval=current_interval, monitor_type=monitor_type
+                )
             else:
-                monitor["config"]["interval"] = self._prompt_interval()
+                monitor["config"]["interval"] = self._prompt_interval(monitor_type=monitor_type)
 
     def _edit_exclude_patterns(self, monitor: dict) -> None:
         """Edit the exclude_patterns config for all monitor types."""
@@ -637,7 +640,7 @@ class MonitorCommands:
         self.prompt.print(f"You selected monitor type: {monitor_type}")
         if monitor_type in (MONITOR_TYPE_BACKUP, MONITOR_TYPE_RESTORE):
             monitor_config = {
-                "interval": self._prompt_interval(),
+                "interval": self._prompt_interval(monitor_type=monitor_type),
                 "exclude_patterns": self._prompt_exclude_patterns(),
             }
         elif monitor_type == MONITOR_TYPE_INSTANT:

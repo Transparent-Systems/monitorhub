@@ -160,8 +160,20 @@ class TestCommands(unittest.TestCase):
         )
         commands.monitor.edit(monitor_id=monitor["id"])
         self.assertIn("Invalid interval: '-1s'", mock_prompt.output_text)
+        self.assertIn("Current backup interval: 1m", mock_prompt.output_text)
         updated_monitor = commands.sqlite_handler.get_monitor(monitor_id=monitor["id"])
         self.assertEqual(updated_monitor["config"]["interval"], "15m")
+
+    def test_monitor_edit_restore_interval_prompt(self):
+        monitor = self.database_test_data.sqlite_handler.get_monitor(monitor_name="Restore Monitor 1")
+        self.assertIsNotNone(monitor)
+        commands, mock_prompt = self._make_commands(
+            ["", "", "", "", "20m", "", "", ""]
+        )
+        commands.monitor.edit(monitor_id=monitor["id"])
+        self.assertIn("Current restore interval: 1m", mock_prompt.output_text)
+        updated_monitor = commands.sqlite_handler.get_monitor(monitor_id=monitor["id"])
+        self.assertEqual(updated_monitor["config"]["interval"], "20m")
 
     def test_monitor_delete(self):
         first_id = self.database_test_data.sqlite_handler.get_monitors()[0]["id"]
