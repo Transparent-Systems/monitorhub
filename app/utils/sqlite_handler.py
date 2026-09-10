@@ -50,6 +50,8 @@ class SQLiteHandler:
 
         Acquires the handler's RLock, yields a standard cursor, commits on
         successful completion, or rolls back if an unhandled exception is raised.
+        The decision to use `with self.transaction()` is based on whether the operation mutates state 
+        and requires a commit/rollback, not on the count of statements.
         """
         with self._lock:
             cur = self.connection.cursor()
@@ -220,9 +222,14 @@ class SQLiteHandler:
         Kept as a thin wrapper for callers that want to record a version
         directly; prefer :meth:`apply_pending_migrations` for normal upgrades.
         """
-        with self._lock:
-            self._record_schema_version(version, description)
-            self.connection.commit()
+        with self.transaction() as cur:
+            cur.execute(
+                """
+                INSERT OR IGNORE INTO schema_version (version, description)
+                VALUES (:version, :description)
+                """,
+                {"version": version, "description": description},
+            )
 
     def get_current_schema_version(self) -> str:
         """
