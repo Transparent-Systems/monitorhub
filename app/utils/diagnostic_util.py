@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from app.cli.process_test_result import ProcessTestResult
+from app.cli.prompt_service import PromptService
 from app.monitor.remote_handler_factory import RemoteHandlerFactory
 from app.utils.sqlite_handler import SQLiteHandler
 
@@ -20,7 +21,12 @@ class DiagnosticUtil:
     Utility class for system diagnostics and configuration checks.
     """
 
-    def __init__(self, sqlite_handler: SQLiteHandler, logger: logging.Logger | None = None):
+    def __init__(
+        self,
+        sqlite_handler: SQLiteHandler,
+        logger: logging.Logger | None = None,
+        prompt: PromptService | None = None,
+    ):
         if logger is None:
             test_logger = logging.getLogger(__name__)
             test_logger.setLevel(logging.DEBUG)
@@ -34,6 +40,7 @@ class DiagnosticUtil:
         else:
             self.logger = logger
         
+        self.prompt = prompt or PromptService()
         self.check_app_env_result = False
         self.check_profile_import_result = False
         self.check_rclone_dependency_result = False
@@ -41,13 +48,13 @@ class DiagnosticUtil:
         self.sqlite_handler = sqlite_handler
 
     def print_overview(self):
-        print("=" *50)
-        print("=== Summary environment and configuration test results BEGIN ===")
-        print(f"===> App environment test: {'OK' if self.check_app_env_result else 'FAILED'} <===")
-        print(f"===> Check import remote profiles: {'OK' if self.check_profile_import_result else 'FAILED'} <===")
-        print(f"===> Check rclone dependency: {'OK' if self.check_rclone_dependency_result else 'FAILED'} <===")
-        print(f"===> App configuration test: {'OK' if self.check_app_config_result else 'FAILED'} <==")
-        print("=== Summary environment and configuration test results END ===")
+        self.prompt.print("=" *50)
+        self.prompt.print("=== Summary environment and configuration test results BEGIN ===")
+        self.prompt.print(f"===> App environment test: {'OK' if self.check_app_env_result else 'FAILED'} <===")
+        self.prompt.print(f"===> Check import remote profiles: {'OK' if self.check_profile_import_result else 'FAILED'} <===")
+        self.prompt.print(f"===> Check rclone dependency: {'OK' if self.check_rclone_dependency_result else 'FAILED'} <===")
+        self.prompt.print(f"===> App configuration test: {'OK' if self.check_app_config_result else 'FAILED'} <==")
+        self.prompt.print("=== Summary environment and configuration test results END ===")
 
 
     def check_profile_import(self):
@@ -64,14 +71,14 @@ class DiagnosticUtil:
             rclone_config_path = Path.home() / ".config" / "rclone" / "rclone.conf"
 
         if not rclone_config_path.is_file():
-            print(f"No profiles found in {rclone_config_path}")
+            self.prompt.print(f"No profiles found in {rclone_config_path}")
             return
 
         parser = configparser.ConfigParser()
         parser.read(rclone_config_path, encoding="utf-8")
         rclone_profile_names = parser.sections()
         if not rclone_profile_names:
-            print(f"No profiles found in {rclone_config_path}")
+            self.prompt.print(f"No profiles found in {rclone_config_path}")
             return
 
         # The main purpose of importing a profile is that it can be linked to a
@@ -97,24 +104,24 @@ class DiagnosticUtil:
             profiles_to_import.append(rclone_profile_name)
 
         if (len(profiles_to_import) == 0):
-            print("No profiles to import")
+            self.prompt.print("No profiles to import")
             return
 
         # Prompt user for permission to import profiles
-        print("\n")
-        print("=" *60)
-        print("Please confirm to import the following profiles from Rclone")
-        print("This increases performance and reduces dependencies")
-        print("The profiles are:")
+        self.prompt.print("\n")
+        self.prompt.print("=" *60)
+        self.prompt.print("Please confirm to import the following profiles from Rclone")
+        self.prompt.print("This increases performance and reduces dependencies")
+        self.prompt.print("The profiles are:")
         for i, profile_name in enumerate(profiles_to_import, start=1):
-            print(f"{i}. {profile_name}")
+            self.prompt.print(f"{i}. {profile_name}")
 
-        print("Ok to import profiles? (Y/n)")
-        print("Y: Yes is default value, press Enter to accept")
-        print("N: No")
-        import_ok = input("Press Enter key to accept default value: Yes\n")
+        self.prompt.print("Ok to import profiles? (Y/n)")
+        self.prompt.print("Y: Yes is default value, press Enter to accept")
+        self.prompt.print("N: No")
+        import_ok = self.prompt.input("Press Enter key to accept default value: Yes\n")
         if (import_ok.strip() != "" and import_ok.lower() != "y"):
-            print("Profile import cancelled")
+            self.prompt.print("Profile import cancelled")
             return
 
         # Some Rclone attribute names differ from those in MonitorHub
@@ -158,9 +165,9 @@ class DiagnosticUtil:
                 profile_type=profile_type,
                 config=profile_config
             ):
-                print(f"Profile name: {profile_name} imported to profiles")
+                self.prompt.print(f"Profile name: {profile_name} imported to profiles")
             else:
-                print(f"Profile name: {profile_name} not imported to profiles")
+                self.prompt.print(f"Profile name: {profile_name} not imported to profiles")
         
         return
 
@@ -171,10 +178,10 @@ class DiagnosticUtil:
         Returns True if all checks pass, False otherwise.
         """
         error_count = 0
-        print("--- Monitor Hub: Environment Self-Test ---")
+        self.prompt.print("--- Monitor Hub: Environment Self-Test ---")
         
         # Check Python Version
-        print(f"[*] Python Version: {sys.version.split()[0]} - OK")
+        self.prompt.print(f"[*] Python Version: {sys.version.split()[0]} - OK")
 
         # Check for key Python dependencies
         packages = ["watchdog", "yaml", "boto3"]
@@ -186,17 +193,17 @@ class DiagnosticUtil:
                 missing.append(pkg)
         
         if missing:
-            print(f"[!] ERROR: Missing Python dependency: {', '.join(missing)}")
-            print("    Run 'pip install -r requirements.txt' to fix this.")
+            self.prompt.print(f"[!] ERROR: Missing Python dependency: {', '.join(missing)}")
+            self.prompt.print("    Run 'pip install -r requirements.txt' to fix this.")
             error_count += 1
         else:
-            print(f"[*] Python dependencies ({', '.join(packages)}) - OK")
+            self.prompt.print(f"[*] Python dependencies ({', '.join(packages)}) - OK")
 
         self.check_app_env_result = error_count == 0
         if error_count == 0:
-            print("--- Monitor Hub: App Environment Self-Test Completed successfully ---")
+            self.prompt.print("--- Monitor Hub: App Environment Self-Test Completed successfully ---")
         else:
-            print(f"--- Monitor Hub: App Environment Self-Test - {error_count} tests failed ---")
+            self.prompt.print(f"--- Monitor Hub: App Environment Self-Test - {error_count} tests failed ---")
 
         return error_count == 0
 
@@ -208,17 +215,17 @@ class DiagnosticUtil:
         # Check rclone
         rclone_path = shutil.which("rclone")
         if rclone_path:
-            print(f"[*] rclone found at: {rclone_path} - OK")
+            self.prompt.print(f"[*] rclone found at: {rclone_path} - OK")
             try:
                 version = subprocess.check_output(["rclone", "version"], text=True).split('\n')[0]
-                print(f"    ({version})")
+                self.prompt.print(f"    ({version})")
                 return True
             except Exception as e:  # noqa: BLE001
-                print("    [!] Warning: Could not execute rclone version.")
-                print(f"    Error: {e}")
+                self.prompt.print("    [!] Warning: Could not execute rclone version.")
+                self.prompt.print(f"    Error: {e}")
                 return False
         else:
-            print("[!] ERROR: 'rclone' not found in system PATH. Please install it from rclone.org.")
+            self.prompt.print("[!] ERROR: 'rclone' not found in system PATH. Please install it from rclone.org.")
             return False
 
     def check_rclone_dependency(self) -> bool:
@@ -285,7 +292,7 @@ class DiagnosticUtil:
             if monitor_id is not None and current_monitor_id != monitor_id:
                 continue
 
-            print(f"Processing monitor: {monitor.get('name')}")
+            self.prompt.print(f"Processing monitor: {monitor.get('name')}")
 
             if not current_monitor_id:
                 self.logger.error("Monitor ID is missing or invalid for monitor: %s", current_monitor_id)
@@ -324,13 +331,13 @@ class DiagnosticUtil:
             self._log_test_result(process_test_result)
 
         # Print totals over all monitors
-        print("===> Total counts for all monitors <===")
-        print("==================================================")
-        print(f"Total number of tests : {total_success_count + total_failure_count}")
-        print(f"Total success count   : {total_success_count}")
-        print(f"Total failure count   : {total_failure_count}")
-        print(f"Total duration        : {total_duration: .2f} seconds")
-        print("===> End total counts for all monitors <===")
+        self.prompt.print("===> Total counts for all monitors <===")
+        self.prompt.print("==================================================")
+        self.prompt.print(f"Total number of tests : {total_success_count + total_failure_count}")
+        self.prompt.print(f"Total success count   : {total_success_count}")
+        self.prompt.print(f"Total failure count   : {total_failure_count}")
+        self.prompt.print(f"Total duration        : {total_duration: .2f} seconds")
+        self.prompt.print("===> End total counts for all monitors <===")
 
         self.check_app_config_result = total_failure_count == 0
         return total_failure_count == 0
@@ -347,11 +354,11 @@ class DiagnosticUtil:
         remote_path = monitor.get("remote_path", "")
 
         process_test_result = ProcessTestResult(testsuite_name=monitor.get('name', 'Unknown'))
-        print(f"Starting tests for monitor name [{monitor.get('name', '')}] on monitor path [{monitor_path}]...")
+        self.prompt.print(f"Starting tests for monitor name [{monitor.get('name', '')}] on monitor path [{monitor_path}]...")
         #####################################
 
         testname = f"Test monitor path exists: {monitor_path}"
-        print(testname)
+        self.prompt.print(testname)
         #####################################
         found = os.path.exists(monitor_path)
         process_test_result.process(test_case_name=testname, test_ok=found, test_output=f"Monitor path {monitor_path} exists: {found}")
@@ -376,7 +383,7 @@ class DiagnosticUtil:
             #####################################
             profile_name = profile.get("name", "")
             testname = f"Test remote_profile: {profile_name}"
-            print(testname)
+            self.prompt.print(testname)
             #####################################
 
             remote_handler = RemoteHandlerFactory.get_handler(
@@ -392,9 +399,9 @@ class DiagnosticUtil:
 
             
             monitor_path_file = str(Path(tmp_file.name).resolve())
-            print(f"monitor_path_file: {monitor_path_file}")
+            self.prompt.print(f"monitor_path_file: {monitor_path_file}")
             remote_path_file = f"{remote_path}/{temp_file_name}"
-            print(f"remote_path_file: {remote_path_file}")
+            self.prompt.print(f"remote_path_file: {remote_path_file}")
 
             result_code, _ = remote_handler.copy_file(
                 monitor_path=monitor_path_file,
@@ -426,13 +433,13 @@ class DiagnosticUtil:
         """
         Helper to log the results of a ProcessTestResult.
         """
-        print(f"===> BEGIN: test results for [{process_test_result.testsuite_name}] <===")
-        print("==================================================")
-        print(f"Number of tests : {process_test_result.success_count + process_test_result.failure_count}")
-        print(f"Success count   : {process_test_result.success_count}")
-        print(f"Failure count   : {process_test_result.failure_count}")
-        print(f"Duration        : {process_test_result.duration: .2f} seconds")
-        print("==================================================")
+        self.prompt.print(f"===> BEGIN: test results for [{process_test_result.testsuite_name}] <===")
+        self.prompt.print("==================================================")
+        self.prompt.print(f"Number of tests : {process_test_result.success_count + process_test_result.failure_count}")
+        self.prompt.print(f"Success count   : {process_test_result.success_count}")
+        self.prompt.print(f"Failure count   : {process_test_result.failure_count}")
+        self.prompt.print(f"Duration        : {process_test_result.duration: .2f} seconds")
+        self.prompt.print("==================================================")
        
         len_test_results = len(process_test_result.test_results)
         max_width = len(str(len_test_results))
@@ -448,13 +455,13 @@ class DiagnosticUtil:
                 test_full_name = f"{test_case_name} - {test_step_name}"
             
             if test_result.get("test_ok"):
-                print(f"success    | {test_counter:>{max_width}} : {test_full_name}")
-                print(f"           |      ==> duration: {test_duration: .2f} s")
+                self.prompt.print(f"success    | {test_counter:>{max_width}} : {test_full_name}")
+                self.prompt.print(f"           |      ==> duration: {test_duration: .2f} s")
             else:
-                print(f"failure    | {test_counter:>{max_width}} : {test_full_name}")
-                print(f"           |      ==> duration: {test_duration: .2f} s")
+                self.prompt.print(f"failure    | {test_counter:>{max_width}} : {test_full_name}")
+                self.prompt.print(f"           |      ==> duration: {test_duration: .2f} s")
 
                 for item in test_result.get("test_output", []):
-                    print(f"           |      {item}")
+                    self.prompt.print(f"           |      {item}")
 
-        print(f"===> END: test results for [{process_test_result.testsuite_name}] <===")
+        self.prompt.print(f"===> END: test results for [{process_test_result.testsuite_name}] <===")

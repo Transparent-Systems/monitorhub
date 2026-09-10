@@ -120,6 +120,7 @@ classDiagram
     check_profile_import_result : bool
     check_rclone_dependency_result : bool
     logger : NoneType, RootLogger
+    prompt
     sqlite_handler
     check_app_env() bool
     check_monitor_config(monitor_id: int | None) bool
@@ -204,6 +205,7 @@ classDiagram
   PromptService --o DatabaseCommands : prompt
   PromptService --o MonitorCommands : prompt
   PromptService --o ProfileCommands : prompt
+  PromptService --o DiagnosticUtil : prompt
   SQLiteHandler --o DatabaseCommands : sqlite_handler
   SQLiteHandler --o MonitorCommands : sqlite_handler
   SQLiteHandler --o ProfileCommands : sqlite_handler

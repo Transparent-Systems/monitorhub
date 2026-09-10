@@ -94,9 +94,13 @@ def build_commands(
     logging.getLogger("s3transfer").setLevel(logging.WARNING)
     logging.getLogger("urllib3").setLevel(logging.WARNING)
 
-    sqlite_handler = sqlite_handler or SQLiteHandler(logger=logger, db_dir=db_dir)
-    diagnostic_util = diagnostic_util or DiagnosticUtil(sqlite_handler=sqlite_handler, logger=logger)
     prompt = prompt or PromptService()
+    sqlite_handler = sqlite_handler or SQLiteHandler(logger=logger, db_dir=db_dir)
+    diagnostic_util = diagnostic_util or DiagnosticUtil(
+        sqlite_handler=sqlite_handler,
+        logger=logger,
+        prompt=prompt,
+    )
 
     database = DatabaseCommands(sqlite_handler, prompt)
     profile = ProfileCommands(sqlite_handler, logger, diagnostic_util, prompt)

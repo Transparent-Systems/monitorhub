@@ -784,7 +784,11 @@ class MonitorCommands:
                 monitor_id = choice
 
         try:
-            diagnostic_util = DiagnosticUtil(sqlite_handler=self.sqlite_handler, logger=self.logger)
+            diagnostic_util = DiagnosticUtil(
+                sqlite_handler=self.sqlite_handler,
+                logger=self.logger,
+                prompt=self.prompt,
+            )
             if not diagnostic_util.check_monitor_config(monitor_id=monitor_id):
                 return
         finally:
