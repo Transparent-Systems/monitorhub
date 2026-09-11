@@ -1,5 +1,4 @@
 import logging
-import sys
 from typing import TYPE_CHECKING
 
 import boto3
@@ -149,44 +148,3 @@ class S3Factory:
             prompt.print(f"Error: {e}")
             prompt.print("Test failed")
 
-# --- Example Usage ---
-if __name__ == "__main__":
-    logger = logging.getLogger(__name__)
-    logger.setLevel(logging.DEBUG)
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    console_handler = logging.StreamHandler()
-    console_handler.setFormatter(formatter)
-    logger.addHandler(console_handler)
-
-    factory = S3Factory(
-        logger=logger
-    )
-
-    profile_name = "s3-test"
-    # Get profile
-    from app.utils.sqlite_handler import SQLiteHandler
-    sqlite_handler = SQLiteHandler(
-        logger=logger,
-        db_dir="testdb/dev"
-    )
-    profile = sqlite_handler.get_profile(profile_name=profile_name)
-    if profile is None:
-        print(f"Profile {profile_name} not found")
-        sys.exit(1)
-
-    profile_config = profile.get("config", {})
-    print(f"Profile config: {profile_config}")
-             
-    try:
-        s3_client = factory.get_s3_client(profile_config=profile_config)
-        
-        # Quick check if there are any files in bucket with path prefix
-        # Get a maximum of 10 keys !
-        bucket = "test-monitorhub"
-        prefix = "idrive-cloud-storage"
-        response = s3_client.list_objects_v2(Bucket=bucket, Prefix=prefix, MaxKeys=10)
-        key_count = response.get('KeyCount', 0)
-        print(f"Connected to {profile_name}:{bucket}. Objects found: {key_count}")
-        
-    except Exception as e:  # noqa: BLE001
-        print(f"Error: {e}")
