@@ -1,5 +1,5 @@
 """
-Unit tests for StoppableWorker and DebounceManager.
+Unit tests for StoppableWorker, DebounceManager, and ActionDispatcher.
 """
 
 import logging
@@ -7,7 +7,7 @@ import threading
 import time
 import unittest
 
-from app.monitor.action_handler import DebounceManager
+from app.monitor.action_handler import ActionContext, ActionDispatcher, DebounceManager
 from app.monitor.instant_monitor_handler import MonitorEventHandler
 from app.monitor.worker import PeriodicWorker, StoppableWorker
 from app.utils.generic_util import BoundedLRUDict
@@ -273,6 +273,101 @@ class TestDebounceManager(unittest.TestCase):
         self.assertFalse(dm.is_running)
         with self.lock:
             self.assertEqual(len(self.calls), 0)
+
+
+class TestActionDispatcher(unittest.TestCase):
+    """Tests for ActionDispatcher thread lifecycle and action dispatching."""
+
+    def setUp(self):
+        self.logger = logging.getLogger("TestActionDispatcher")
+
+    def test_lifecycle_and_idempotence(self):
+        dispatcher = ActionDispatcher(handlers=[], logger=self.logger)
+        self.assertFalse(dispatcher.is_running)
+        self.assertFalse(dispatcher.is_stopped)
+
+        dispatcher.start()
+        self.assertTrue(dispatcher.is_running)
+
+        # Idempotent start
+        dispatcher.start()
+        self.assertTrue(dispatcher.is_running)
+
+        dispatcher.stop()
+        self.assertTrue(dispatcher.is_stopped)
+        self.assertFalse(dispatcher.is_running)
+
+        # Idempotent stop
+        dispatcher.stop()
+        self.assertTrue(dispatcher.is_stopped)
+
+    def test_dispatch_actions_to_handlers(self):
+        dispatched = []
+
+        class MockHandler:
+            def handle_action(self, context):
+                dispatched.append(context)
+
+        handler1 = MockHandler()
+        handler2 = MockHandler()
+        dispatcher = ActionDispatcher(handlers=[handler1, handler2], logger=self.logger)
+        dispatcher.start()
+
+        ctx = ActionContext(
+            event_type="created",
+            src_path="/tmp/test.txt",
+            is_directory=False,
+        )
+        dispatcher.queue_action(ctx)
+
+        # Give dispatcher thread a moment to process the action
+        time.sleep(0.05)
+        dispatcher.stop()
+
+        self.assertEqual(len(dispatched), 2)
+        self.assertEqual(dispatched[0], ctx)
+        self.assertEqual(dispatched[1], ctx)
+
+    def test_handler_exception_does_not_crash_dispatcher(self):
+        processed = []
+
+        class FailingHandler:
+            def handle_action(self, context):
+                raise RuntimeError("Handler error")
+
+        class GoodHandler:
+            def handle_action(self, context):
+                processed.append(context.src_path)
+
+        dispatcher = ActionDispatcher(
+            handlers=[FailingHandler(), GoodHandler()],
+            logger=self.logger,
+        )
+        dispatcher.start()
+
+        ctx1 = ActionContext(event_type="created", src_path="/tmp/1.txt", is_directory=False)
+        ctx2 = ActionContext(event_type="modified", src_path="/tmp/2.txt", is_directory=False)
+
+        dispatcher.queue_action(ctx1)
+        dispatcher.queue_action(ctx2)
+
+        time.sleep(0.05)
+        dispatcher.stop()
+
+        self.assertEqual(processed, ["/tmp/1.txt", "/tmp/2.txt"])
+
+    def test_stop_unblocks_blocking_queue_get(self):
+        dispatcher = ActionDispatcher(handlers=[], logger=self.logger)
+        dispatcher.start()
+        self.assertTrue(dispatcher.is_running)
+
+        # Thread is blocked on self.queue.get(); calling stop() should send None and terminate promptly
+        t0 = time.time()
+        dispatcher.stop(timeout=1.0)
+        duration = time.time() - t0
+
+        self.assertLess(duration, 0.5)
+        self.assertFalse(dispatcher.is_running)
 
 
 if __name__ == "__main__":

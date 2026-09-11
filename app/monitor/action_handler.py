@@ -224,36 +224,30 @@ class RemoteActionHandler(ActionHandler):
 
 
 
-class ActionDispatcher:
+class ActionDispatcher(StoppableWorker):
     """
     Dispatches actions to registered handlers in a separate thread.
 
-    Shutdown uses a single mechanism: a None sentinel is enqueued by stop(),
-    which unblocks the worker and causes it to exit. This avoids having both a
-    running flag and a sentinel as overlapping shutdown signals.
+    Extends StoppableWorker for standardized lifecycle management.
+    Shutdown is triggered by StoppableWorker.stop(), which sets stop_event
+    and invokes _on_stop() to enqueue a None sentinel, unblocking the worker
+    thread waiting on queue.get().
     """
     def __init__(self, handlers: list[ActionHandler], logger: logging.Logger | None = None):
+        super().__init__(name="ActionDispatcher", logger=logger)
         self.handlers = handlers
         self.queue = queue.Queue()
-        self.logger = logger or logging.getLogger(__name__)
-        self.thread = None
 
-    def start(self):
-        self.thread = threading.Thread(target=self._worker, daemon=True)
-        self.thread.start()
-        self.logger.info("ActionDispatcher started.")
-
-    def stop(self):
-        self.queue.put(None)  # Sentinel to signal the worker to shut down
-        if self.thread and self.thread.is_alive():
-            self.thread.join(timeout=2)
-        self.logger.info("ActionDispatcher stopped.")
+    def _on_stop(self) -> None:
+        """Enqueues None sentinel to unblock the worker thread waiting on queue.get()."""
+        self.queue.put(None)
 
     def queue_action(self, context: ActionContext):
         self.queue.put(context)
 
-    def _worker(self):
-        while True:
+    def run(self):
+        """Worker loop that dequeues ActionContext items and forwards them to handlers."""
+        while not self.is_stopped:
             context = self.queue.get()
             try:
                 if context is None:

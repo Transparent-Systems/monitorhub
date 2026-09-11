@@ -73,6 +73,8 @@ classDiagram
     normalize_path(path: str) str
     restore_folder(remote_path: str)* tuple[int, str]
   }
+  ActionDispatcher --|> StoppableWorker
+  DebounceManager --|> StoppableWorker
   CommandActionHandler --|> ActionHandler
   RemoteActionHandler --|> ActionHandler
   DebounceManager --* RemoteActionHandler : debounce_manager
