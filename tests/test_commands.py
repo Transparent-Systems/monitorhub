@@ -318,6 +318,33 @@ class TestCommands(unittest.TestCase):
         self.assertIn("Testing command profile: command-profile-1", text)
         self.assertNotIn("Test failed", text)
 
+    def test_profile_test_by_name(self):
+        commands, mock_prompt = self._make_commands([])
+        result = commands.profile.test(profile_name="command-profile-1")
+        self.assertTrue(result)
+        text = mock_prompt.output_text
+        self.assertIn("Testing command profile: command-profile-1", text)
+
+    def test_profile_test_both_id_and_name(self):
+        profile_id = self.database_test_data.sqlite_handler.get_profile(
+            profile_name="command-profile-1"
+        )["id"]
+        commands, mock_prompt = self._make_commands([])
+        result = commands.profile.test(profile_id=profile_id, profile_name="command-profile-1")
+        self.assertFalse(result)
+        self.assertIn("Cannot specify both --profile-id and --profile-name.", mock_prompt.output_text)
+
+    def test_profile_test_not_found(self):
+        commands, mock_prompt = self._make_commands([])
+        result = commands.profile.test(profile_id=999999)
+        self.assertFalse(result)
+        self.assertIn("Profile with id=999999 not found.", mock_prompt.output_text)
+
+        commands, mock_prompt2 = self._make_commands([])
+        result = commands.profile.test(profile_name="non-existent-profile")
+        self.assertFalse(result)
+        self.assertIn("Profile with name='non-existent-profile' not found.", mock_prompt2.output_text)
+
     def test_version(self):
         commands, mock_prompt = self._make_commands([])
         commands.app.version()

@@ -67,7 +67,12 @@ class ProfileCommands:
 
             self.prompt.print(f"Invalid profile id: {profile_id}. Please try again.")
 
-    def test(self, profile_id: int | None = None, live: bool = False) -> bool:
+    def test(
+        self,
+        profile_id: int | None = None,
+        profile_name: str | None = None,
+        live: bool = False,
+    ) -> bool:
         """
         Test selected profile.
 
@@ -77,12 +82,22 @@ class ProfileCommands:
         ftp) only requires adding a new handler branch under that category.
         """
 
-        if profile_id:
+        if profile_id is not None and profile_name is not None:
+            self.prompt.print("Cannot specify both --profile-id and --profile-name.")
+            return False
+
+        if profile_id is not None:
             # Get profile from database using sqlite handler
             profile = self.sqlite_handler.get_profile(profile_id=profile_id)
-            if profile is None:
-                self.prompt.print(f"Profile not found: {profile_id}")
+            if not profile:
+                self.prompt.print(f"Profile with id={profile_id} not found.")
                 return False
+        elif profile_name is not None:
+            profile = self.sqlite_handler.get_profile(profile_name=profile_name)
+            if not profile:
+                self.prompt.print(f"Profile with name='{profile_name}' not found.")
+                return False
+            profile_id = profile.get("id")
         else:
             profile = self._select_profile()
             if not profile:

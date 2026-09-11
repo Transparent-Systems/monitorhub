@@ -32,7 +32,11 @@ _SUBCOMMAND_DISPATCH = {
     ("profile", "test"): (
         "profile",
         "test",
-        lambda args: {"profile_id": args.profile_id, "live": args.live},
+        lambda args: {
+            "profile_id": getattr(args, "profile_id", None),
+            "profile_name": getattr(args, "profile_name", None),
+            "live": getattr(args, "live", False),
+        },
     ),
     ("profile", "show"): (
         "profile",
@@ -216,8 +220,13 @@ if __name__ == "__main__":
     profile_test_parser.add_argument("-i", "--profile-id",
         type=int,
         metavar="<ID>",
-        help="Profile ID of remote profile to test"
-        )
+        help="ID of the profile to test (omit to select interactively)"
+    )
+    profile_test_parser.add_argument("-n", "--profile-name",
+        type=str,
+        metavar="<NAME>",
+        help="Name of the profile to test (omit to select interactively)"
+    )
     profile_test_parser.add_argument("--live",
         action="store_true",
         default=False,

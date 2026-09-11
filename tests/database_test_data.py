@@ -68,7 +68,7 @@ class DatabaseTestData:
             },
             {
                 "category": "remote",
-                "name": "ftp-test-profile",
+                "name": "ftp-test",
                 "type": "ftp",
                 "config": {
                     "host": "192.168.1.51",
@@ -80,7 +80,7 @@ class DatabaseTestData:
             },
             {
                 "category": "command",
-                "name": "command-profile-1",
+                "name": "command-1",
                 "type": "event_command",
                 "config": {
                     "command": "notify-send \"Testing command from monitor = {monitor_name}, profile = {profile_name}, event = {event_name}, source path = {src_path}\"", 
