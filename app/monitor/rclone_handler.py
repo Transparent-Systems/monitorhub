@@ -237,19 +237,13 @@ class RcloneHandler(RemoteHandler):
             return (1, stderr or f"Command timed out after {effective_timeout}s")
 
         returncode = process.returncode
+        elapsed = time.monotonic() - start_time
+        self.logger.debug(
+            f"Command finished in {elapsed:.2f}s (code={returncode}): {' '.join(rclone_command)}"
+        )
         if returncode == 0:
-            elapsed = time.monotonic() - start_time
-            self.logger.debug(
-                f"Command completed in {elapsed:.2f}s: {' '.join(rclone_command)}"
-            )
             return (0, stdout.strip())
 
-        # Non-zero exit code (mirrors the previous `check=True` behaviour, e.g.
-        # running `ls` on a path that does not exist).
-        self.logger.error(f"Error running command: {' '.join(rclone_command)}")
-        self.logger.error(f"Error returncode: {returncode}")
-        self.logger.debug(f"Error stdout: {stdout}")
-        self.logger.debug(f"Error stderr: {stderr}")
         return (returncode, stderr)
 
     def get_remote_path(self, monitor_path: str) -> str:
