@@ -351,12 +351,14 @@ if __name__ == "__main__":
         help="Delay in seconds to wait before checking results."
     )
     parser.add_argument(
+        "-t",
         "--test-cases",
         type=str,
         nargs="+",
         help="Space-separated list of test method names (or substrings) to run."
     )
     parser.add_argument(
+        "-p",
         "--profile-type",
         type=str,
         default="ftp",
