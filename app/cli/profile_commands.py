@@ -123,7 +123,7 @@ class ProfileCommands:
                 config=config or {},
                 live=live,
             )
-        elif category == "remote":
+        if category == "remote":
             # Currently only the s3_handler is implemented as a native Python
             # handler. All other remote profile types use rclone_handler.
             # More native handlers can be added here in the future.
@@ -140,9 +140,9 @@ class ProfileCommands:
                     prompt=self.prompt,
                 )
             return True
-        else:
-            self.prompt.print(f"Unknown or unsupported profile category '{category}' for profile type '{profile_type}'")
-            return False
+
+        self.prompt.print(f"Unknown or unsupported profile category '{category}' for profile type '{profile_type}'")
+        return False
 
     def _test_command_profile(
         self, profile_name: str, config: dict, live: bool = False
@@ -535,16 +535,16 @@ class ProfileCommands:
                     # Update region in profile_config
                     profile_config["region"] = input_profile_region
                     break
-                else:
-                    # Prompt user for region
-                    input_profile_region = self.prompt.input(f"Enter S3 region of your provider: {provider_name}: ")
-                    if input_profile_region.strip() == "":
-                        self.prompt.print("Region cannot be just spaces. Please try again.")
-                        continue
 
-                    # Update region in profile_config
-                    profile_config["region"] = input_profile_region
-                    break
+                # Prompt user for region
+                input_profile_region = self.prompt.input(f"Enter S3 region of your provider: {provider_name}: ")
+                if input_profile_region.strip() == "":
+                    self.prompt.print("Region cannot be just spaces. Please try again.")
+                    continue
+
+                # Update region in profile_config
+                profile_config["region"] = input_profile_region
+                break
         else:
             # For other providers we need the endpoint
             current_endpoint = profile_config.get("endpoint", "N/A")
@@ -556,14 +556,14 @@ class ProfileCommands:
                         # Update endpoint in profile_config
                         profile_config["endpoint"] = input_profile_endpoint
                     break
-                else:
-                    input_profile_endpoint = self.prompt.input(f"Enter S3 endpoint of your provider: {provider_name}: ")
-                    if input_profile_endpoint.strip() == "":
-                        self.prompt.print("Endpoint cannot be just spaces. Please try again.")
-                        continue
-                    # Update endpoint in profile_config
-                    profile_config["endpoint"] = input_profile_endpoint
-                    break
+
+                input_profile_endpoint = self.prompt.input(f"Enter S3 endpoint of your provider: {provider_name}: ")
+                if input_profile_endpoint.strip() == "":
+                    self.prompt.print("Endpoint cannot be just spaces. Please try again.")
+                    continue
+                # Update endpoint in profile_config
+                profile_config["endpoint"] = input_profile_endpoint
+                break
 
         # Profile_config has already been populated with provider_name, access_key_id etc
         # Now update profile
@@ -694,14 +694,13 @@ class ProfileCommands:
                 break
             self.prompt.print("Please answer y or n.")
 
-        config = {
+        return {
             "command": command,
             "command_events": events,
             "command_cooldown": cooldown,
             "command_timeout": timeout,
             "command_shell": shell,
         }
-        return config
 
     def new(self):
         """

@@ -454,18 +454,18 @@ class ActionHandlerFactory:
                 profile_type=profile_type,
                 logger=logger,
             )
-        elif resolved_category == "remote":
+        if resolved_category == "remote":
             return cls._create_remote_handler(
                 monitor=monitor,
                 profile=profile,
                 logger=logger,
                 debounce_delay=debounce_delay,
             )
-        else:
-            logger.warning(
-                f"Unknown profile category '{resolved_category}' for profile '{profile.get('name')}'"
-            )
-            return None
+
+        logger.warning(
+            f"Unknown profile category '{resolved_category}' for profile '{profile.get('name')}'"
+        )
+        return None
 
     @classmethod
     def _create_command_handler(

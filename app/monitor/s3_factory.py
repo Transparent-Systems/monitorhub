@@ -68,10 +68,7 @@ class S3Factory:
             endpoint = endpoint.replace('http://', 'https://')
 
         # Check if "https://" inside endpoint
-        if 'https://' in endpoint:
-            endpoint_url = endpoint
-        else:
-            endpoint_url = f"https://{endpoint}"
+        endpoint_url = endpoint if 'https://' in endpoint else f"https://{endpoint}"
         
         access_key_id = profile_config.get('access_key_id')
         access_key_secret = profile_config.get('access_key_secret')

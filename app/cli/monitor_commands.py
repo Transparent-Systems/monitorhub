@@ -453,9 +453,7 @@ class MonitorCommands:
                     break
 
                 input_continue = self.prompt.input("Do you want to add another profile? (y/N): ")
-                if input_continue.strip().lower() in ("y", "yes"):
-                    continue
-                else:
+                if input_continue.strip().lower() not in ("y", "yes"):
                     break
 
     # ------------------------------------------------------------------
@@ -685,9 +683,7 @@ class MonitorCommands:
                 break
 
             input_continue = self.prompt.input("Do you want to add another profile? (y/N): ")
-            if input_continue.strip().lower() in ("y", "yes"):
-                continue
-            else:
+            if input_continue.strip().lower() not in ("y", "yes"):
                 break
 
         monitor_id = self.sqlite_handler.add_monitor(
@@ -702,14 +698,13 @@ class MonitorCommands:
         if monitor_id is None:
             self.prompt.print(f"Monitor name: {input_monitor_name} not created")
             return
-        else:
-            self.prompt.print(f"Monitor name: {input_monitor_name} created")
-            for i in range(len(selected_profiles)):
-                profile = selected_profiles[i]
-                profile_id = profile["id"]
-                self.sqlite_handler.add_monitor_profile_map(
-                    monitor_id=monitor_id, profile_id=profile_id
-                )
+
+        self.prompt.print(f"Monitor name: {input_monitor_name} created")
+        for profile in selected_profiles:
+            profile_id = profile["id"]
+            self.sqlite_handler.add_monitor_profile_map(
+                monitor_id=monitor_id, profile_id=profile_id
+            )
 
     def show(self, monitor_id: int | None = None, monitor_name: str | None = None):
         """Show all monitors, or a single monitor when an id or name is given."""

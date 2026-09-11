@@ -69,7 +69,7 @@ class AppConfig:
             db_val = databases[default_db]
             if isinstance(db_val, str):
                 return db_val
-            elif isinstance(db_val, dict) and "path" in db_val:
+            if isinstance(db_val, dict) and "path" in db_val:
                 return str(db_val["path"])
 
         if isinstance(default_db, str):

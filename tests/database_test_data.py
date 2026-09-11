@@ -80,7 +80,7 @@ class DatabaseTestData:
             },
             {
                 "category": "command",
-                "name": "command-1",
+                "name": "command-test",
                 "type": "event_command",
                 "config": {
                     "command": "notify-send \"Testing command from monitor = {monitor_name}, profile = {profile_name}, event = {event_name}, source path = {src_path}\"", 

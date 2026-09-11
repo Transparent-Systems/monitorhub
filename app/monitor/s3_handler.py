@@ -279,10 +279,7 @@ class S3Handler(RemoteHandler):
                         # If ETag contains '-', it is a multipart upload and cannot be verified by simple MD5
                         if '-' not in remote_etag:
                             local_md5 = self._calculate_md5(str(local_file_path))
-                            if local_md5 != remote_etag:
-                                should_copy = True
-                            else:
-                                should_copy = False
+                            should_copy = local_md5 != remote_etag
                         else:
                             # Fallback for multipart files: assume size match is enough
                             should_copy = False
@@ -417,7 +414,7 @@ class S3Handler(RemoteHandler):
             # Build set of expected keys from the monitor path
             expected_keys = set()
             monitor_path_obj = Path(monitor_path)
-            for root, dirs, files in os.walk(monitor_path):
+            for root, _dirs, files in os.walk(monitor_path):
                 for file in files:
                     local_file = Path(root) / file
                     # Calculate relative path from the monitor root

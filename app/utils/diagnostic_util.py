@@ -13,8 +13,8 @@ from typing import Any
 from app.cli.process_test_result import ProcessTestResult
 from app.cli.prompt_service import PromptService
 from app.monitor.remote_handler_factory import RemoteHandlerFactory
+from app.utils.reference_data import PROFILE_CATEGORY_COMMAND, get_profile_category
 from app.utils.sqlite_handler import SQLiteHandler
-from app.utils.reference_data import get_profile_category, PROFILE_CATEGORY_COMMAND
 
 
 class DiagnosticUtil:
@@ -264,10 +264,10 @@ class DiagnosticUtil:
                     self.check_rclone_dependency_result = True
                     # We need to check rclone dependency once only
                     return True
-                else:
-                    self.check_rclone_dependency_result = False
-                    self.logger.error("Rclone is not installed but is required by a profile.")
-                    return False
+
+                self.check_rclone_dependency_result = False
+                self.logger.error("Rclone is not installed but is required by a profile.")
+                return False
 
         return True
 
@@ -382,7 +382,7 @@ class DiagnosticUtil:
             if profile_category == PROFILE_CATEGORY_COMMAND:
                 profile_name = profile.get('name', '')
                 self.prompt.print(f"Skipping command profile: {profile_name}")
-                self.prompt.print(f"Test command profile with command: mhub profile test")
+                self.prompt.print("Test command profile with command: mhub profile test")
                 continue
 
             #####################################

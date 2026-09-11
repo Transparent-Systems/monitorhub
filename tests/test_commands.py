@@ -209,7 +209,7 @@ class TestCommands(unittest.TestCase):
         text = mock_prompt.output_text
         self.assertIn("Profile id:", text)
         self.assertIn("s3-test", text)
-        self.assertIn("command-profile-1", text)
+        self.assertIn("command-test", text)
 
     def test_profile_show_by_id(self):
         commands, mock_prompt = self._make_commands([])
@@ -248,7 +248,7 @@ class TestCommands(unittest.TestCase):
 
     def test_profile_edit_command(self):
         profile_id = self.database_test_data.sqlite_handler.get_profile(
-            profile_name="command-profile-1"
+            profile_name="command-test"
         )["id"]
         commands, _ = self._make_commands(
             [str(profile_id), "echo updated", "", "", "", ""]
@@ -259,7 +259,7 @@ class TestCommands(unittest.TestCase):
 
     def test_profile_edit_command_by_id(self):
         profile_id = self.database_test_data.sqlite_handler.get_profile(
-            profile_name="command-profile-1"
+            profile_name="command-test"
         )["id"]
         commands, _ = self._make_commands(["echo updated", "", "", "", ""])
         commands.profile.edit(profile_id=profile_id)
@@ -268,16 +268,16 @@ class TestCommands(unittest.TestCase):
 
     def test_profile_edit_command_by_name(self):
         commands, _ = self._make_commands(["echo updated", "", "", "", ""])
-        commands.profile.edit(profile_name="command-profile-1")
-        profile = commands.sqlite_handler.get_profile(profile_name="command-profile-1")
+        commands.profile.edit(profile_name="command-test")
+        profile = commands.sqlite_handler.get_profile(profile_name="command-test")
         self.assertEqual(profile["config"]["command"], "echo updated")
 
     def test_profile_edit_both_id_and_name(self):
         profile_id = self.database_test_data.sqlite_handler.get_profile(
-            profile_name="command-profile-1"
+            profile_name="command-test"
         )["id"]
         commands, mock_prompt = self._make_commands([])
-        commands.profile.edit(profile_id=profile_id, profile_name="command-profile-1")
+        commands.profile.edit(profile_id=profile_id, profile_name="command-test")
         self.assertIn("Cannot specify both --profile-id and --profile-name.", mock_prompt.output_text)
 
     def test_profile_delete(self):
@@ -310,27 +310,27 @@ class TestCommands(unittest.TestCase):
 
     def test_profile_test_command(self):
         profile_id = self.database_test_data.sqlite_handler.get_profile(
-            profile_name="command-profile-1"
+            profile_name="command-test"
         )["id"]
         commands, mock_prompt = self._make_commands([])
         commands.profile.test(profile_id=profile_id)
         text = mock_prompt.output_text
-        self.assertIn("Testing command profile: command-profile-1", text)
+        self.assertIn("Testing command profile: command-test", text)
         self.assertNotIn("Test failed", text)
 
     def test_profile_test_by_name(self):
         commands, mock_prompt = self._make_commands([])
-        result = commands.profile.test(profile_name="command-profile-1")
+        result = commands.profile.test(profile_name="command-test")
         self.assertTrue(result)
         text = mock_prompt.output_text
-        self.assertIn("Testing command profile: command-profile-1", text)
+        self.assertIn("Testing command profile: command-test", text)
 
     def test_profile_test_both_id_and_name(self):
         profile_id = self.database_test_data.sqlite_handler.get_profile(
-            profile_name="command-profile-1"
+            profile_name="command-test"
         )["id"]
         commands, mock_prompt = self._make_commands([])
-        result = commands.profile.test(profile_id=profile_id, profile_name="command-profile-1")
+        result = commands.profile.test(profile_id=profile_id, profile_name="command-test")
         self.assertFalse(result)
         self.assertIn("Cannot specify both --profile-id and --profile-name.", mock_prompt.output_text)
 

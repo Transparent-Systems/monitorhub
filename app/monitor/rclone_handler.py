@@ -303,29 +303,28 @@ class RcloneHandler(RemoteHandler):
 
         if return_value == 0:
             return (return_value, result_output)
-        else:
-            # rclone copyto can fail if a file has been deleted at the destination on a versioned file system
-            # If copyto fails, we try to copy the file using rclone --include
-            # This is a fallback mechanism
-            # Check result_output for MethodNotAllowed
-            if "MethodNotAllowed" in result_output:
-                monitor_path_obj = Path(monitor_path)
-                file_name = monitor_path_obj.name
-                monitor_folder = monitor_path_obj.parent
-                remote_folder = self.get_remote_path(monitor_path=str(monitor_folder))
-                return self.run_command(
-                    [
-                        "copy",
-                        str(monitor_folder),
-                        remote_folder,
-                        "--include",
-                        file_name,
-                    ]
-                )
-            else:
-                # Log copy_file failed
-                self.logger.warning(f"copy_file failed; return_value={return_value}")
-                return (return_value, result_output)
+
+        # rclone copyto can fail if a file has been deleted at the destination on a versioned file system
+        # If copyto fails, we try to copy the file using rclone --include
+        # This is a fallback mechanism
+        # Check result_output for MethodNotAllowed
+        if "MethodNotAllowed" in result_output:
+            monitor_path_obj = Path(monitor_path)
+            file_name = monitor_path_obj.name
+            monitor_folder = monitor_path_obj.parent
+            remote_folder = self.get_remote_path(monitor_path=str(monitor_folder))
+            return self.run_command(
+                [
+                    "copy",
+                    str(monitor_folder),
+                    remote_folder,
+                    "--include",
+                    file_name,
+                ]
+            )
+        # Log copy_file failed
+        self.logger.warning(f"copy_file failed; return_value={return_value}")
+        return (return_value, result_output)
 
     def _exclude_args(self) -> list[str]:
         """Build repeated rclone ``--exclude`` flags from the configured patterns."""
