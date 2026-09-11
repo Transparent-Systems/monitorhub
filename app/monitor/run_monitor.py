@@ -16,7 +16,6 @@ import os
 import signal
 import sys
 import threading
-import time
 from pathlib import Path
 
 # Ensure the project root is on sys.path so `app.*` imports resolve
@@ -130,41 +129,22 @@ def run_monitor_main(argv=None) -> int:
         sqlite_handler.close()
         sys.exit(1)
 
-    # Event used to signal the poller thread to stop
+    # Event used to signal all background threads and main loop to stop
     stop_event = threading.Event()
 
-    # Flag to prevent duplicate shutdown
+    # Reason for shutdown
+    shutdown_reason = "normal exit"
     shutdown_lock = threading.Lock()
-    has_shutdown = False
 
-    def do_shutdown(reason: str):
-        """Perform graceful shutdown: stop monitor, update DB, exit."""
-        nonlocal has_shutdown
-
+    def request_shutdown(reason: str):
+        """Signal shutdown to be handled cleanly by the main thread."""
+        nonlocal shutdown_reason
         with shutdown_lock:
-            if has_shutdown:
-                return
-            has_shutdown = True
+            if not stop_event.is_set():
+                shutdown_reason = reason
+            stop_event.set()
 
-        logger.info(
-            f"Shutting down monitor '{monitor.get('name')}' (id={monitor_id}) — reason: {reason}"
-        )
-        stop_event.set()
-        monitor_handler.stop()
-        sqlite_handler.update_monitor_status(monitor_id=monitor_id, status="stopped")
-        sqlite_handler.update_monitor_pid(monitor_id=monitor_id, pid=0)
-        logger.info(
-            f"Monitor '{monitor.get('name')}' (id={monitor_id}) status set to 'stopped'"
-        )
-        sqlite_handler.close()
-
-        # sys.exit() only stops the current thread. When do_shutdown is called
-        # from the background status-poller thread or completion callback, it
-        # would leave the main thread blocked in signal.pause(). Use os._exit()
-        # to terminate the whole process after cleanup, from any thread.
-        os._exit(0)
-
-    if not monitor_handler.start(on_complete=do_shutdown):
+    if not monitor_handler.start(on_complete=request_shutdown):
         logger.error(f"Failed to start monitor '{monitor.get('name')}' (id={monitor_id}). Exiting.")
         sqlite_handler.update_monitor_status(monitor_id=monitor_id, status="stopped")
         sqlite_handler.update_monitor_pid(monitor_id=monitor_id, pid=0)
@@ -192,7 +172,7 @@ def run_monitor_main(argv=None) -> int:
                         f"Monitor '{monitor.get('name')}' (id={monitor_id}) "
                         f"received 'stop' command via DB status"
                     )
-                    do_shutdown("stop command received via DB poll")
+                    request_shutdown("stop command received via DB poll")
                     break
             except Exception as e:  # noqa: BLE001
                 logger.warning(f"Status poller error for monitor_id={monitor_id}: {e}")
@@ -201,30 +181,42 @@ def run_monitor_main(argv=None) -> int:
     poller_thread.start()
 
     def shutdown_handler(signum, frame):
-        do_shutdown(f"received signal {signal.Signals(signum).name}")
+        request_shutdown(f"received signal {signal.Signals(signum).name}")
 
     signal.signal(signal.SIGTERM, shutdown_handler)
     signal.signal(signal.SIGINT, shutdown_handler)
 
-    # Block the main thread — the watchdog observer runs in its own threads.
-    # The child process stays alive until a signal is received.
+    # Block the main thread cleanly until shutdown is requested.
+    # Using a timed wait on stop_event allows signals (SIGINT/SIGTERM) to be
+    # processed promptly by the main thread without blocking indefinitely.
     try:
-        signal.pause()
-    except AttributeError:
-        # signal.pause() is not available on Windows; fall back to sleep loop
         while not stop_event.is_set():
-            time.sleep(1)
+            stop_event.wait(timeout=1.0)
+    except (KeyboardInterrupt, SystemExit):
+        request_shutdown("interrupted")
 
-    # If we get here (e.g. signal.pause() interrupted), trigger shutdown
-    if not has_shutdown:
-        do_shutdown("main loop exited")
+    # Main thread performs full teardown and cleanup
+    logger.info(
+        f"Shutting down monitor '{monitor.get('name')}' (id={monitor_id}) — reason: {shutdown_reason}"
+    )
+    stop_event.set()
+    monitor_handler.stop()
+    if poller_thread.is_alive():
+        poller_thread.join(timeout=2.0)
+
+    sqlite_handler.update_monitor_status(monitor_id=monitor_id, status="stopped")
+    sqlite_handler.update_monitor_pid(monitor_id=monitor_id, pid=0)
+    logger.info(
+        f"Monitor '{monitor.get('name')}' (id={monitor_id}) status set to 'stopped'"
+    )
+    sqlite_handler.close()
 
     return 0
 
 
 def main():
     """Backward-compatible CLI entry point."""
-    run_monitor_main()
+    sys.exit(run_monitor_main())
 
 
 if __name__ == "__main__":
