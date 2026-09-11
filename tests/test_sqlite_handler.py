@@ -458,6 +458,18 @@ class TestSqliteHandler(BaseTestClass):
         except Exception as e: # noqa: BLE001
             self.fail(f"Cleanup raised an exception: {e}")
 
+    def test_60_get_monitor_missing_arguments_raises_value_error(self):
+        with self.assertRaises(ValueError):
+            self.sqlite_handler.get_monitor()
+
+    def test_61_get_profile_missing_arguments_raises_value_error(self):
+        with self.assertRaises(ValueError):
+            self.sqlite_handler.get_profile()
+
+    def test_62_delete_profile_missing_arguments_raises_value_error(self):
+        with self.assertRaises(ValueError):
+            self.sqlite_handler.delete_profile()
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(

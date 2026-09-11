@@ -397,24 +397,26 @@ class SQLiteHandler:
         """
         Get a monitor from the database by id or name
         """
-        try:
-            with self._lock:
-                cur = self.connection.cursor()
-                try:
-                    if monitor_id is not None:
-                        cur.execute("SELECT * FROM monitors WHERE id = :id", {"id": monitor_id})
-                    elif monitor_name is not None:
-                        cur.execute("SELECT * FROM monitors WHERE name = :name", {"name": monitor_name})
-                    else:
-                        raise ValueError("Either monitor_id or monitor_name must be provided")
+        if monitor_id is None and monitor_name is None:
+            raise ValueError("Either monitor_id or monitor_name must be provided")
 
-                    row = cur.fetchone()
-                    if row:
-                        return self._row_to_monitor(row)
-                finally:
-                    cur.close()
-        except Exception as e:  # noqa: BLE001
-            self.logger.error(f"Error fetching monitor: {e}")
+        with self._lock:
+            cur = self.connection.cursor()
+            try:
+                if monitor_id is not None:
+                    cur.execute("SELECT * FROM monitors WHERE id = :id", {"id": monitor_id})
+                else:
+                    cur.execute("SELECT * FROM monitors WHERE name = :name", {"name": monitor_name})
+
+                row = cur.fetchone()
+            except sqlite3.Error as e:
+                self.logger.error(f"Error fetching monitor: {e}")
+                raise
+            finally:
+                cur.close()
+
+        if row:
+            return self._row_to_monitor(row)
         return {}
 
     def get_monitors(self) -> list[dict[str, Any]]:
@@ -441,7 +443,7 @@ class SQLiteHandler:
                     {"status": status, "id": monitor_id},
                 )
                 return True
-        except Exception as e:  # noqa: BLE001
+        except sqlite3.Error as e:
             self.logger.error(f"Error updating monitor status: {e}")
             return False
 
@@ -456,7 +458,7 @@ class SQLiteHandler:
                     {"pid": pid, "id": monitor_id},
                 )
                 return True
-        except Exception as e:  # noqa: BLE001
+        except sqlite3.Error as e:
             self.logger.error(f"Error updating monitor pid: {e}")
             return False
 
@@ -471,7 +473,7 @@ class SQLiteHandler:
                     {"last_run": last_run, "id": monitor_id},
                 )
                 return True
-        except Exception as e:  # noqa: BLE001
+        except sqlite3.Error as e:
             self.logger.error(f"Error updating monitor last_run: {e}")
             return False
 
@@ -486,7 +488,7 @@ class SQLiteHandler:
                     {"last_heartbeat": last_heartbeat, "id": monitor_id},
                 )
                 return True
-        except Exception as e:  # noqa: BLE001
+        except sqlite3.Error as e:
             self.logger.error(f"Error updating monitor last_heartbeat: {e}")
             return False
 
@@ -502,7 +504,7 @@ class SQLiteHandler:
                     {"config": config_str, "id": monitor_id},
                 )
                 return True
-        except Exception as e:  # noqa: BLE001
+        except sqlite3.Error as e:
             self.logger.error(f"Error updating monitor config: {e}")
             return False
 
@@ -515,7 +517,7 @@ class SQLiteHandler:
             with self.transaction() as cur:
                 cur.execute("DELETE FROM monitors WHERE id = :id", {"id": monitor_id})
                 return True
-        except Exception as e:  # noqa: BLE001
+        except sqlite3.Error as e:
             self.logger.error(f"Error occurred while deleting monitor: {e}")
             return False
 
@@ -548,24 +550,26 @@ class SQLiteHandler:
 
     def get_profile(self, profile_id: int | None = None, profile_name: str | None = None) -> dict[str, Any]:
         """Get a profile from the database by id or name"""
-        try:
-            with self._lock:
-                cur = self.connection.cursor()
-                try:
-                    if profile_id is not None:
-                        cur.execute("SELECT * FROM profiles WHERE id = :id", {"id": profile_id})
-                    elif profile_name is not None:
-                        cur.execute("SELECT * FROM profiles WHERE name = :name", {"name": profile_name})
-                    else:
-                        raise ValueError("Either profile_id or profile_name must be provided")
+        if profile_id is None and profile_name is None:
+            raise ValueError("Either profile_id or profile_name must be provided")
 
-                    row = cur.fetchone()
-                    if row:
-                        return self._row_to_profile(row)
-                finally:
-                    cur.close()
-        except Exception as e:  # noqa: BLE001
-            self.logger.error(f"Error occurred while fetching profile: {e}")
+        with self._lock:
+            cur = self.connection.cursor()
+            try:
+                if profile_id is not None:
+                    cur.execute("SELECT * FROM profiles WHERE id = :id", {"id": profile_id})
+                else:
+                    cur.execute("SELECT * FROM profiles WHERE name = :name", {"name": profile_name})
+
+                row = cur.fetchone()
+            except sqlite3.Error as e:
+                self.logger.error(f"Error occurred while fetching profile: {e}")
+                raise
+            finally:
+                cur.close()
+
+        if row:
+            return self._row_to_profile(row)
         return {}
 
     def update_profile(self, profile_id: int, name: str, profile_type: str, config: dict[str, Any]) -> int | None:
@@ -597,16 +601,17 @@ class SQLiteHandler:
         Delete a profile from the database.
         Foreign key CASCADE automatically cleans up monitor_profile_map entries.
         """
+        if profile_id is None and profile_name is None:
+            raise ValueError("Either profile_id or profile_name must be provided")
+
         try:
             with self.transaction() as cur:
                 if profile_id is not None:
                     cur.execute("DELETE FROM profiles WHERE id = :id", {"id": profile_id})
-                elif profile_name is not None:
-                    cur.execute("DELETE FROM profiles WHERE name = :name", {"name": profile_name})
                 else:
-                    raise ValueError("Either profile_id or profile_name must be provided")
+                    cur.execute("DELETE FROM profiles WHERE name = :name", {"name": profile_name})
                 return True
-        except Exception as e:  # noqa: BLE001
+        except sqlite3.Error as e:
             self.logger.error(f"Error deleting profile: {e}")
             return False
 
@@ -634,7 +639,7 @@ class SQLiteHandler:
                     VALUES (:monitor_id, :profile_id)
                 """, {"monitor_id": monitor_id, "profile_id": profile_id})
                 return True
-        except Exception as e:  # noqa: BLE001
+        except sqlite3.Error as e:
             self.logger.error(f"Error mapping monitor {monitor_id} to profile {profile_id}: {e}")
             return False
 
@@ -649,7 +654,7 @@ class SQLiteHandler:
                     WHERE monitor_id = :monitor_id AND profile_id = :profile_id
                 """, {"monitor_id": monitor_id, "profile_id": profile_id})
                 return True
-        except Exception as e:  # noqa: BLE001
+        except sqlite3.Error as e:
             self.logger.error(f"Error unmapping monitor {monitor_id} from profile {profile_id}: {e}")
             return False
 
