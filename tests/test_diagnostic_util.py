@@ -10,21 +10,29 @@ import argparse
 import logging
 import sys
 
+# Add project root to sys.path for imports when running this file directly
+from pathlib import Path
+project_root = Path(__file__).resolve().parent.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
+
 from app.utils.diagnostic_util import DiagnosticUtil
 from app.utils.sqlite_handler import SQLiteHandler
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="MonitorHub diagnostics runner")
     parser.add_argument(
-        "test_cases",
+        "-t",
+        "--test-cases",
         nargs="*",
-        default=["check_app_config"],
+        default=["check_monitor_config"],
         help=(
             "Diagnostics to run: check_app_env, check_profile_import, "
             "check_rclone_dependency, check_app_config"
         ),
     )
     parser.add_argument(
+        "-d",
         "--db-dir",
         default="db",
         help="Directory containing monitorhub.db (default: db)",
@@ -58,11 +66,11 @@ if __name__ == "__main__":
         else:
             print("Check for Rclone dependency failed")
 
-    elif ("check_app_config" in args.test_cases):
+    elif ("check_monitor_config" in args.test_cases):
         if (diagnostic_util.check_monitor_config()):
-            print("Config check passed")
+            print("Monitor config check passed")
         else:
-            print("Config check failed")
+            print("Monitor config check failed")
     else:
         print("No test cases selected")
 

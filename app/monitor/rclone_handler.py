@@ -294,7 +294,13 @@ class RcloneHandler(RemoteHandler):
         """
 
         if remote_path is None:
+            # Derive remote_path from monitor_path
+            # Remote path will inlude the profile_name prefix
             remote_path = self.get_remote_path(monitor_path=monitor_path)
+        else:
+            # Check if profile_name is prefixed to remote_path, if not, prefix it
+            if self.profile_name and not remote_path.startswith(self.profile_name + ":"):
+                remote_path = f"{self.profile_name}:{remote_path}"
 
         # copyto can fail if the file has been deleted at the destination on a versioned file system
         (return_value, result_output) = self.run_command(
@@ -366,6 +372,10 @@ class RcloneHandler(RemoteHandler):
         """
         Delete file at remote_path
         """
+
+        # Check if profile_name is prefixed to remote_path, if not, prefix it
+        if self.profile_name and not remote_path.startswith(self.profile_name + ":"):
+            remote_path = f"{self.profile_name}:{remote_path}"
 
         # We use rclone delete (instead of deletefile) as it also works when file does not exist on remote_path
         # This could happen is DirDeleteEvent is triggered before FileDeleteEvent

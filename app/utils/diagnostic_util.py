@@ -14,6 +14,7 @@ from app.cli.process_test_result import ProcessTestResult
 from app.cli.prompt_service import PromptService
 from app.monitor.remote_handler_factory import RemoteHandlerFactory
 from app.utils.sqlite_handler import SQLiteHandler
+from app.utils.reference_data import get_profile_category, PROFILE_CATEGORY_COMMAND
 
 
 class DiagnosticUtil:
@@ -82,8 +83,8 @@ class DiagnosticUtil:
             return
 
         # The main purpose of importing a profile is that it can be linked to a
-        # monitor. Providers are code-defined reference data (no longer stored
-        # in the database), so imported rclone profiles just keep their
+        # monitor. 
+        # Providers are code-defined reference data, so imported rclone profiles just keep their
         # provider_name in the profile config.
         # Iterate over rlone profile names
         # If a profile is in Rclone but not in monitorhub, then add profile to profile_to_import list
@@ -119,7 +120,7 @@ class DiagnosticUtil:
         self.prompt.print("Ok to import profiles? (Y/n)")
         self.prompt.print("Y: Yes is default value, press Enter to accept")
         self.prompt.print("N: No")
-        import_ok = self.prompt.input("Press Enter key to accept default value: Yes\n")
+        import_ok = self.prompt.input("Import Rclone profiles (Y/n)\n")
         if (import_ok.strip() != "" and import_ok.lower() != "y"):
             self.prompt.print("Profile import cancelled")
             return
@@ -363,13 +364,6 @@ class DiagnosticUtil:
         found = os.path.exists(monitor_path)
         process_test_result.process(test_case_name=testname, test_ok=found, test_output=f"Monitor path {monitor_path} exists: {found}")
         
-        #####################################
-        # Is remote_path writable ?
-        #####################################
-
-        # Create a temporary file name
-        timestamp = time.strftime("%Y%m%d_%H%M%S")
-        temp_file_name = f"diagnostic_util_test_{timestamp}.txt"
         # Create a local temporary file with dummy content
         with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix=".txt") as tmp_file:
             tmp_file.write("This is a temporary test file for Monitor Hub diagnostics.")
@@ -379,10 +373,21 @@ class DiagnosticUtil:
             monitor_id=monitor_id
             )
 
+        profile_count = len(profiles)
+        self.prompt.print(f"Iterating over {profile_count} remote profiles for monitor: {monitor.get('name', 'Unknown')}")
         for profile in profiles:
+            profile_type = profile.get("profile_type", "")
+            # Get profile category from profile_type
+            profile_category = get_profile_category(profile_type)
+            if profile_category == PROFILE_CATEGORY_COMMAND:
+                profile_name = profile.get('name', '')
+                self.prompt.print(f"Skipping command profile: {profile_name}")
+                self.prompt.print(f"Test command profile with command: mhub profile test")
+                continue
+
             #####################################
             profile_name = profile.get("name", "")
-            testname = f"Test remote_profile: {profile_name}"
+            testname = f"Testing remote_profile: {profile_name}"
             self.prompt.print(testname)
             #####################################
 
@@ -396,11 +401,13 @@ class DiagnosticUtil:
             if remote_handler is None:
                 process_test_result.process(test_case_name=testname, test_ok=False, test_output=f"Could not get remote_handler for remote_profile: {profile_name}")
                 continue
-
             
             monitor_path_file = str(Path(tmp_file.name).resolve())
             self.prompt.print(f"monitor_path_file: {monitor_path_file}")
-            remote_path_file = f"{remote_path}/{temp_file_name}"
+            # Create a temporary remote file name
+            timestamp = time.strftime("%Y%m%d_%H%M%S")
+            temp_remote_file_name = f"diagnostic_util_test_{timestamp}.txt"
+            remote_path_file = f"{remote_path}/{temp_remote_file_name}"
             self.prompt.print(f"remote_path_file: {remote_path_file}")
 
             result_code, _ = remote_handler.copy_file(
@@ -424,7 +431,7 @@ class DiagnosticUtil:
                 os.unlink(temp_file_path)
         except Exception as e:  # noqa: BLE001
 
-            self.logger.warning(f"Failed to delete local temp file {temp_file_name}: {e}")
+            self.logger.warning(f"Failed to delete local temp file {temp_remote_file_name}: {e}")
 
         return process_test_result
 
