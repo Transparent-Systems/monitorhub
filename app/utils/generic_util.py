@@ -2,8 +2,8 @@
 This script contains utility static methods and data structures.
 """
 
-from collections import OrderedDict
 import re
+from collections import OrderedDict
 from typing import Any
 
 
