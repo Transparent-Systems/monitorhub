@@ -2,13 +2,17 @@
 Unit tests for app.utils.generic_util.
 """
 
+import datetime
 import unittest
 
+from app.utils.constants import TIMESTAMP_FORMAT
 from app.utils.generic_util import (
     BoundedLRUDict,
     convert_to_seconds,
     find_by_id,
     is_interval_valid,
+    parse_timestamp,
+    utc_timestamp_now,
 )
 
 
@@ -91,6 +95,28 @@ class TestGenericUtilFunctions(unittest.TestCase):
         self.assertFalse(is_interval_valid("s"))
         self.assertFalse(is_interval_valid(None))
         self.assertFalse(is_interval_valid(10))
+
+
+    def test_utc_timestamp_now_roundtrips_through_parse_timestamp(self):
+        """Writer and reader must agree on the shared timestamp format (A1)."""
+        timestamp = utc_timestamp_now()
+        parsed = parse_timestamp(timestamp)
+        self.assertIsNotNone(parsed)
+        self.assertEqual(parsed.tzinfo, datetime.UTC)
+        # A freshly produced timestamp is essentially "now".
+        age = (datetime.datetime.now(datetime.UTC) - parsed).total_seconds()
+        self.assertGreaterEqual(age, 0)
+        self.assertLess(age, 5)
+
+    def test_parse_timestamp_handles_invalid_input(self):
+        self.assertIsNone(parse_timestamp(None))
+        self.assertIsNone(parse_timestamp(""))
+        self.assertIsNone(parse_timestamp("2026-01-01"))  # wrong format
+        self.assertIsNone(parse_timestamp("not-a-timestamp"))
+
+    def test_parse_timestamp_uses_shared_format(self):
+        value = datetime.datetime(2026, 1, 2, 3, 4, 5, tzinfo=datetime.UTC)
+        self.assertEqual(parse_timestamp(value.strftime(TIMESTAMP_FORMAT)), value)
 
 
 if __name__ == "__main__":

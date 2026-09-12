@@ -11,6 +11,7 @@ __all__ = [
     "MONITOR_TYPE_BACKUP",
     "MONITOR_TYPE_INSTANT",
     "MONITOR_TYPE_RESTORE",
+    "TIMESTAMP_FORMAT",
 ]
 
 MONITOR_STATUS_RUNNING = "running"
@@ -22,3 +23,9 @@ MONITOR_TYPE_INSTANT = "instant"
 MONITOR_TYPE_BACKUP = "backup"
 MONITOR_TYPE_RESTORE = "restore"
 DB_FILENAME = "monitorhub.db"
+
+# Canonical format for timestamps stored as TEXT in the database
+# (e.g. monitors.last_run and monitors.last_heartbeat). The writer
+# (run_monitor) and any reader (e.g. stale-monitor detection in
+# MonitorCommands) must share this format so heartbeats always parse.
+TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S"

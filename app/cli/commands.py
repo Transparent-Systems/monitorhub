@@ -49,8 +49,6 @@ class AppCommands:
                 return
             if not diagnostic_util.check_monitor_config():
                 return
-            if not diagnostic_util.check_rclone_dependency():
-                return
             diagnostic_util.print_overview()
         finally:
             self.prompt.print("Exiting test mode now")

@@ -2,9 +2,12 @@
 This script contains utility static methods and data structures.
 """
 
+import datetime
 import re
 from collections import OrderedDict
 from typing import Any
+
+from app.utils.constants import TIMESTAMP_FORMAT
 
 
 class BoundedLRUDict(OrderedDict):
@@ -81,3 +84,32 @@ def find_by_id(items: list[dict], item_id: int) -> dict | None:
         if item.get("id") == item_id:
             return item
     return None
+
+
+def utc_timestamp_now() -> str:
+    """Return the current UTC time formatted with the shared ``TIMESTAMP_FORMAT``.
+
+    Used whenever a timestamp is written to the database (e.g. a monitor's
+    ``last_run`` or ``last_heartbeat``) so that writers and readers agree on a
+    single canonical, timezone-free UTC representation.
+    """
+    return datetime.datetime.now(datetime.UTC).strftime(TIMESTAMP_FORMAT)
+
+
+def parse_timestamp(value: str | None) -> datetime.datetime | None:
+    """Parse a ``TIMESTAMP_FORMAT`` string into a timezone-aware (UTC) datetime.
+
+    Returns ``None`` when ``value`` is empty or does not match the shared
+    format. This is the counterpart of :func:`utc_timestamp_now`; keeping the
+    two together prevents the writer/reader format drift that previously made
+    every monitor heartbeat unparseable.
+    """
+    if not value:
+        return None
+    try:
+        parsed = datetime.datetime.strptime(value, TIMESTAMP_FORMAT).replace(
+            tzinfo=datetime.UTC
+        )
+    except (ValueError, TypeError):
+        return None
+    return parsed

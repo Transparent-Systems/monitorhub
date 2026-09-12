@@ -18,7 +18,7 @@ from app.utils.constants import (
     MONITOR_TYPE_INSTANT,
     MONITOR_TYPE_RESTORE,
 )
-from app.utils.generic_util import find_by_id, is_interval_valid
+from app.utils.generic_util import find_by_id, is_interval_valid, parse_timestamp
 from app.utils.sqlite_handler import SQLiteHandler
 
 STALE_HEARTBEAT_SECONDS = 60
@@ -64,15 +64,14 @@ class MonitorCommands:
 
     @staticmethod
     def _heartbeat_age_seconds(heartbeat: str | None) -> float | None:
-        """Return the age of a heartbeat in seconds, or None if missing/unparseable."""
-        if not heartbeat:
+        """Return the age of a heartbeat in seconds, or None if missing/unparseable.
+
+        The heartbeat is written by the monitor process (run_monitor) using the
+        shared ``TIMESTAMP_FORMAT``, so parsing must use the same format.
+        """
+        heartbeat_dt = parse_timestamp(heartbeat)
+        if heartbeat_dt is None:
             return None
-        try:
-            heartbeat_dt = datetime.datetime.strptime(heartbeat, "%Y-%m-%d %H:%M:%S%z")
-                
-        except (ValueError, TypeError):
-            return None
-        heartbeat_dt = heartbeat_dt.replace(tzinfo=datetime.UTC)
         now = datetime.datetime.now(datetime.UTC)
         return (now - heartbeat_dt).total_seconds()
 

@@ -7,11 +7,15 @@ keyboard. They run against the dedicated unittest database in
 ``testdb/unittest`` (independent from ``testdb/dev``).
 """
 
+import datetime
 import logging
 import unittest
 from unittest import mock
 
 from app.cli.commands import Commands, build_commands
+from app.cli.monitor_commands import STALE_HEARTBEAT_SECONDS, MonitorCommands
+from app.utils.constants import MONITOR_STATUS_RUNNING, TIMESTAMP_FORMAT
+from app.utils.generic_util import parse_timestamp, utc_timestamp_now
 
 from tests.database_test_data import DatabaseTestData
 from tests.mock_prompt_service import MockPromptService
@@ -360,6 +364,65 @@ class TestCommands(unittest.TestCase):
         diagnostic_util.check_app_env.assert_called_once()
         diagnostic_util.print_overview.assert_called_once()
         self.assertIn("Exiting test mode now", mock_prompt.output_text)
+
+    def test_config_test_rclone_dependency_checked_once(self):
+        """Regression A4: check_rclone_dependency must not be invoked twice."""
+        diagnostic_util = mock.Mock()
+        diagnostic_util.check_app_env.return_value = True
+        diagnostic_util.check_rclone_dependency.return_value = True
+        diagnostic_util.check_monitor_config.return_value = True
+        commands, _ = self._make_commands([], diagnostic_util=diagnostic_util)
+        commands.app.config_test()
+        diagnostic_util.check_rclone_dependency.assert_called_once()
+
+    # ------------------------------------------------------------------
+    # Heartbeat / stale-monitor detection (regression A1)
+    # ------------------------------------------------------------------
+
+    def test_heartbeat_age_seconds_parses_fresh_heartbeat(self):
+        """A heartbeat written by the monitor process must be parseable."""
+        age = MonitorCommands._heartbeat_age_seconds(utc_timestamp_now())
+        self.assertIsNotNone(age)
+        self.assertLess(age, STALE_HEARTBEAT_SECONDS)
+
+    def test_heartbeat_age_seconds_missing_or_invalid(self):
+        self.assertIsNone(MonitorCommands._heartbeat_age_seconds(None))
+        self.assertIsNone(MonitorCommands._heartbeat_age_seconds(""))
+        self.assertIsNone(MonitorCommands._heartbeat_age_seconds("not-a-timestamp"))
+
+    def test_cleanup_stale_monitors_keeps_fresh_monitor(self):
+        """A running monitor with a fresh heartbeat must NOT be treated as stale."""
+        commands, mock_prompt = self._make_commands([])
+        fresh_monitor = {
+            "id": 424242,
+            "name": "fresh-monitor",
+            "status": MONITOR_STATUS_RUNNING,
+            "pid": 999999,
+            "last_heartbeat": utc_timestamp_now(),
+        }
+        stale = commands.monitor._cleanup_stale_monitors([fresh_monitor])
+        self.assertEqual(stale, [])
+        self.assertNotIn("Forcing stop and restart", mock_prompt.output_text)
+
+    def test_cleanup_stale_monitors_flags_old_heartbeat(self):
+        """A running monitor with an old heartbeat must be treated as stale."""
+        commands, mock_prompt = self._make_commands([])
+        parsed = parse_timestamp(utc_timestamp_now())
+        self.assertIsNotNone(parsed)
+        old_timestamp = (
+            parsed - datetime.timedelta(seconds=STALE_HEARTBEAT_SECONDS + 30)
+        ).strftime(TIMESTAMP_FORMAT)
+        stale_monitor = {
+            "id": 424243,
+            "name": "old-monitor",
+            "status": MONITOR_STATUS_RUNNING,
+            # pid 0 so the test never attempts a real kill.
+            "pid": 0,
+            "last_heartbeat": old_timestamp,
+        }
+        stale = commands.monitor._cleanup_stale_monitors([stale_monitor])
+        self.assertEqual(len(stale), 1)
+        self.assertIn("Forcing stop and restart", mock_prompt.output_text)
 
 
 if __name__ == "__main__":

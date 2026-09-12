@@ -118,15 +118,17 @@ class S3Handler(RemoteHandler):
         return bucket, key
 
     def _list_objects(self, bucket: str, prefix: str) -> list[dict]:
-        """Helper to list all objects with prefix"""
+        """List all objects with the given prefix.
+
+        Raises the underlying exception on failure instead of returning an
+        empty list, so callers can distinguish "no objects" from "listing
+        failed" and avoid reporting a failed operation as a success.
+        """
         objects = []
         paginator = self.client.get_paginator('list_objects_v2')
-        try:
-            for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
-                if 'Contents' in page:
-                    objects.extend(page['Contents'])
-        except Exception as e:  # noqa: BLE001
-            self.logger.error(f"Error listing objects: {e}")
+        for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+            if 'Contents' in page:
+                objects.extend(page['Contents'])
         return objects
 
     def _calculate_md5(self, file_path: str) -> str:
@@ -228,8 +230,17 @@ class S3Handler(RemoteHandler):
         if prefix and not prefix.endswith('/'):
             prefix += '/'
 
-        # List all objects in the remote folder to avoid checking each file individually
-        remote_objects = self._list_objects(bucket, prefix)
+        # List all objects in the remote folder to avoid checking each file individually.
+        # Listing is only an optimisation: if it fails we still upload every local
+        # file (rather than abort the backup), so fall back to an empty map.
+        try:
+            remote_objects = self._list_objects(bucket, prefix)
+        except Exception as e:  # noqa: BLE001
+            self.logger.warning(
+                f"Could not list remote objects at s3://{bucket}/{prefix} ({e}); "
+                "uploading all files without skipping unchanged ones."
+            )
+            remote_objects = []
         # Create a dictionary for faster lookup: key -> object
         remote_objects_map = {obj['Key']: obj for obj in remote_objects}
 
