@@ -342,3 +342,6 @@ class InstantMonitorHandler(MonitorHandler):
             if hasattr(handler, "stop"):
                 handler.stop()
         self.action_handlers = []
+
+        # Join the completion-notification thread, if one was spawned.
+        self._join_completion_thread()

@@ -75,6 +75,10 @@ class ScheduledMonitorHandler(MonitorHandler):
         if on_complete is not None:
             self._on_complete = on_complete
 
+        # (Re)build command handlers so that a restart after stop() works:
+        # stop() shuts down and clears the cached handlers.
+        self.command_handlers = self._build_command_handlers()
+
         monitor_config = self.monitor.get("config", {})
         if not monitor_config:
             self.logger.debug(
@@ -125,6 +129,16 @@ class ScheduledMonitorHandler(MonitorHandler):
         if self.worker is not None:
             self.worker.stop(timeout=2.0)
             self.worker = None
+
+        # Shut down command handlers (each owns a bounded command executor).
+        for handler in self.command_handlers.values():
+            handler_stop = getattr(handler, "stop", None)
+            if callable(handler_stop):
+                handler_stop()
+        self.command_handlers = {}
+
+        # Join the completion-notification thread, if one was spawned.
+        self._join_completion_thread()
 
     def _build_command_handlers(self) -> dict:
         """

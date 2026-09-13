@@ -5,6 +5,7 @@ import subprocess
 import threading
 import time
 from abc import ABC, abstractmethod
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 
 from app.monitor.remote_handler import RemoteHandler
@@ -12,6 +13,45 @@ from app.monitor.remote_handler_factory import RemoteHandlerFactory
 from app.monitor.worker import StoppableWorker
 from app.utils import reference_data
 from app.utils.generic_util import convert_to_seconds
+
+# Bounds for the number of concurrent command processes spawned by a
+# CommandActionHandler. The pool bounds *concurrency* (and therefore the number
+# of simultaneous child processes); it never drops events - excess commands are
+# queued FIFO and executed as workers free up.
+DEFAULT_COMMAND_MAX_WORKERS = 100
+MIN_COMMAND_MAX_WORKERS = 1
+MAX_COMMAND_MAX_WORKERS = 1000
+
+
+def clamp_command_max_workers(
+    value: int | str | None,
+    logger: logging.Logger | None = None,
+) -> int:
+    """Clamp a configured ``command_max_workers`` value into the supported range.
+
+    Returns ``DEFAULT_COMMAND_MAX_WORKERS`` when the value is missing or not a
+    valid integer, and clamps out-of-range values to
+    ``[MIN_COMMAND_MAX_WORKERS, MAX_COMMAND_MAX_WORKERS]`` (logging a warning).
+    """
+    if value is None:
+        return DEFAULT_COMMAND_MAX_WORKERS
+    try:
+        workers = int(value)
+    except (TypeError, ValueError):
+        if logger is not None:
+            logger.warning(
+                f"Invalid command_max_workers {value!r}; using default "
+                f"{DEFAULT_COMMAND_MAX_WORKERS}"
+            )
+        return DEFAULT_COMMAND_MAX_WORKERS
+
+    clamped = max(MIN_COMMAND_MAX_WORKERS, min(MAX_COMMAND_MAX_WORKERS, workers))
+    if logger is not None and clamped != workers:
+        logger.warning(
+            f"command_max_workers {workers} is out of range "
+            f"[{MIN_COMMAND_MAX_WORKERS}, {MAX_COMMAND_MAX_WORKERS}]; using {clamped}"
+        )
+    return clamped
 
 
 @dataclass
@@ -290,6 +330,7 @@ class CommandActionHandler(ActionHandler):
         shell: bool = False,
         timeout:  str = "60s",
         logger: logging.Logger | None = None,
+        max_workers: int | str | None = None,
     ):
         if not command or not command.strip():
             raise ValueError("command must not be empty")
@@ -301,8 +342,17 @@ class CommandActionHandler(ActionHandler):
         self.shell = bool(shell)
         self.timeout_seconds = convert_to_seconds(timeout)
         self.logger = logger or logging.getLogger(__name__)
+        self.max_workers = clamp_command_max_workers(max_workers, self.logger)
         self._last_fired: float | None = None
         self._lock = threading.Lock()
+        # Bounded executor guarding concurrent command processes. Created lazily
+        # on first dispatch; shut down by stop(). The same lock also protects
+        # the in-flight future set used for observability and clean shutdown.
+        self._executor: ThreadPoolExecutor | None = None
+        self._executor_lock = threading.Lock()
+        self._stopped = False
+        self._futures: set[Future] = set()
+        self._backlog_warned = False
 
     def _build_values(self, context: ActionContext) -> dict[str, str]:
         return {
@@ -350,13 +400,81 @@ class CommandActionHandler(ActionHandler):
             self._last_fired = now
 
         values = self._build_values(context)
-        # Fire the command on its own thread so the dispatcher is never blocked.
-        threading.Thread(
-            target=self._run_command,
-            args=(values,),
-            daemon=True,
-            name=f"command-{context.event_type}",
-        ).start()
+        # Run the command on a bounded worker pool so the dispatcher is never
+        # blocked, while capping the number of concurrent command processes.
+        self._dispatch(values)
+
+    def _dispatch(self, values: dict[str, str]) -> None:
+        """Submit a command for execution without blocking the caller.
+
+        The executor bounds concurrency only; commands are never dropped. When
+        all workers are busy the command is queued (FIFO) and runs once a worker
+        is free. Called under the executor lock so submission cannot race with
+        :meth:`stop`.
+        """
+        with self._executor_lock:
+            if self._stopped:
+                self.logger.debug("Command dispatch ignored: handler already stopped")
+                return
+            if self._executor is None:
+                self._executor = ThreadPoolExecutor(
+                    max_workers=self.max_workers,
+                    thread_name_prefix="cmd",
+                )
+                self.logger.debug(
+                    f"Command executor started (max_workers={self.max_workers})"
+                )
+            future = self._executor.submit(self._run_command, values)
+            self._futures.add(future)
+            backlog = len(self._futures)
+            if backlog > self.max_workers and not self._backlog_warned:
+                # One warning per overload episode so a storm is visible without
+                # flooding the log. Commands are queued in order, never dropped.
+                self._backlog_warned = True
+                self.logger.warning(
+                    f"Command backlog: {backlog} commands queued/running "
+                    f"(max_workers={self.max_workers}). Commands are queued and "
+                    f"will not be dropped."
+                )
+        # Register the callback outside the lock: add_done_callback may invoke
+        # it synchronously for an already-completed future.
+        future.add_done_callback(self._on_future_done)
+
+    def _on_future_done(self, future: Future) -> None:
+        """Discard a finished future and surface any unexpected error."""
+        with self._executor_lock:
+            self._futures.discard(future)
+            if self._backlog_warned and len(self._futures) <= self.max_workers:
+                self._backlog_warned = False
+        if future.cancelled():
+            return
+        exc = future.exception()
+        if exc is not None:
+            self.logger.error(f"Command worker raised an unexpected error: {exc}")
+
+    @property
+    def pending_commands(self) -> int:
+        """Number of submitted commands not yet finished (queued + running)."""
+        with self._executor_lock:
+            return len(self._futures)
+
+    def stop(self, wait: bool = False, cancel_futures: bool = True) -> None:
+        """Shut down the command executor.
+
+        Defaults to ``wait=False, cancel_futures=True`` so monitor shutdown is
+        not delayed by in-flight commands and queued (not yet started) commands
+        are cancelled. The handler ignores further dispatches afterwards.
+        """
+        with self._executor_lock:
+            self._stopped = True
+            executor = self._executor
+            self._executor = None
+            self._futures.clear()
+        if executor is not None:
+            executor.shutdown(wait=wait, cancel_futures=cancel_futures)
+            self.logger.debug(
+                f"Command executor stopped (wait={wait}, cancel_futures={cancel_futures})"
+            )
 
     def _run_command(self, values: dict[str, str]):
         try:
@@ -493,6 +611,7 @@ class ActionHandlerFactory:
         cooldown = cfg.get("command_cooldown", "0s")
         shell = cfg.get("command_shell", False)
         timeout = cfg.get("command_timeout", 60.0)
+        max_workers = cfg.get("command_max_workers", DEFAULT_COMMAND_MAX_WORKERS)
 
         return CommandActionHandler(
             command=cmd_str,
@@ -503,6 +622,7 @@ class ActionHandlerFactory:
             shell=bool(shell),
             timeout=timeout,
             logger=logger,
+            max_workers=max_workers,
         )
 
     @classmethod

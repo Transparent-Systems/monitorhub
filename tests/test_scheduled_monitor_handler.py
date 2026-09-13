@@ -4,7 +4,7 @@ Unit tests for ScheduledMonitorHandler using PeriodicWorker and _OneOffWorker.
 
 import time
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from app.monitor.scheduled_monitor_handler import ScheduledMonitorHandler, _OneOffWorker
 from app.monitor.worker import PeriodicWorker
@@ -161,6 +161,62 @@ class TestScheduledMonitorHandler(unittest.TestCase):
         # Should not raise exception
         handler.stop()
         self.assertIsNone(handler.worker)
+
+    def test_stop_stops_cached_command_handlers(self):
+        handler = ScheduledMonitorHandler(
+            monitor=self.mock_monitor,
+            profiles=self.mock_profiles,
+            log_config=self.mock_log_config,
+            direction=MONITOR_TYPE_BACKUP,
+        )
+        command_handler = MagicMock()
+        handler.command_handlers = {"cmd-prof": command_handler}
+
+        handler.stop()
+
+        command_handler.stop.assert_called_once()
+        self.assertEqual(handler.command_handlers, {})
+
+    def test_start_rebuilds_command_handlers_after_stop(self):
+        profiles = [
+            {
+                "name": "cmd-prof",
+                "profile_type": "event_command",
+                "config": {"command": "echo hi"},
+            }
+        ]
+        handler = ScheduledMonitorHandler(
+            monitor=self.mock_monitor,
+            profiles=profiles,
+            log_config=self.mock_log_config,
+            direction=MONITOR_TYPE_BACKUP,
+        )
+        self.assertIn("cmd-prof", handler.command_handlers)
+
+        with patch.object(handler, "_perform_operation"):
+            self.assertTrue(handler.start())
+            handler.stop()
+        self.assertEqual(handler.command_handlers, {})
+
+        # A subsequent start() must rebuild the command handlers it cleared.
+        with patch.object(handler, "_perform_operation"):
+            self.assertTrue(handler.start())
+            try:
+                self.assertIn("cmd-prof", handler.command_handlers)
+            finally:
+                handler.stop()
+
+    def test_stop_tolerates_missing_command_handler(self):
+        handler = ScheduledMonitorHandler(
+            monitor=self.mock_monitor,
+            profiles=self.mock_profiles,
+            log_config=self.mock_log_config,
+            direction=MONITOR_TYPE_BACKUP,
+        )
+        handler.command_handlers = {"cmd-prof": None}
+        # Should not raise even when a profile produced no handler.
+        handler.stop()
+        self.assertEqual(handler.command_handlers, {})
 
 
 if __name__ == "__main__":
