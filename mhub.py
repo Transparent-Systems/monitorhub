@@ -105,7 +105,6 @@ _SUBCOMMAND_DISPATCH = {
             "monitor_name": getattr(args, "monitor_name", None),
         },
     ),
-    ("monitor", "start-all"): ("monitor", "start_all", lambda _: {}),
     ("monitor", "stop"): (
         "monitor",
         "stop",
@@ -115,7 +114,6 @@ _SUBCOMMAND_DISPATCH = {
             "monitor_name": getattr(args, "monitor_name", None),
         },
     ),
-    ("monitor", "stop-all"): ("monitor", "stop_all", lambda args: {"immediate": args.immediate}),
     ("database", "info"): ("database", "info", lambda _: {}),
     ("database", "version"): ("database", "version", lambda _: {}),
     ("database", "init"): ("database", "init", lambda args: {"recreate": args.recreate}),
@@ -295,12 +293,12 @@ if __name__ == "__main__":
     monitor_start_parser.add_argument("-i", "--monitor-id",
         type=int,
         metavar="<ID>",
-        help="ID of the monitor to start (omit to select interactively)"
+        help="ID of the monitor to start (omit to start all monitors)"
     )
     monitor_start_parser.add_argument("-n", "--monitor-name",
         type=str,
         metavar="<NAME>",
-        help="Name of the monitor to start (omit to select interactively)"
+        help="Name of the monitor to start (omit to start all monitors)"
     )
     monitor_test_parser = monitor_subparsers.add_parser("test", help="Test a monitor")
     monitor_test_parser.add_argument("-i", "--monitor-id",
@@ -317,26 +315,17 @@ if __name__ == "__main__":
     monitor_stop_parser.add_argument("-i", "--monitor-id",
         type=int,
         metavar="<ID>",
-        help="ID of the monitor to stop (omit to select interactively)"
+        help="ID of the monitor to stop (omit to stop all monitors)"
     )
     monitor_stop_parser.add_argument("-n", "--monitor-name",
         type=str,
         metavar="<NAME>",
-        help="Name of the monitor to stop (omit to select interactively)"
+        help="Name of the monitor to stop (omit to stop all monitors)"
     )
     monitor_stop_parser.add_argument("--immediate",
         action="store_true",
         default=False,
         help="Force kill the monitor process immediately instead of graceful shutdown"
-    )
-
-    monitor_start_all_parser = monitor_subparsers.add_parser("start-all", help="Clean up stale monitors and start all monitors that are not running")
-
-    monitor_stop_all_parser = monitor_subparsers.add_parser("stop-all", help="Stop all running monitors")
-    monitor_stop_all_parser.add_argument("--immediate",
-        action="store_true",
-        default=False,
-        help="Force kill all monitor processes immediately instead of graceful shutdown"
     )
 
     args = parser.parse_args()

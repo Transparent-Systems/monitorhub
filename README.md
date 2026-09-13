@@ -88,7 +88,7 @@
 
     d. **Run**:
     ```bash
-    mhub monitor start-all
+    mhub monitor start
     ```
 
 2 **Setup remote profiles**
@@ -171,7 +171,7 @@ Later on in the project I started using OpenRouter which makes it easy to try ou
 * mhub CLI
     This is the command-line interface for managing profiles, monitors, configuration, and diagnostics.  
     Call example:  
-    mhub monitor start-all
+    mhub monitor start
 * A monitor consumes an event and detaches actions to one or more profile handlers
 * A profile stores the configuration details of a profile handler
 * A profile type is linked to a sepcific handler

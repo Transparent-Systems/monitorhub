@@ -17,7 +17,7 @@ python mhub.py monitor start --monitor-id 1
 
 ## Stop all running monitors
 ```
-python3 mhub.py -d testdb/dev -l conf/log.yaml monitor stop-all
+python3 mhub.py -d testdb/dev -l conf/log.yaml monitor stop
 ```
 
 

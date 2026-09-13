@@ -846,44 +846,46 @@ class MonitorCommands:
             self.prompt.print("Monitor test completed")
 
     def start(self, monitor_id: int | None = None, monitor_name: str | None = None):
-        """Start a single monitor as a detached child process."""
+        """Start a single monitor, or all monitors when no id or name is given."""
         if monitor_id is not None and monitor_name is not None:
             self.prompt.print("Cannot specify both --monitor-id and --monitor-name.")
             return
 
-        if monitor_id is None and monitor_name is None:
-            monitors = self.sqlite_handler.get_monitors()
-            if not monitors:
-                self.prompt.print(f"No monitors found in {self.sqlite_handler.db_path}")
-                return
-
-            self.prompt.print("\nList of monitors")
-            choice = self._select_monitor_interactive(monitors=monitors)
-            if choice is None:
-                self.prompt.print("Nothing selected")
-                return
-            monitor = find_by_id(monitors, choice)
-        elif monitor_id is not None:
+        if monitor_id is not None:
             monitor = self.sqlite_handler.get_monitor(monitor_id=monitor_id)
             if not monitor:
                 self.prompt.print(f"Monitor with id={monitor_id} not found.")
                 return
-        else:
+            monitors = [monitor]
+        elif monitor_name is not None:
             monitor = self.sqlite_handler.get_monitor(monitor_name=monitor_name)
             if not monitor:
                 self.prompt.print(f"Monitor with name='{monitor_name}' not found.")
                 return
+            monitors = [monitor]
+        else:
+            monitors = self.sqlite_handler.get_monitors()
+            if not monitors:
+                self.prompt.print(f"No monitors found in {self.sqlite_handler.db_path}")
+                return
+            # When starting all monitors, clean up stale/hung ones first so they
+            # can be restarted.
+            self._cleanup_stale_monitors(monitors)
 
-        if not monitor:
-            if monitor_id is not None:
-                self.prompt.print(f"Monitor {monitor_id} not found.")
-            elif monitor_name is not None:
-                self.prompt.print(f"Monitor '{monitor_name}' not found.")
-            else:
-                self.prompt.print("Monitor not found.")
+        for monitor in monitors:
+            self._start_monitor(monitor)
+
+    def _start_monitor(self, monitor: dict | None) -> None:
+        """Start a single monitor as a detached child process."""
+        if monitor is None:  # Guard against Pylance warnings / bad callers.
+            self.prompt.print("Monitor not found — skipping.")
             return
 
         monitor_id_val: int = monitor.get("id", 0)
+        if not monitor_id_val:
+            self.prompt.print("Monitor has no valid ID — skipping.")
+            return
+
         monitor_name = monitor.get("name", "N/A")
 
         # A monitor is considered live when a process still holds its stored PID.
@@ -919,202 +921,101 @@ class MonitorCommands:
                 monitor_id=monitor_id_val, status=MONITOR_STATUS_STOPPED
             )
             self.sqlite_handler.update_monitor_pid(monitor_id=monitor_id_val, pid=0)
-        
         if self._launch_monitor_process(monitor):
             self.prompt.print(f"Monitor '{monitor_name}' (id={monitor_id_val}) started.")
 
-    def start_all(self):
-        """Clean up stale/hung monitors and start all monitors that are not running."""
-        monitors = self.sqlite_handler.get_monitors()
-        if not monitors:
-            self.prompt.print(f"No monitors found in {self.sqlite_handler.db_path}")
-            return
-
-        to_start = self._cleanup_stale_monitors(monitors)
-
-        # Include monitors that are not running, but never one whose stored PID
-        # is still alive (e.g. the intermediate 'stop' state) - starting that
-        # would create a duplicate process for the same monitor.
-        scheduled_ids = {m.get("id") for m in to_start}
-        for monitor in monitors:
-            if monitor.get("id") in scheduled_ids:
-                continue
-            if monitor.get("status") == MONITOR_STATUS_RUNNING:
-                continue
-            pid = int(monitor.get("pid") or 0)
-            if pid and is_process_alive(pid):
-                self.prompt.print(
-                    f"Monitor '{monitor.get('name', 'N/A')}' (id={monitor.get('id')}) is still "
-                    f"shutting down (pid={pid}); skipping."
-                )
-                continue
-            to_start.append(monitor)
-
-        if not to_start:
-            self.prompt.print("All monitors are already running.")
-            return
-
-        self.prompt.print(f"Starting {len(to_start)} monitor(s)...")
-
-        for monitor in to_start:
-            monitor_id_val: int = monitor.get("id", 0)
-            monitor_name = monitor.get("name", "N/A")
-
-            if self._launch_monitor_process(monitor):
-                self.prompt.print(f"Monitor '{monitor_name}' (id={monitor_id_val}) started.")
-            else:
-                self.prompt.print(f"Monitor '{monitor_name}' (id={monitor_id_val}) failed to start.")
-
-        self.prompt.print(f"Processed {len(to_start)} monitor(s)...")
-
     def stop(self, monitor_id: int | None = None, immediate: bool = False, monitor_name: str | None = None):
-        """Stop a running monitor (gracefully or force-kill)."""
+        """Stop a single monitor, or all monitors when no id or name is given."""
         if monitor_id is not None and monitor_name is not None:
             self.prompt.print("Cannot specify both --monitor-id and --monitor-name.")
             return
 
-        monitors = self.sqlite_handler.get_monitors()
-        if not monitors:
-            self.prompt.print(f"No monitors found in {self.sqlite_handler.db_path}")
-            return
-
-        if monitor_id is None and monitor_name is None:
-            self.prompt.print("\nList of monitors")
-            choice = self._select_monitor_interactive(monitors=monitors, allow_all=True)
-            if choice is None:
-                self.prompt.print("Nothing selected")
-                return
-
-            if choice == 0:
-                selected_monitors = monitors
-            else:
-                monitor = find_by_id(monitors, choice)
-                if monitor is None:
-                    self.prompt.print(f"Monitor with id={choice} not found.")
-                    return
-                selected_monitors = [monitor]
-        elif monitor_id is not None:
+        if monitor_id is not None:
             monitor = self.sqlite_handler.get_monitor(monitor_id=monitor_id)
             if not monitor:
                 self.prompt.print(f"Monitor with id={monitor_id} not found.")
                 return
-            selected_monitors = [monitor]
-        else:
+            monitors = [monitor]
+        elif monitor_name is not None:
             monitor = self.sqlite_handler.get_monitor(monitor_name=monitor_name)
             if not monitor:
                 self.prompt.print(f"Monitor with name='{monitor_name}' not found.")
                 return
-            selected_monitors = [monitor]
+            monitors = [monitor]
+        else:
+            monitors = self.sqlite_handler.get_monitors()
+            if not monitors:
+                self.prompt.print(f"No monitors found in {self.sqlite_handler.db_path}")
+                return
 
-        for monitor in selected_monitors:
-            if monitor is None: # This should not happen. Check is here to avoid Pylance warnings.
-                self.prompt.print("Monitor not found — skipping.")
-                continue
-
-            monitor_id_val: int = monitor.get("id", 0)
-
-            if not monitor_id_val:
-                self.prompt.print("Monitor has no valid ID — skipping.")
-                continue
-
-            monitor_name = monitor.get("name", "N/A")
-            current_status = monitor.get("status", "N/A")
-            current_pid = monitor.get("pid", 0)
-
-            if current_status == MONITOR_STATUS_STOPPED:
-                self.prompt.print(f"Monitor '{monitor_name}' (id={monitor_id_val}) is already stopped.")
-                continue
-
-            if immediate:
-                if current_pid and current_pid != 0:
-                    if not self._force_kill_process(current_pid, str(monitor_name)):
-                        continue
-                else:
-                    self.prompt.print(f"Monitor '{monitor_name}' has no stored PID — cannot force kill.")
-
-                self.sqlite_handler.update_monitor_status(monitor_id=monitor_id_val, status=MONITOR_STATUS_STOPPED)
-                self.sqlite_handler.update_monitor_pid(monitor_id=monitor_id_val, pid=0)
-                self.prompt.print(f"Monitor '{monitor_name}' (id={monitor_id_val}) status set to 'stopped'.")
-            else:
-                self.sqlite_handler.update_monitor_status(monitor_id=monitor_id_val, status=MONITOR_STATUS_STOP)
-                self.prompt.print(f"Stop signal sent to monitor '{monitor_name}' (id={monitor_id_val}).")
-                if current_pid and current_pid != 0:
-                    if self._wait_for_exit(current_pid, STOP_GRACE_SECONDS):
-                        self.prompt.print(f"Monitor '{monitor_name}' (id={monitor_id_val}) stopped gracefully.")
-                    else:
-                        self.prompt.print(
-                            f"Monitor '{monitor_name}' (id={monitor_id_val}) did not exit within "
-                            f"{STOP_GRACE_SECONDS:g}s; escalating."
-                        )
-                        self._escalate_stop(current_pid, str(monitor_name))
-                    self.sqlite_handler.update_monitor_status(monitor_id=monitor_id_val, status=MONITOR_STATUS_STOPPED)
-                    self.sqlite_handler.update_monitor_pid(monitor_id=monitor_id_val, pid=0)
-                    self.prompt.print(f"Monitor '{monitor_name}' (id={monitor_id_val}) status set to 'stopped'.")
-                else:
-                    self.prompt.print(
-                        "No stored PID; the monitor will set status to 'stopped' when it exits."
-                    )
-
-    def stop_all(self, immediate: bool = False):
-        """Stop all running monitors."""
-        monitors = self.sqlite_handler.get_monitors()
-        if not monitors:
-            self.prompt.print(f"No monitors found in {self.sqlite_handler.db_path}")
-            return
-
-        running_monitors = [m for m in monitors if m.get("status") == MONITOR_STATUS_RUNNING]
-        if not running_monitors:
-            self.prompt.print("No running monitors found.")
-            return
-
-        self.prompt.print(f"Stopping {len(running_monitors)} running monitor(s)...")
-
-        graceful: list[tuple[int, str]] = []
-        for monitor in running_monitors:
-            monitor_id_val: int = monitor.get("id", 0)
-            if not monitor_id_val:
-                self.prompt.print("Monitor has no valid ID — skipping.")
-                continue
-            monitor_name = monitor.get("name", "N/A")
-            current_pid = monitor.get("pid", 0)
-
-            if immediate:
-                if current_pid and current_pid != 0:
-                    if not self._force_kill_process(current_pid, str(monitor_name)):
-                        continue
-                else:
-                    self.prompt.print(f"Monitor '{monitor_name}' has no stored PID — cannot force kill.")
-
-                self.sqlite_handler.update_monitor_status(monitor_id=monitor_id_val, status=MONITOR_STATUS_STOPPED)
-                self.sqlite_handler.update_monitor_pid(monitor_id=monitor_id_val, pid=0)
-                self.prompt.print(f"Monitor '{monitor_name}' (id={monitor_id_val}) status set to 'stopped'.")
-            else:
-                self.sqlite_handler.update_monitor_status(monitor_id=monitor_id_val, status=MONITOR_STATUS_STOP)
-                self.prompt.print(f"Stop signal sent to monitor '{monitor_name}' (id={monitor_id_val}).")
-                graceful.append((int(current_pid or 0), str(monitor_name)))
+        graceful: list[tuple[int, str, int]] = []
+        for monitor in monitors:
+            entry = self._stop_monitor(monitor, immediate)
+            if entry is not None:
+                graceful.append(entry)
 
         if graceful:
-            # Wait once for the whole batch, then escalate only the survivors,
-            # so stop-all does not take STOP_GRACE_SECONDS per monitor.
+            # Wait once for the whole batch against a shared deadline, then
+            # escalate only the survivors, so stopping many monitors does not
+            # take STOP_GRACE_SECONDS per monitor.
             deadline = time.monotonic() + STOP_GRACE_SECONDS
-            while time.monotonic() < deadline and any(
-                pid and is_process_alive(pid) for pid, _ in graceful
-            ):
-                time.sleep(0.5)
-
-            for pid, name in graceful:
-                if pid and is_process_alive(pid):
+            for pid, name, monitor_id_val in graceful:
+                remaining = max(0.0, deadline - time.monotonic())
+                if self._wait_for_exit(pid, remaining):
                     self.prompt.print(
-                        f"Monitor '{name}' (pid={pid}) did not exit within "
+                        f"Monitor '{name}' (id={monitor_id_val}) stopped gracefully."
+                    )
+                else:
+                    self.prompt.print(
+                        f"Monitor '{name}' (id={monitor_id_val}) did not exit within "
                         f"{STOP_GRACE_SECONDS:g}s; escalating."
                     )
                     self._escalate_stop(pid, name)
-
-            for monitor in running_monitors:
-                monitor_id_val = monitor.get("id", 0)
-                if not monitor_id_val:
-                    continue
-                self.sqlite_handler.update_monitor_status(monitor_id=monitor_id_val, status=MONITOR_STATUS_STOPPED)
+                self.sqlite_handler.update_monitor_status(
+                    monitor_id=monitor_id_val, status=MONITOR_STATUS_STOPPED
+                )
                 self.sqlite_handler.update_monitor_pid(monitor_id=monitor_id_val, pid=0)
+                self.prompt.print(
+                    f"Monitor '{name}' (id={monitor_id_val}) status set to 'stopped'."
+                )
 
-        self.prompt.print(f"All {len(running_monitors)} running monitor(s) have been processed.")
+    def _stop_monitor(self, monitor: dict | None, immediate: bool) -> tuple[int, str, int] | None:
+        """Stop one monitor; return graceful-stop details to wait on, or None."""
+        if monitor is None:  # This should not happen. Check is here to avoid Pylance warnings.
+            self.prompt.print("Monitor not found — skipping.")
+            return None
+
+        monitor_id_val: int = monitor.get("id", 0)
+
+        if not monitor_id_val:
+            self.prompt.print("Monitor has no valid ID — skipping.")
+            return None
+
+        monitor_name = monitor.get("name", "N/A")
+        current_status = monitor.get("status", "N/A")
+        current_pid = monitor.get("pid", 0)
+
+        if current_status == MONITOR_STATUS_STOPPED:
+            self.prompt.print(f"Monitor '{monitor_name}' (id={monitor_id_val}) is already stopped.")
+            return None
+
+        if immediate:
+            if current_pid and current_pid != 0:
+                if not self._force_kill_process(current_pid, str(monitor_name)):
+                    return None
+            else:
+                self.prompt.print(f"Monitor '{monitor_name}' has no stored PID — cannot force kill.")
+
+            self.sqlite_handler.update_monitor_status(monitor_id=monitor_id_val, status=MONITOR_STATUS_STOPPED)
+            self.sqlite_handler.update_monitor_pid(monitor_id=monitor_id_val, pid=0)
+            self.prompt.print(f"Monitor '{monitor_name}' (id={monitor_id_val}) status set to 'stopped'.")
+            return None
+
+        self.sqlite_handler.update_monitor_status(monitor_id=monitor_id_val, status=MONITOR_STATUS_STOP)
+        self.prompt.print(f"Stop signal sent to monitor '{monitor_name}' (id={monitor_id_val}).")
+        if not current_pid or current_pid == 0:
+            self.prompt.print(
+                "No stored PID; the monitor will set status to 'stopped' when it exits."
+            )
+            return None
+        return (int(current_pid), str(monitor_name), int(monitor_id_val))

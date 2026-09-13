@@ -455,6 +455,57 @@ class TestCommands(unittest.TestCase):
         kill_mock.assert_called_once_with(4242, signal.SIGTERM)
         force_mock.assert_called_once_with(4242, "test")
 
+    def test_monitor_start_without_args_starts_all_not_running(self):
+        """No id/name starts every monitor that is not already running."""
+        commands, mock_prompt = self._make_commands([])
+        monitors = commands.sqlite_handler.get_monitors()
+        running, stopped_a, stopped_b = monitors[0], monitors[1], monitors[2]
+        commands.sqlite_handler.update_monitor_status(
+            monitor_id=running["id"], status=MONITOR_STATUS_RUNNING
+        )
+        commands.sqlite_handler.update_monitor_pid(
+            monitor_id=running["id"], pid=os.getpid()
+        )
+        commands.sqlite_handler.update_monitor_last_heartbeat(
+            monitor_id=running["id"], last_heartbeat=utc_timestamp_now()
+        )
+        for monitor in (stopped_a, stopped_b):
+            commands.sqlite_handler.update_monitor_status(
+                monitor_id=monitor["id"], status="stopped"
+            )
+            commands.sqlite_handler.update_monitor_pid(monitor_id=monitor["id"], pid=0)
+
+        with mock.patch.object(
+            commands.monitor, "_launch_monitor_process", return_value=True
+        ) as launch:
+            commands.monitor.start()
+
+        self.assertEqual(launch.call_count, 2)
+        self.assertIn("already running", mock_prompt.output_text)
+
+    def test_monitor_stop_without_args_stops_all_monitors(self):
+        """No id/name stops every monitor, not just one selected interactively."""
+        commands, mock_prompt = self._make_commands([])
+        monitors = commands.sqlite_handler.get_monitors()
+        for monitor in monitors:
+            commands.sqlite_handler.update_monitor_status(
+                monitor_id=monitor["id"], status=MONITOR_STATUS_RUNNING
+            )
+            commands.sqlite_handler.update_monitor_pid(monitor_id=monitor["id"], pid=4242)
+
+        with (
+            mock.patch.object(commands.monitor, "_wait_for_exit", return_value=True),
+            mock.patch.object(commands.monitor, "_escalate_stop") as escalate,
+        ):
+            commands.monitor.stop()
+
+        escalate.assert_not_called()
+        for monitor in monitors:
+            after = commands.sqlite_handler.get_monitor(monitor_id=monitor["id"])
+            self.assertEqual(after["status"], "stopped")
+            self.assertEqual(after["pid"], 0)
+        self.assertIn("status set to 'stopped'", mock_prompt.output_text)
+
     # ------------------------------------------------------------------
     # Heartbeat / stale-monitor detection (regression A1)
     # ------------------------------------------------------------------

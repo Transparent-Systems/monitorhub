@@ -4,7 +4,7 @@ Version: v1.0.0
 Author: John Zoetebier
 Date: 2026-08-12
     Entry point for a single monitor process.
-    Launched as a child process by mhub.py (monitor start / start-all).
+    Launched as a child process by mhub.py (monitor start).
     Updates the database with status and PID on start/stop.
 Usage:
     python app/monitor/run_monitor.py --monitor-id <ID> --db-dir <PATH> --log <PATH>

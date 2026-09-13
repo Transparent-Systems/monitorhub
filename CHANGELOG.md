@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- ``mhub monitor start`` and ``mhub monitor stop`` now operate on all monitors
+  when neither ``--monitor-id`` nor ``--monitor-name`` is given, matching
+  ``mhub monitor show``. The separate ``monitor start-all`` and
+  ``monitor stop-all`` subcommands have been removed.
+
 - Added a schema migration/upgrade path for the SQLite database.
     - ``mhub database upgrade`` applies any pending schema migrations in place
       (non-destructive) and refuses to downgrade a database created by a newer
