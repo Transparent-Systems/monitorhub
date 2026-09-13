@@ -1,5 +1,7 @@
 import os
 import signal
+import subprocess
+import sys
 import threading
 import time
 from unittest.mock import MagicMock, patch
@@ -69,6 +71,41 @@ class TestRunMonitor(BaseTestClass):
         mock_sqlite.update_monitor_status.assert_called_with(monitor_id=1, status="stopped")
         mock_sqlite.update_monitor_pid.assert_called_with(monitor_id=1, pid=0)
         mock_sqlite.close.assert_called()
+
+    @patch("app.monitor.run_monitor.MonitorHandlerFactory")
+    @patch("app.monitor.run_monitor.SQLiteHandler")
+    @patch("app.monitor.run_monitor.setup_logging")
+    def test_run_monitor_refuses_when_pid_alive(
+        self, mock_setup_logging, mock_sqlite_cls, mock_factory
+    ):
+        """Single-instance guard: refuse when another live process owns the monitor."""
+        mock_logger = MagicMock()
+        mock_setup_logging.return_value = (mock_logger, {})
+        mock_sqlite = MagicMock()
+
+        # A live child process stands in for an already-running monitor.
+        child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(5)"])
+        try:
+            mock_sqlite.get_monitor.return_value = {
+                "id": 1,
+                "name": "test_monitor",
+                "monitor_type": "instant",
+                # Intermediate 'stop' state with a PID that is still alive.
+                "status": "stop",
+                "pid": child.pid,
+            }
+            mock_sqlite.get_profiles_for_monitor.return_value = [{"id": 1, "name": "p1"}]
+            mock_sqlite_cls.return_value = mock_sqlite
+
+            with self.assertRaises(SystemExit) as cm:
+                run_monitor_main(["--monitor-id", "1", "--db-dir", self.db_dir])
+
+            self.assertEqual(cm.exception.code, 1)
+            mock_factory.create.assert_not_called()
+            mock_sqlite.close.assert_called_once()
+        finally:
+            child.terminate()
+            child.wait()
 
     @patch("app.monitor.run_monitor.run_monitor_main")
     def test_main_cli_entry_point(self, mock_run_main):

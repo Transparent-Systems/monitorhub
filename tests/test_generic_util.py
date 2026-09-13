@@ -3,6 +3,9 @@ Unit tests for app.utils.generic_util.
 """
 
 import datetime
+import os
+import subprocess
+import sys
 import unittest
 
 from app.utils.constants import TIMESTAMP_FORMAT
@@ -11,6 +14,7 @@ from app.utils.generic_util import (
     convert_to_seconds,
     find_by_id,
     is_interval_valid,
+    is_process_alive,
     parse_timestamp,
     utc_timestamp_now,
 )
@@ -117,6 +121,20 @@ class TestGenericUtilFunctions(unittest.TestCase):
     def test_parse_timestamp_uses_shared_format(self):
         value = datetime.datetime(2026, 1, 2, 3, 4, 5, tzinfo=datetime.UTC)
         self.assertEqual(parse_timestamp(value.strftime(TIMESTAMP_FORMAT)), value)
+
+    def test_is_process_alive_current_process(self):
+        self.assertTrue(is_process_alive(os.getpid()))
+
+    def test_is_process_alive_invalid_pid(self):
+        self.assertFalse(is_process_alive(None))
+        self.assertFalse(is_process_alive(0))
+        self.assertFalse(is_process_alive(-1))
+
+    def test_is_process_alive_dead_process(self):
+        # Spawn a short-lived child and reap it, so its PID no longer exists.
+        child = subprocess.Popen([sys.executable, "-c", "pass"])
+        child.wait()
+        self.assertFalse(is_process_alive(child.pid))
 
 
 if __name__ == "__main__":

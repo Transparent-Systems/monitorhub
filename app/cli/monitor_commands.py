@@ -6,6 +6,7 @@ import os
 import signal
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 from app.cli.prompt_service import PromptService
@@ -18,10 +19,20 @@ from app.utils.constants import (
     MONITOR_TYPE_INSTANT,
     MONITOR_TYPE_RESTORE,
 )
-from app.utils.generic_util import find_by_id, is_interval_valid, parse_timestamp
+from app.utils.generic_util import (
+    find_by_id,
+    is_interval_valid,
+    is_process_alive,
+    parse_timestamp,
+)
 from app.utils.sqlite_handler import SQLiteHandler
 
 STALE_HEARTBEAT_SECONDS = 60
+
+# Time to wait for a monitor process to exit after a graceful stop is requested
+# before escalating to SIGTERM/SIGKILL. The monitor's status poller interval is
+# ~10s, so this allows one comfortable poll cycle plus teardown.
+STOP_GRACE_SECONDS = 15
 
 
 class MonitorCommands:
@@ -91,6 +102,43 @@ class MonitorCommands:
         except PermissionError:
             self.prompt.print(f"Permission denied when sending SIGKILL to monitor '{name}' (pid={pid}).")
             return False
+
+    def _wait_for_exit(self, pid: int, timeout: float, interval: float = 0.5) -> bool:
+        """Wait up to ``timeout`` seconds for ``pid`` to exit.
+
+        Returns True if the process is no longer alive (or there is no pid).
+        """
+        if not pid:
+            return True
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if not is_process_alive(pid):
+                return True
+            time.sleep(interval)
+        return not is_process_alive(pid)
+
+    def _escalate_stop(self, pid: int, name: str) -> None:
+        """Escalate a graceful stop that has not taken effect.
+
+        Sends SIGTERM (which triggers the monitor's own graceful shutdown
+        handler on POSIX), waits briefly, then falls back to SIGKILL.
+        """
+        if not pid:
+            return
+        try:
+            os.kill(pid, signal.SIGTERM)
+            self.prompt.print(f"Escalating: sent SIGTERM to monitor '{name}' (pid={pid}).")
+        except ProcessLookupError:
+            return
+        except PermissionError:
+            self.prompt.print(
+                f"Permission denied sending SIGTERM to monitor '{name}' (pid={pid})."
+            )
+            return
+
+        if self._wait_for_exit(pid, timeout=5.0):
+            return
+        self._force_kill_process(pid, name)
 
     def _cleanup_stale_monitors(self, monitors: list[dict]) -> list[dict]:
         """Detect and stop stale/hung running monitors, returning them for restart."""
@@ -838,9 +886,39 @@ class MonitorCommands:
         monitor_id_val: int = monitor.get("id", 0)
         monitor_name = monitor.get("name", "N/A")
 
-        if monitor.get("status") == MONITOR_STATUS_RUNNING:
-            self.prompt.print(f"Monitor '{monitor_name}' (id={monitor_id_val}) is already running.")
+        # A monitor is considered live when a process still holds its stored PID.
+        # Checking liveness (not just the status flag) is essential because a
+        # graceful stop first moves the monitor into the intermediate 'stop'
+        # state while the previous process is still shutting down. Starting
+        # again during that window would create a duplicate monitor process.
+        current_status = monitor.get("status")
+        current_pid = int(monitor.get("pid") or 0)
+        pid_alive = current_pid != 0 and is_process_alive(current_pid)
+
+        if pid_alive:
+            if current_status == MONITOR_STATUS_RUNNING:
+                self.prompt.print(
+                    f"Monitor '{monitor_name}' (id={monitor_id_val}) is already running "
+                    f"(pid={current_pid})."
+                )
+            else:
+                self.prompt.print(
+                    f"Monitor '{monitor_name}' (id={monitor_id_val}) is still shutting down "
+                    f"(status='{current_status}', pid={current_pid}). "
+                    "Wait for it to stop, or use 'monitor stop --immediate' first."
+                )
             return
+
+        if current_status == MONITOR_STATUS_RUNNING:
+            # Status says 'running' but no live process: stale entry, clean it up.
+            self.prompt.print(
+                f"Monitor '{monitor_name}' (id={monitor_id_val}) had a stale 'running' "
+                "status with no live process; clearing it and starting."
+            )
+            self.sqlite_handler.update_monitor_status(
+                monitor_id=monitor_id_val, status=MONITOR_STATUS_STOPPED
+            )
+            self.sqlite_handler.update_monitor_pid(monitor_id=monitor_id_val, pid=0)
         
         if self._launch_monitor_process(monitor):
             self.prompt.print(f"Monitor '{monitor_name}' (id={monitor_id_val}) started.")
@@ -853,7 +931,24 @@ class MonitorCommands:
             return
 
         to_start = self._cleanup_stale_monitors(monitors)
-        to_start.extend(m for m in monitors if m.get("status") != MONITOR_STATUS_RUNNING)
+
+        # Include monitors that are not running, but never one whose stored PID
+        # is still alive (e.g. the intermediate 'stop' state) - starting that
+        # would create a duplicate process for the same monitor.
+        scheduled_ids = {m.get("id") for m in to_start}
+        for monitor in monitors:
+            if monitor.get("id") in scheduled_ids:
+                continue
+            if monitor.get("status") == MONITOR_STATUS_RUNNING:
+                continue
+            pid = int(monitor.get("pid") or 0)
+            if pid and is_process_alive(pid):
+                self.prompt.print(
+                    f"Monitor '{monitor.get('name', 'N/A')}' (id={monitor.get('id')}) is still "
+                    f"shutting down (pid={pid}); skipping."
+                )
+                continue
+            to_start.append(monitor)
 
         if not to_start:
             self.prompt.print("All monitors are already running.")
@@ -943,7 +1038,22 @@ class MonitorCommands:
             else:
                 self.sqlite_handler.update_monitor_status(monitor_id=monitor_id_val, status=MONITOR_STATUS_STOP)
                 self.prompt.print(f"Stop signal sent to monitor '{monitor_name}' (id={monitor_id_val}).")
-                self.prompt.print("The monitor will gracefully shut down within ~10 seconds and set status to 'stopped'.")
+                if current_pid and current_pid != 0:
+                    if self._wait_for_exit(current_pid, STOP_GRACE_SECONDS):
+                        self.prompt.print(f"Monitor '{monitor_name}' (id={monitor_id_val}) stopped gracefully.")
+                    else:
+                        self.prompt.print(
+                            f"Monitor '{monitor_name}' (id={monitor_id_val}) did not exit within "
+                            f"{STOP_GRACE_SECONDS:g}s; escalating."
+                        )
+                        self._escalate_stop(current_pid, str(monitor_name))
+                    self.sqlite_handler.update_monitor_status(monitor_id=monitor_id_val, status=MONITOR_STATUS_STOPPED)
+                    self.sqlite_handler.update_monitor_pid(monitor_id=monitor_id_val, pid=0)
+                    self.prompt.print(f"Monitor '{monitor_name}' (id={monitor_id_val}) status set to 'stopped'.")
+                else:
+                    self.prompt.print(
+                        "No stored PID; the monitor will set status to 'stopped' when it exits."
+                    )
 
     def stop_all(self, immediate: bool = False):
         """Stop all running monitors."""
@@ -959,6 +1069,7 @@ class MonitorCommands:
 
         self.prompt.print(f"Stopping {len(running_monitors)} running monitor(s)...")
 
+        graceful: list[tuple[int, str]] = []
         for monitor in running_monitors:
             monitor_id_val: int = monitor.get("id", 0)
             if not monitor_id_val:
@@ -980,6 +1091,30 @@ class MonitorCommands:
             else:
                 self.sqlite_handler.update_monitor_status(monitor_id=monitor_id_val, status=MONITOR_STATUS_STOP)
                 self.prompt.print(f"Stop signal sent to monitor '{monitor_name}' (id={monitor_id_val}).")
-                self.prompt.print("  The monitor will gracefully shut down within ~10 seconds and set status to 'stopped'.")
+                graceful.append((int(current_pid or 0), str(monitor_name)))
+
+        if graceful:
+            # Wait once for the whole batch, then escalate only the survivors,
+            # so stop-all does not take STOP_GRACE_SECONDS per monitor.
+            deadline = time.monotonic() + STOP_GRACE_SECONDS
+            while time.monotonic() < deadline and any(
+                pid and is_process_alive(pid) for pid, _ in graceful
+            ):
+                time.sleep(0.5)
+
+            for pid, name in graceful:
+                if pid and is_process_alive(pid):
+                    self.prompt.print(
+                        f"Monitor '{name}' (pid={pid}) did not exit within "
+                        f"{STOP_GRACE_SECONDS:g}s; escalating."
+                    )
+                    self._escalate_stop(pid, name)
+
+            for monitor in running_monitors:
+                monitor_id_val = monitor.get("id", 0)
+                if not monitor_id_val:
+                    continue
+                self.sqlite_handler.update_monitor_status(monitor_id=monitor_id_val, status=MONITOR_STATUS_STOPPED)
+                self.sqlite_handler.update_monitor_pid(monitor_id=monitor_id_val, pid=0)
 
         self.prompt.print(f"All {len(running_monitors)} running monitor(s) have been processed.")

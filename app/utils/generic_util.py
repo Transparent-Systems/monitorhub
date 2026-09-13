@@ -3,6 +3,7 @@ This script contains utility static methods and data structures.
 """
 
 import datetime
+import os
 import re
 from collections import OrderedDict
 from typing import Any
@@ -113,3 +114,54 @@ def parse_timestamp(value: str | None) -> datetime.datetime | None:
     except (ValueError, TypeError):
         return None
     return parsed
+
+
+def is_process_alive(pid: int | None) -> bool:
+    """Return True if a process with the given ``pid`` currently exists.
+
+    Cross-platform best-effort liveness check used to detect a monitor process
+    that is still running (including during the intermediate ``stop`` state)
+    before starting a second instance for the same monitor.
+
+    Note: the OS may reuse PIDs, so a ``True`` result cannot prove the process
+    is the *same* one we recorded; it is only used to avoid creating an
+    obviously duplicate monitor process.
+    """
+    if not pid or pid <= 0:
+        return False
+
+    if os.name == "nt":
+        return _is_process_alive_windows(pid)
+
+    try:
+        # Signal 0 performs error checking without sending a signal.
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        # The process exists but is owned by another user.
+        return True
+    except OSError:
+        return False
+    return True
+
+
+def _is_process_alive_windows(pid: int) -> bool:
+    """Windows-specific liveness check via OpenProcess/GetExitCodeProcess."""
+    import ctypes
+    from ctypes import wintypes
+
+    PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+    STILL_ACTIVE = 259
+
+    kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
+    handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+    if not handle:
+        return False
+    try:
+        exit_code = wintypes.DWORD()
+        if not kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code)):
+            return False
+        return exit_code.value == STILL_ACTIVE
+    finally:
+        kernel32.CloseHandle(handle)

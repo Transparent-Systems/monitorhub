@@ -26,7 +26,7 @@ if str(project_root) not in sys.path:
 
 from app.monitor.monitor_handler import MonitorHandler
 from app.monitor.monitor_handler_factory import MonitorHandlerFactory
-from app.utils.generic_util import utc_timestamp_now
+from app.utils.generic_util import is_process_alive, utc_timestamp_now
 from app.utils.logger_setup import setup_logging
 from app.utils.sqlite_handler import SQLiteHandler
 
@@ -92,6 +92,19 @@ def run_monitor_main(argv=None) -> int:
     # If no profiles are found, log an error and exit.
     if not profiles:
         logger.error(f"No profiles found for monitor '{monitor.get('name')}' (id={monitor_id}). Exiting.")
+        sqlite_handler.close()
+        sys.exit(1)
+
+    # Single-instance guard: refuse to start if another live process still owns
+    # this monitor. This closes the stop -> start race where a graceful stop was
+    # requested (status 'stop') but the previous process had not yet exited, and
+    # prevents two observers from running on the same monitor path.
+    existing_pid = int(monitor.get("pid") or 0)
+    if existing_pid and existing_pid != os.getpid() and is_process_alive(existing_pid):
+        logger.error(
+            f"Monitor '{monitor.get('name')}' (id={monitor_id}) is already running as "
+            f"pid={existing_pid}. Exiting to avoid a duplicate monitor process."
+        )
         sqlite_handler.close()
         sys.exit(1)
 

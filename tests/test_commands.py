@@ -9,6 +9,8 @@ keyboard. They run against the dedicated unittest database in
 
 import datetime
 import logging
+import os
+import signal
 import unittest
 from unittest import mock
 
@@ -374,6 +376,84 @@ class TestCommands(unittest.TestCase):
         commands, _ = self._make_commands([], diagnostic_util=diagnostic_util)
         commands.app.config_test()
         diagnostic_util.check_rclone_dependency.assert_called_once()
+
+    # ------------------------------------------------------------------
+    # Monitor start/stop liveness guards (duplicate-process regression)
+    # ------------------------------------------------------------------
+
+    def test_monitor_start_refuses_while_still_shutting_down(self):
+        """A monitor in the intermediate 'stop' state with a live PID must not restart."""
+        commands, mock_prompt = self._make_commands([])
+        monitor = commands.sqlite_handler.get_monitors()[0]
+        commands.sqlite_handler.update_monitor_status(monitor_id=monitor["id"], status="stop")
+        commands.sqlite_handler.update_monitor_pid(monitor_id=monitor["id"], pid=os.getpid())
+        with mock.patch.object(commands.monitor, "_launch_monitor_process") as launch:
+            commands.monitor.start(monitor_id=monitor["id"])
+        launch.assert_not_called()
+        self.assertIn("still shutting down", mock_prompt.output_text)
+
+    def test_monitor_start_refuses_when_already_running(self):
+        commands, mock_prompt = self._make_commands([])
+        monitor = commands.sqlite_handler.get_monitors()[0]
+        commands.sqlite_handler.update_monitor_status(monitor_id=monitor["id"], status="running")
+        commands.sqlite_handler.update_monitor_pid(monitor_id=monitor["id"], pid=os.getpid())
+        with mock.patch.object(commands.monitor, "_launch_monitor_process") as launch:
+            commands.monitor.start(monitor_id=monitor["id"])
+        launch.assert_not_called()
+        self.assertIn("already running", mock_prompt.output_text)
+
+    def test_monitor_start_clears_stale_running_status(self):
+        commands, mock_prompt = self._make_commands([])
+        monitor = commands.sqlite_handler.get_monitors()[0]
+        # 'running' with no live process (pid 0) is a stale entry.
+        commands.sqlite_handler.update_monitor_status(monitor_id=monitor["id"], status="running")
+        commands.sqlite_handler.update_monitor_pid(monitor_id=monitor["id"], pid=0)
+        with mock.patch.object(
+            commands.monitor, "_launch_monitor_process", return_value=True
+        ) as launch:
+            commands.monitor.start(monitor_id=monitor["id"])
+        launch.assert_called_once()
+        self.assertIn("stale 'running'", mock_prompt.output_text)
+
+    def test_monitor_stop_escalates_when_process_survives(self):
+        commands, mock_prompt = self._make_commands([])
+        monitor = commands.sqlite_handler.get_monitors()[0]
+        commands.sqlite_handler.update_monitor_status(monitor_id=monitor["id"], status="running")
+        commands.sqlite_handler.update_monitor_pid(monitor_id=monitor["id"], pid=4242)
+        with (
+            mock.patch.object(commands.monitor, "_wait_for_exit", return_value=False),
+            mock.patch.object(commands.monitor, "_escalate_stop") as escalate,
+        ):
+            commands.monitor.stop(monitor_id=monitor["id"])
+        escalate.assert_called_once()
+        self.assertIn("escalating", mock_prompt.output_text)
+        after = commands.sqlite_handler.get_monitor(monitor_id=monitor["id"])
+        self.assertEqual(after["status"], "stopped")
+        self.assertEqual(after["pid"], 0)
+
+    def test_monitor_stop_no_escalation_when_process_exits(self):
+        commands, mock_prompt = self._make_commands([])
+        monitor = commands.sqlite_handler.get_monitors()[0]
+        commands.sqlite_handler.update_monitor_status(monitor_id=monitor["id"], status="running")
+        commands.sqlite_handler.update_monitor_pid(monitor_id=monitor["id"], pid=4242)
+        with (
+            mock.patch.object(commands.monitor, "_wait_for_exit", return_value=True),
+            mock.patch.object(commands.monitor, "_escalate_stop") as escalate,
+        ):
+            commands.monitor.stop(monitor_id=monitor["id"])
+        escalate.assert_not_called()
+        self.assertIn("stopped gracefully", mock_prompt.output_text)
+
+    def test_escalate_stop_sends_sigterm_then_force_kills(self):
+        commands, _ = self._make_commands([])
+        with (
+            mock.patch("app.cli.monitor_commands.os.kill") as kill_mock,
+            mock.patch.object(commands.monitor, "_wait_for_exit", return_value=False),
+            mock.patch.object(commands.monitor, "_force_kill_process") as force_mock,
+        ):
+            commands.monitor._escalate_stop(4242, "test")
+        kill_mock.assert_called_once_with(4242, signal.SIGTERM)
+        force_mock.assert_called_once_with(4242, "test")
 
     # ------------------------------------------------------------------
     # Heartbeat / stale-monitor detection (regression A1)
