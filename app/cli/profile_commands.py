@@ -538,13 +538,13 @@ class ProfileCommands:
 
                 # Prompt user for region
                 input_profile_region = self.prompt.input(f"Enter S3 region of your provider: {provider_name}: ")
-                    if input_profile_region.strip() == "":
-                        self.prompt.print("Region cannot be just spaces. Please try again.")
-                        continue
+                if input_profile_region.strip() == "":
+                    self.prompt.print("Region cannot be just spaces. Please try again.")
+                    continue
 
-                    # Update region in profile_config
-                    profile_config["region"] = input_profile_region
-                    break
+                # Update region in profile_config
+                profile_config["region"] = input_profile_region
+                break
         else:
             # For other providers we need the endpoint
             current_endpoint = profile_config.get("endpoint", "N/A")
@@ -558,12 +558,12 @@ class ProfileCommands:
                     break
 
                 input_profile_endpoint = self.prompt.input(f"Enter S3 endpoint of your provider: {provider_name}: ")
-                    if input_profile_endpoint.strip() == "":
-                        self.prompt.print("Endpoint cannot be just spaces. Please try again.")
-                        continue
-                    # Update endpoint in profile_config
-                    profile_config["endpoint"] = input_profile_endpoint
-                    break
+                if input_profile_endpoint.strip() == "":
+                    self.prompt.print("Endpoint cannot be just spaces. Please try again.")
+                    continue
+                # Update endpoint in profile_config
+                profile_config["endpoint"] = input_profile_endpoint
+                break
 
         # Profile_config has already been populated with provider_name, access_key_id etc
         # Now update profile
