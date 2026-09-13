@@ -728,7 +728,7 @@ class MonitorCommands:
 
         for monitor in monitors:
             self.prompt.print()
-            self.prompt.print("=" * 50)
+            self.prompt.print("=" * 60)
             self.prompt.print(f"Monitor id: {monitor.get('id', '0')}")
             self.prompt.print(f"Monitor name: {monitor.get('name', 'N/A')}")
             self.prompt.print(f"Monitor type: {monitor.get('monitor_type', 'N/A')}")
@@ -738,7 +738,16 @@ class MonitorCommands:
             config = monitor.get("config", {})
             for key in config:
                 self.prompt.print(f"   {key}: {config.get(key, 'N/A')}")
-            self.prompt.print("=" * 50)
+            self.prompt.print("=" * 3)
+            self.prompt.print("\tProfile list:")
+            # List profiles: profile_id : profile_name
+            monitor_id_str = monitor.get('id', '0')
+            monitor_id = int(monitor_id_str)
+            profiles = self.sqlite_handler.get_profiles_for_monitor(monitor_id=monitor_id)
+            for profile in profiles:
+                self.prompt.print(f"\tprofile id: {profile.get('id', '0')} ; profile name: {profile.get('name', 'UNKNOWN')}")
+
+            self.prompt.print("=" * 60)
 
     def test(self, monitor_id: int | None = None, monitor_name: str | None = None):
         """Test monitor(s)."""
