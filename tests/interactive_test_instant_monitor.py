@@ -397,7 +397,7 @@ if __name__ == "__main__":
             # Set status to stop
             monitor_id = monitor.get("id","0")
             if not sqlite_handler.update_monitor_status(monitor_id=monitor_id, status=MONITOR_STATUS_STOP):
-                logger.warning(f"Cannot set monito status to {MONITOR_STATUS_STOP} if monitor {monitor_name}")
+                logger.warning(f"Cannot set monitor status to {MONITOR_STATUS_STOP} if monitor {monitor_name}")
                 sys.exit(1)
             # Wait for 10 seconds
             time.sleep(10)            

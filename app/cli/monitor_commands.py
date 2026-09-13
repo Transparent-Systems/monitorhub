@@ -778,6 +778,7 @@ class MonitorCommands:
             self.prompt.print()
             self.prompt.print("=" * 60)
             self.prompt.print(f"Monitor id: {monitor.get('id', '0')}")
+            self.prompt.print(f"Monitor pid: {monitor.get('pid', '0')}")
             self.prompt.print(f"Monitor name: {monitor.get('name', 'N/A')}")
             self.prompt.print(f"Monitor type: {monitor.get('monitor_type', 'N/A')}")
             self.prompt.print(f"Monitor path: {monitor.get('monitor_path', 'N/A')}")
