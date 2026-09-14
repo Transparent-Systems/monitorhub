@@ -71,8 +71,10 @@ class DatabaseCommands:
             self.prompt.print(f"Database location: {self.sqlite_handler.db_path}")
             self.prompt.print("")
             self.prompt.print("Please make a backup before proceeding.")
-            answer = self.prompt.input("Do you want to delete the current database and create a new one? (N/y): ")
-            if answer.strip().lower() != "y":
+            if not self.prompt.prompt_yes_no(
+                "Do you want to delete the current database and create a new one? (N/y): ",
+                default=False,
+            ):
                 self.prompt.print("Operation cancelled.")
                 return
             if self.sqlite_handler.is_initialized():

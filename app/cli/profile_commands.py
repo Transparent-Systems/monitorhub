@@ -53,24 +53,25 @@ class ProfileCommands:
             self.prompt.print(f"Id: {profile_id}, Profile name: {profile_name}")
         self.prompt.print("=" * 50)
 
-        while True:
-            profile_id_entered = self.prompt.input("Enter profile id: ").strip()
+        def valid_profile_id(value: str) -> str | None:
+            if not value.isdigit():
+                return f"Invalid profile id: {value}. Please try again."
+            if find_by_id(profiles, int(value)) is None:
+                return f"Invalid profile id: {int(value)}. Please try again."
+            return None
 
-            if profile_id_entered == "":
-                self.prompt.print("No profile selected")
-                return {}
+        profile_id_entered = self.prompt.prompt_choice(
+            "Enter profile id: ",
+            valid=valid_profile_id,
+            allow_cancel=True,
+            echo_label="profile id",
+        )
+        if profile_id_entered is None:
+            self.prompt.print("No profile selected")
+            return {}
 
-            self.prompt.print(f"You entered profile id: {profile_id_entered}")
-            if not profile_id_entered.isdigit():
-                self.prompt.print(f"Invalid profile id: {profile_id_entered}. Please try again.")
-                continue
-
-            profile_id = int(profile_id_entered)
-            for profile in profiles:
-                if profile.get("id") == profile_id:
-                    return profile
-
-            self.prompt.print(f"Invalid profile id: {profile_id}. Please try again.")
+        selected = find_by_id(profiles, int(profile_id_entered))
+        return selected if selected is not None else {}
 
     def test(
         self,
@@ -357,28 +358,41 @@ class ProfileCommands:
         self.prompt.print("=" * 50)
 
         # Prompt user for profile id
-        while True:
-            profile_id_entered = self.prompt.input("Enter profile id to delete: ").strip()
+        def valid_profile_id(value: str) -> str | None:
+            if not value.isdigit():
+                return f"Invalid profile id: {value}. Please try again."
+            if find_by_id(profiles, int(value)) is None:
+                return f"Invalid profile id: {int(value)}. Please try again."
+            return None
 
-            if profile_id_entered == "":
+        def valid_repeat_profile_id(value: str) -> str | None:
+            if not value.isdigit():
+                return f"Invalid profile id: {value}. Please try again."
+            return None
+
+        profile: dict[str, Any] | None = None
+        while True:
+            profile_id_entered = self.prompt.prompt_choice(
+                "Enter profile id to delete: ",
+                valid=valid_profile_id,
+                allow_cancel=True,
+                echo_label="profile id",
+            )
+            if profile_id_entered is None:
                 self.prompt.print("No profile selected")
                 return
 
-            self.prompt.print(f"You entered profile id: {profile_id_entered}")
-            if not profile_id_entered.isdigit():
-                self.prompt.print(f"Invalid profile id: {profile_id_entered}. Please try again.")
-                continue
-
             profile_id_selected = int(profile_id_entered)
             profile = find_by_id(profiles, profile_id_selected)
-            if profile is None:
-                self.prompt.print(f"Invalid profile id: {profile_id_selected}. Please try again.")
+            if profile is None:  # Defensive: valid_profile_id already checked.
                 continue
 
-            profile_id_repeat_entered = self.prompt.input("Repeat profile id to delete: ").strip()
-            self.prompt.print(f"You entered profile id: {profile_id_repeat_entered}")
-            if not profile_id_repeat_entered.isdigit():
-                self.prompt.print(f"Invalid profile id: {profile_id_repeat_entered}. Please try again.")
+            profile_id_repeat_entered = self.prompt.prompt_choice(
+                "Repeat profile id to delete: ",
+                valid=valid_repeat_profile_id,
+                echo_label="profile id",
+            )
+            if profile_id_repeat_entered is None:  # Defensive: there is no cancel path.
                 continue
             profile_id_repeat = int(profile_id_repeat_entered)
 
@@ -438,33 +452,35 @@ class ProfileCommands:
                 self.prompt.print(f"No implemented profiles found in {self.sqlite_handler.db_path}")
                 return
 
-            while True:
-                # Show all implemented profiles
+            def render_implemented_profiles() -> None:
                 self.prompt.print("List of profiles")
                 self.prompt.print("=" * 50)
-                for profile in implemented_profiles:
+                for implemented_profile in implemented_profiles:
                     self.prompt.print(
-                        f"Id: {profile.get('id', 'N/A')}, Profile name: {profile.get('name', 'N/A')}"
+                        f"Id: {implemented_profile.get('id', 'N/A')}, Profile name: {implemented_profile.get('name', 'N/A')}"
                     )
                 self.prompt.print("=" * 50)
 
-                input_profile_id = self.prompt.input("Enter profile id: ").strip()
+            def valid_implemented_profile_id(value: str) -> str | None:
+                if not value.isdigit():
+                    return f"Invalid profile id: {value}. Please try again."
+                if find_by_id(implemented_profiles, int(value)) is None:
+                    return f"Invalid profile id: {int(value)}. Please try again."
+                return None
 
-                if input_profile_id == "":
-                    self.prompt.print("No profile selected")
-                    return
+            input_profile_id = self.prompt.prompt_choice(
+                "Enter profile id: ",
+                valid=valid_implemented_profile_id,
+                render=render_implemented_profiles,
+                allow_cancel=True,
+                echo_label="profile id",
+            )
+            if input_profile_id is None:
+                self.prompt.print("No profile selected")
+                return
 
-                self.prompt.print(f"You entered profile id: {input_profile_id}")
-                if not input_profile_id.isdigit():
-                    self.prompt.print(f"Invalid profile id: {input_profile_id}. Please try again.")
-                    continue
-
-                selected_profile_id = int(input_profile_id)
-                profile = find_by_id(implemented_profiles, selected_profile_id)
-                if profile is not None:
-                    break
-
-                self.prompt.print(f"Invalid profile id: {selected_profile_id}. Please try again.")
+            selected_profile_id = int(input_profile_id)
+            profile = find_by_id(implemented_profiles, selected_profile_id)
 
         # Get profile name
         input_profile_name = profile.get("name", "N/A")
@@ -542,47 +558,37 @@ class ProfileCommands:
         if "Amazon AWS" in provider_name:
             profile_config["env_auth"] = "false"
             profile_region = profile_config.get("region", None)
-            while True:
-                # Show current region
+
+            def render_region() -> None:
                 if profile_region:
                     self.prompt.print(f"Press Enter to continue with current region: {profile_region}")
-                    # Prompt user for region
-                    input_profile_region = self.prompt.input(f"Enter S3 region of your provider: {provider_name}: ")
-                    if input_profile_region.strip() == "":
-                        # No changes in profile_config
-                        break
-                    # Update region in profile_config
-                    profile_config["region"] = input_profile_region
-                    break
 
-                # Prompt user for region
-                input_profile_region = self.prompt.input(f"Enter S3 region of your provider: {provider_name}: ")
-                if input_profile_region.strip() == "":
-                    self.prompt.print("Region cannot be just spaces. Please try again.")
-                    continue
-
+            input_profile_region = self.prompt.prompt_required(
+                f"Enter S3 region of your provider: {provider_name}: ",
+                current=profile_region,
+                empty_message="Region cannot be just spaces. Please try again.",
+                render=render_region,
+            )
+            if input_profile_region:
                 # Update region in profile_config
                 profile_config["region"] = input_profile_region
-                break
         else:
             # For other providers we need the endpoint
             current_endpoint = profile_config.get("endpoint", "N/A")
             self.prompt.print(f"Press Enter to keep current endpoint: {current_endpoint}")
-            while True:
-                if current_endpoint:
-                    input_profile_endpoint = self.prompt.input(f"Enter S3 endpoint from your provider: {provider_name}: ")
-                    if input_profile_endpoint.strip() != "":
-                        # Update endpoint in profile_config
-                        profile_config["endpoint"] = input_profile_endpoint
-                    break
-
-                input_profile_endpoint = self.prompt.input(f"Enter S3 endpoint of your provider: {provider_name}: ")
-                if input_profile_endpoint.strip() == "":
-                    self.prompt.print("Endpoint cannot be just spaces. Please try again.")
-                    continue
+            endpoint_prompt = (
+                f"Enter S3 endpoint from your provider: {provider_name}: "
+                if current_endpoint
+                else f"Enter S3 endpoint of your provider: {provider_name}: "
+            )
+            input_profile_endpoint = self.prompt.prompt_required(
+                endpoint_prompt,
+                allow_cancel=True,
+                empty_message="Endpoint cannot be just spaces. Please try again.",
+            )
+            if input_profile_endpoint:
                 # Update endpoint in profile_config
                 profile_config["endpoint"] = input_profile_endpoint
-                break
 
         # Profile_config has already been populated with provider_name, access_key_id etc
         # Now update profile
@@ -628,72 +634,62 @@ class ProfileCommands:
         self.prompt.print("Example:")
         self.prompt.print('  notify-send "Monitor={monitor_name}, profile={profile_name}, event={event_name}, file={src_path}"')
         self.prompt.print()
-        while True:
-            prompt_text = "Please enter command to run"
-            if current_command:
-                prompt_text += f" (current: {current_command}; Enter to keep)"
-            prompt_text += ": "
-            input_command = self.prompt.input(prompt_text).strip()
-            if input_command == "":
-                if current_command:
-                    command = current_command
-                    break
-                self.prompt.print("Command cannot be just spaces")
-                continue
-            command = input_command
-            break
+        prompt_text = "Please enter command to run"
+        if current_command:
+            prompt_text += f" (current: {current_command}; Enter to keep)"
+        prompt_text += ": "
+        command = self.prompt.prompt_required(
+            prompt_text,
+            current=current_command,
+            empty_message="Command cannot be just spaces",
+        ) or ""
 
         # Event filter
         valid_events = ["created", "deleted", "modified", "moved", "closed", "timer"]
         self.prompt.print("Available events: created, deleted, modified, moved, closed, timer")
         self.prompt.print("Leave empty for all events.")
-        while True:
-            current_display = ",".join(current_events) if current_events else "all"
-            input_events = self.prompt.input(
-                f"Events to trigger on (current: {current_display}; Enter to keep): "
-            ).strip()
-            if input_events == "":
-                if current_command and current_events is not None:
-                    events = current_events
-                    break
-                events = []
-                break
 
-            requested = [e.strip() for e in input_events.split(",") if e.strip()]
-            invalid = [e for e in requested if e not in valid_events]
+        def parse_events(value: str) -> list[str]:
+            return [e.strip() for e in value.split(",") if e.strip()]
+
+        def valid_events_input(value: str) -> str | None:
+            invalid = [e for e in parse_events(value) if e not in valid_events]
             if invalid:
-                self.prompt.print(f"Invalid event(s): {', '.join(invalid)}. Please try again.")
-                continue
-            events = requested
-            break
+                return f"Invalid event(s): {', '.join(invalid)}. Please try again."
+            return None
+
+        current_display = ",".join(current_events) if current_events else "all"
+        input_events = self.prompt.prompt_required(
+            f"Events to trigger on (current: {current_display}; Enter to keep): ",
+            allow_cancel=True,
+            validator=valid_events_input,
+        )
+        if input_events is None:
+            events = current_events if (current_command and current_events is not None) else []
+        else:
+            events = parse_events(input_events)
 
         # Cooldown
-        while True:
-            input_cooldown = self.prompt.input(
-                f"Cooldown between command firings (current: {current_cooldown}; Enter to keep): "
-            ).strip()
-            if input_cooldown == "":
-                cooldown = current_cooldown if current_command else "0s"
-                break
-            if not is_interval_valid(input_cooldown):
-                self.prompt.print(f"Invalid cooldown: {input_cooldown}. Please try again.")
-                continue
-            cooldown = input_cooldown
-            break
+        cooldown = self.prompt.prompt_required(
+            f"Cooldown between command firings (current: {current_cooldown}; Enter to keep): ",
+            default=current_cooldown if current_command else "0s",
+            validator=lambda value: (
+                None
+                if is_interval_valid(value)
+                else f"Invalid cooldown: {value}. Please try again."
+            ),
+        ) or "0s"
 
         # Timeout
-        while True:
-            input_timeout = self.prompt.input(
-                f"Timeout for command (current: {current_timeout}; Enter to keep): "
-            ).strip()
-            if input_timeout == "":
-                timeout = current_timeout if current_timeout else "10s"
-                break
-            if not is_interval_valid(input_timeout):
-                self.prompt.print(f"Invalid timeout: {input_timeout}. Please try again.")
-                continue
-            timeout = input_timeout
-            break
+        timeout = self.prompt.prompt_required(
+            f"Timeout for command (current: {current_timeout}; Enter to keep): ",
+            default=current_timeout or "10s",
+            validator=lambda value: (
+                None
+                if is_interval_valid(value)
+                else f"Invalid timeout: {value}. Please try again."
+            ),
+        ) or "10s"
 
         # Max concurrent command workers
         self.prompt.print(
@@ -703,52 +699,40 @@ class ProfileCommands:
         self.prompt.print(
             "Commands are queued FIFO and never dropped when the limit is reached."
         )
-        while True:
-            input_max_workers = self.prompt.input(
-                f"Max concurrent command workers (default: {DEFAULT_COMMAND_MAX_WORKERS}, "
-                f"min: {MIN_COMMAND_MAX_WORKERS}, max: {MAX_COMMAND_MAX_WORKERS}; "
-                f"current: {current_max_workers}; Enter to keep): "
-            ).strip()
-            if input_max_workers == "":
-                max_workers = current_max_workers
-                break
+        def valid_max_workers(value: str) -> str | None:
             try:
-                max_workers = int(input_max_workers)
+                workers = int(value)
             except ValueError:
-                self.prompt.print(
-                    f"Invalid number of workers: {input_max_workers}. Please try again."
-                )
-                continue
-            if not (MIN_COMMAND_MAX_WORKERS <= max_workers <= MAX_COMMAND_MAX_WORKERS):
-                self.prompt.print(
+                return f"Invalid number of workers: {value}. Please try again."
+            if not (MIN_COMMAND_MAX_WORKERS <= workers <= MAX_COMMAND_MAX_WORKERS):
+                return (
                     f"Number of workers must be between {MIN_COMMAND_MAX_WORKERS} and "
                     f"{MAX_COMMAND_MAX_WORKERS}. Please try again."
                 )
-                continue
-            break
+            return None
+
+        input_max_workers = self.prompt.prompt_required(
+            f"Max concurrent command workers (default: {DEFAULT_COMMAND_MAX_WORKERS}, "
+            f"min: {MIN_COMMAND_MAX_WORKERS}, max: {MAX_COMMAND_MAX_WORKERS}; "
+            f"current: {current_max_workers}; Enter to keep): ",
+            default=str(current_max_workers),
+            validator=valid_max_workers,
+        )
+        max_workers = (
+            int(input_max_workers) if input_max_workers is not None else current_max_workers
+        )
 
         # Shell flag
         shell = bool(current_shell)
-        while True:
-            if current_command:
-                shell_prompt = (
-                    f"Use shell execution? (current: {'yes' if shell else 'no'}; Enter to keep; y/n): "
-                )
-            else:
-                shell_prompt = "Use shell execution? (y/n, default no): "
-            input_shell = self.prompt.input(shell_prompt).strip().lower()
-            if input_shell == "":
-                if current_command:
-                    break
-                shell = False
-                break
-            if input_shell in ("y", "yes"):
-                shell = True
-                break
-            if input_shell in ("n", "no"):
-                shell = False
-                break
-            self.prompt.print("Please answer y or n.")
+        if current_command:
+            shell_prompt = (
+                f"Use shell execution? (current: {'yes' if shell else 'no'}; Enter to keep; y/n): "
+            )
+        else:
+            shell_prompt = "Use shell execution? (y/n, default no): "
+        shell = self.prompt.prompt_yes_no(
+            shell_prompt, default=shell if current_command else False
+        )
 
         return {
             "command": command,
@@ -774,27 +758,27 @@ class ProfileCommands:
             self.prompt.print("No profile categories available")
             return
 
-        while True:
+        def render_categories() -> None:
             self.prompt.print("List of profile categories")
             self.prompt.print("=" * 50)
             for i, (name, description) in enumerate(categories):
                 self.prompt.print(f"{i+1}. {name} - {description}")
             self.prompt.print("=" * 50)
 
-            input_category_number = self.prompt.input("Please select number of profile category: ")
-            if input_category_number.strip() == "":
-                self.prompt.print("Profile category cannot be just spaces")
-                continue
+        def valid_category_number(value: str) -> str | None:
+            if not value.isdigit() or not (0 < int(value) <= len(categories)):
+                return f"Invalid profile category number: {value}. Please try again."
+            return None
 
-            if not input_category_number.isdigit():
-                self.prompt.print(f"Invalid profile category number: {input_category_number}. Please try again.")
-                continue
-
-            input_category_number = int(input_category_number)
-            if input_category_number > 0 and input_category_number <= len(categories):
-                break
-
-            self.prompt.print(f"Invalid profile category number: {input_category_number}. Please try again.")
+        raw_category_number = self.prompt.prompt_choice(
+            "Please select number of profile category: ",
+            valid=valid_category_number,
+            render=render_categories,
+            empty_message="Profile category cannot be just spaces",
+        )
+        if raw_category_number is None:  # Defensive: there is no cancel path here.
+            return
+        input_category_number = int(raw_category_number)
 
         category = categories[input_category_number - 1][0]
         self.prompt.print(f"You selected profile category: {category}")
@@ -817,88 +801,83 @@ class ProfileCommands:
             return
 
         # Prompt user for a profile_name
-        while True:
-            self.prompt.print(
+        def valid_profile_name(value: str) -> str | None:
+            if self.sqlite_handler.get_profile(profile_name=value):
+                return f"Profile name: {value} already exists. Please try again"
+            return None
+
+        input_profile_name = self.prompt.prompt_required(
+            "Enter profile name: ",
+            allow_cancel=True,
+            validator=valid_profile_name,
+            render=lambda: self.prompt.print(
                 "Please enter a profile name. The profile name can be anything you like, "
                 "but it must be unique. It will be used to identify the profile in the "
                 "database and in the command line interface."
-            )
-            input_profile_name = self.prompt.input("Enter profile name: ")
-
-            if input_profile_name.strip() == "":
-                self.prompt.print("Profile name cannot be just spaces.")
-                return
-
-            self.prompt.print(f"You entered profile name: {input_profile_name}")
-
-            # Check if profile_name already exists
-            profile = self.sqlite_handler.get_profile(profile_name=input_profile_name)
-
-            if profile:
-                self.prompt.print(f"Profile name: {input_profile_name} already exists. Please try again")
-                continue
-            break
+            ),
+            echo_label="profile name",
+        )
+        if input_profile_name is None:
+            self.prompt.print("Profile name cannot be just spaces.")
+            return
 
         # Prompt user to select a provider
-        while True:
+        def render_providers() -> None:
             self.prompt.print("Enter provider number")
             for i, provider in enumerate(implemented_providers):
                 self.prompt.print(f"{i+1}. {provider.name}")
-            input_provider_number = self.prompt.input("Enter provider number: ")
 
-            if input_provider_number == "":
-                self.prompt.print("No provider selected")
-                return
+        def valid_provider_number(value: str) -> str | None:
+            if not value.isdigit() or not (0 < int(value) <= len(implemented_providers)):
+                return f"Invalid provider number: {value}. Please try again."
+            return None
 
-            self.prompt.print(f"You entered provider number: {input_provider_number}")
-            if input_provider_number.isdigit():
-                input_provider_number = int(input_provider_number)
-                if input_provider_number > 0 and input_provider_number <= len(implemented_providers):
-                    break
-            else:
-                self.prompt.print(f"Invalid provider number: {input_provider_number}. Please try again.")
-                continue
-            break
+        raw_provider_number = self.prompt.prompt_choice(
+            "Enter provider number: ",
+            valid=valid_provider_number,
+            render=render_providers,
+            allow_cancel=True,
+            echo_label="provider number",
+        )
+        if raw_provider_number is None:
+            self.prompt.print("No provider selected")
+            return
+        provider_number = int(raw_provider_number)
 
-        selected_provider = implemented_providers[input_provider_number - 1]
+        selected_provider = implemented_providers[provider_number - 1]
         input_provider_name = selected_provider.name
         input_type_name = selected_provider.profile_type
 
         # Prompt user for access key
-        while True:
-            input_access_key_id = self.prompt.input(f"Enter S3 access key id of your provider: {input_provider_name}: ")
-            self.prompt.print(f"You entered access key: {input_access_key_id}")
-            if input_access_key_id.strip() == "":
-                self.prompt.print("Access key id cannot be empty. Please try again.")
-                continue
-            break
+        input_access_key_id = self.prompt.prompt_required(
+            f"Enter S3 access key id of your provider: {input_provider_name}: ",
+            empty_message="Access key id cannot be empty. Please try again.",
+            echo_label="access key",
+            echo_on_empty=True,
+        ) or ""
 
         # Prompt user for secret key
-        while True:
-            input_access_key_id_secret = self.prompt.input(f"Enter S3 access secret key of your provider: {input_provider_name}: ")
-            if input_access_key_id_secret.strip() == "":
-                self.prompt.print("Access secret key cannot be empty. Please try again.")
-                continue
-            break
+        input_access_key_id_secret = self.prompt.prompt_required(
+            f"Enter S3 access secret key of your provider: {input_provider_name}: ",
+            empty_message="Access secret key cannot be empty. Please try again.",
+        ) or ""
 
-        input_region:str = ""
-        input_endpoint:str = ""
+        input_region: str = ""
+        input_endpoint: str = ""
         if "Amazon AWS" in input_provider_name:
-            while True:
-                input_region = self.prompt.input(f"Enter S3 region of your provider: {input_provider_name}: ")
-                self.prompt.print(f"You entered region: {input_region}")
-                if input_region.strip() == "":
-                    self.prompt.print("Region cannot be empty. Please try again.")
-                    continue
-                break
+            input_region = self.prompt.prompt_required(
+                f"Enter S3 region of your provider: {input_provider_name}: ",
+                empty_message="Region cannot be empty. Please try again.",
+                echo_label="region",
+                echo_on_empty=True,
+            ) or ""
         else:
-            while True:
-                input_endpoint = self.prompt.input(f"Enter S3 endpoint from your provider: {input_provider_name}: ")
-                self.prompt.print(f"You entered endpoint: {input_endpoint}")
-                if input_endpoint.strip() == "":
-                    self.prompt.print("Endpoint cannot be empty. Please try again.")
-                    continue
-                break
+            input_endpoint = self.prompt.prompt_required(
+                f"Enter S3 endpoint from your provider: {input_provider_name}: ",
+                empty_message="Endpoint cannot be empty. Please try again.",
+                echo_label="endpoint",
+                echo_on_empty=True,
+            ) or ""
 
         # Create profile
         profile_config = {
@@ -939,27 +918,25 @@ class ProfileCommands:
         """
 
         # Prompt user for a unique profile name
-        while True:
-            self.prompt.print(
+        def valid_profile_name(value: str) -> str | None:
+            if self.sqlite_handler.get_profile(profile_name=value):
+                return f"Profile name: {value} already exists. Please try again"
+            return None
+
+        input_profile_name = self.prompt.prompt_required(
+            "Enter profile name: ",
+            allow_cancel=True,
+            validator=valid_profile_name,
+            render=lambda: self.prompt.print(
                 "Please enter a profile name. The profile name can be anything you like, "
                 "but it must be unique. It will be used to identify the profile in the "
                 "database and in the command line interface."
-            )
-            input_profile_name = self.prompt.input("Enter profile name: ")
-
-            if input_profile_name.strip() == "":
-                self.prompt.print("Profile name cannot be just spaces.")
-                return
-
-            self.prompt.print(f"You entered profile name: {input_profile_name}")
-
-            # Check if profile_name already exists
-            profile = self.sqlite_handler.get_profile(profile_name=input_profile_name)
-
-            if profile:
-                self.prompt.print(f"Profile name: {input_profile_name} already exists. Please try again")
-                continue
-            break
+            ),
+            echo_label="profile name",
+        )
+        if input_profile_name is None:
+            self.prompt.print("Profile name cannot be just spaces.")
+            return
 
         # Prompt for mandatory command configuration
         command_config = self._prompt_command_config()

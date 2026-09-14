@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+- Internal refactor: ``PromptService`` now exposes reusable ``prompt_required``,
+  ``prompt_choice`` and ``prompt_yes_no`` helpers, and the interactive
+  ``monitor``/``profile``/``database`` command flows use them instead of
+  repeating ad-hoc input loops. There is no user-facing behaviour change,
+  except that the destructive ``database init --recreate`` and Rclone
+  profile-import confirmations now also accept ``yes``/``no`` (previously only
+  ``y`` was accepted).
+
 - ``mhub profile new`` and ``mhub profile edit`` now prompt for
   ``command_max_workers`` (the maximum number of concurrent command processes,
   default ``100``, min ``1``, max ``1000``). ``mhub profile test`` also displays

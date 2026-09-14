@@ -239,7 +239,7 @@ class MonitorCommands:
                 self.prompt.print(f"No monitors found in {self.sqlite_handler.db_path}")
                 return None
 
-        while True:
+        def render() -> None:
             self.prompt.print()
             if allow_all:
                 self.prompt.print("0.  Select all monitors")
@@ -248,51 +248,59 @@ class MonitorCommands:
                     f"Id: {monitor.get('id', 'N/A')}, Monitor name: {monitor.get('name', 'N/A')}"
                 )
 
-            choice = self.prompt.input(prompt).strip()
-            if choice == "":
-                return None
+        def valid(value: str) -> str | None:
+            if not value.isdigit():
+                return f"Invalid monitor id: {value}. Please try again."
+            if find_by_id(monitors, int(value)) is None:
+                return f"Invalid monitor id: {int(value)}. Please try again."
+            return None
 
-            if allow_all and choice == "0":
-                return 0
-
-            if not choice.isdigit():
-                self.prompt.print(f"Invalid monitor id: {choice}. Please try again.")
-                continue
-
-            choice_int = int(choice)
-            if find_by_id(monitors, choice_int) is not None:
-                return choice_int
-
-            self.prompt.print(f"Invalid monitor id: {choice_int}. Please try again.")
+        choice = self.prompt.prompt_choice(
+            prompt,
+            valid=valid,
+            render=render,
+            allow_all=allow_all,
+            allow_cancel=True,
+        )
+        if choice is None:
+            return None
+        return int(choice)
 
     def _prompt_interval(self, current_interval: str | None = None, monitor_type: str | None = None) -> str:
         """Prompt the user for a monitor interval and return the normalized value."""
         label = f"{monitor_type} interval" if monitor_type else "interval"
-        while True:
+
+        def render() -> None:
             if current_interval is not None:
                 self.prompt.print(f"Current {label}: {current_interval}")
                 self.prompt.print(f"Press Enter to keep current {label}")
-                input_interval = self.prompt.input(f"Enter {label}: ").strip()
-                if input_interval == "":
-                    return current_interval
             else:
                 self.prompt.print(
                     "Interval is in minutes(m), hours(h) or days(d). "
                     "Default is minutes. For example 10m means 10 minutes."
                 )
-                input_interval = self.prompt.input(f"Please enter {label}: ").strip()
-                if input_interval == "":
-                    self.prompt.print("Interval cannot be just spaces")
-                    continue
 
-            if not is_interval_valid(input_interval):
-                self.prompt.print(
-                    f"\nInvalid interval: '{input_interval}'. "
+        def valid(value: str) -> str | None:
+            if not is_interval_valid(value):
+                return (
+                    f"\nInvalid interval: '{value}'. "
                     "Interval must be a non-negative number with an optional unit (e.g. 10, 10s, 10m, 2h, 1d).\n"
                 )
-                continue
+            return None
 
-            return input_interval + "m" if input_interval.isdigit() else input_interval
+        prompt_text = (
+            f"Enter {label}: " if current_interval is not None else f"Please enter {label}: "
+        )
+        input_interval = self.prompt.prompt_required(
+            prompt_text,
+            current=current_interval,
+            empty_message="Interval cannot be just spaces",
+            validator=valid,
+            render=render,
+        )
+        if input_interval is None:  # Defensive: there is no cancel path here.
+            return current_interval or ""
+        return input_interval + "m" if input_interval.isdigit() else input_interval
 
     def _prompt_exclude_patterns(self, current: list[str] | None = None) -> list[str]:
         """Prompt for comma-separated exclude patterns and return them as a list.
@@ -300,26 +308,30 @@ class MonitorCommands:
         Applies to all monitor types. An empty response means either
         "keep current patterns" (when editing) or "no exclusions" (when new).
         """
-        while True:
+        def render() -> None:
             if current:
                 self.prompt.print(f"Current exclude patterns: {', '.join(current)}")
                 self.prompt.print("Press Enter to keep current exclude patterns")
             else:
                 self.prompt.print("Leave empty (press Enter) for no exclusions.")
 
-            raw = self.prompt.input(
-                "Enter exclude patterns (comma-separated, e.g. *.log, .git): "
-            ).strip()
+        def parse(value: str) -> list[str]:
+            return [p.strip() for p in value.split(",") if p.strip()]
 
-            if raw == "":
-                return current if current else []
+        def valid(value: str) -> str | None:
+            if not parse(value):
+                return "No valid patterns entered. Please try again."
+            return None
 
-            patterns = [p.strip() for p in raw.split(",") if p.strip()]
-            if not patterns:
-                self.prompt.print("No valid patterns entered. Please try again.")
-                continue
-
-            return patterns
+        raw = self.prompt.prompt_required(
+            "Enter exclude patterns (comma-separated, e.g. *.log, .git): ",
+            allow_cancel=True,
+            validator=valid,
+            render=render,
+        )
+        if raw is None:
+            return current if current else []
+        return parse(raw)
 
     def _launch_monitor_process(self, monitor: dict) -> bool:
         """Launch run_monitor.py for a single monitor as a detached child process.
@@ -391,34 +403,46 @@ class MonitorCommands:
     def _edit_basic_fields(self, monitor: dict) -> None:
         """Edit name, monitor_path, remote_path, and monitor_type on a monitor dict."""
         # Monitor name
-        while True:
+        def render_monitor_name() -> None:
             self.prompt.print(f"Current monitor name: {monitor.get('name', 'N/A')}")
             self.prompt.print("Press Enter to keep current monitor name")
-            input_monitor_name = self.prompt.input("Enter new monitor name: ")
-            if input_monitor_name.strip() == "":
-                break
-            monitor["name"] = input_monitor_name
-            break
+
+        new_monitor_name = self.prompt.prompt_required(
+            "Enter new monitor name: ",
+            current=monitor.get("name"),
+            allow_cancel=True,
+            render=render_monitor_name,
+        )
+        if new_monitor_name:
+            monitor["name"] = new_monitor_name
 
         # Monitor path
-        while True:
+        def render_monitor_path() -> None:
             self.prompt.print(f"Current monitor path: {monitor.get('monitor_path', 'N/A')}")
             self.prompt.print("Press Enter to keep current monitor path")
-            input_monitor_path = self.prompt.input("Enter new monitor path: ")
-            if input_monitor_path.strip() == "":
-                break
-            monitor["monitor_path"] = input_monitor_path
-            break
+
+        new_monitor_path = self.prompt.prompt_required(
+            "Enter new monitor path: ",
+            current=monitor.get("monitor_path"),
+            allow_cancel=True,
+            render=render_monitor_path,
+        )
+        if new_monitor_path:
+            monitor["monitor_path"] = new_monitor_path
 
         # Remote path
-        while True:
+        def render_remote_path() -> None:
             self.prompt.print(f"Current remote path: {monitor.get('remote_path', 'N/A')}")
             self.prompt.print("Press Enter to keep current remote path")
-            input_remote_path = self.prompt.input("Enter new remote path: ")
-            if input_remote_path.strip() == "":
-                break
-            monitor["remote_path"] = input_remote_path
-            break
+
+        new_remote_path = self.prompt.prompt_required(
+            "Enter new remote path: ",
+            current=monitor.get("remote_path"),
+            allow_cancel=True,
+            render=render_remote_path,
+        )
+        if new_remote_path:
+            monitor["remote_path"] = new_remote_path
 
         # Monitor type
         monitor_types = reference_data.MONITOR_TYPES
@@ -469,24 +493,29 @@ class MonitorCommands:
 
             delete_profiles = {profile.get("id"): profile for profile in monitor_profiles}
 
-            while delete_profiles:
+            def render_delete_profiles() -> None:
                 self.prompt.print("\nProfiles to delete (leave blank to skip):")
                 for pid, v in delete_profiles.items():
                     self.prompt.print(f"Id: {pid}, Profile name: {v.get('name', 'N/A')}")
 
-                input_delete_id = self.prompt.input("Enter profile id to delete (or press Enter to continue): ")
-                if input_delete_id.strip() == "":
+            def valid_delete_id(value: str) -> str | None:
+                if not value.isdigit():
+                    return f"Invalid profile id: {value}. Please try again."
+                if int(value) not in delete_profiles:
+                    return f"Invalid profile id: {int(value)}. Please try again."
+                return None
+
+            while delete_profiles:
+                input_delete_id = self.prompt.prompt_choice(
+                    "Enter profile id to delete (or press Enter to continue): ",
+                    valid=valid_delete_id,
+                    render=render_delete_profiles,
+                    allow_cancel=True,
+                )
+                if input_delete_id is None:
                     break
 
-                if not input_delete_id.isdigit():
-                    self.prompt.print(f"Invalid profile id: {input_delete_id}. Please try again.")
-                    continue
-
                 profile_id_to_delete = int(input_delete_id)
-                if profile_id_to_delete not in delete_profiles:
-                    self.prompt.print(f"Invalid profile id: {profile_id_to_delete}. Please try again.")
-                    continue
-
                 profile_to_delete = delete_profiles[profile_id_to_delete]
 
                 if self.sqlite_handler.delete_monitor_profile_map(
@@ -512,25 +541,30 @@ class MonitorCommands:
 
         if available_profiles:
             self.prompt.print("\nAvailable profiles to add:")
-            while available_profiles:
+            def render_available_profiles() -> None:
                 for pid, v in available_profiles.items():
                     self.prompt.print(
                         f"Id: {pid}, Profile name: {v.get('name', 'N/A')}, Profile type: {v.get('profile_type', 'N/A')}"
                     )
 
-                input_add_id = self.prompt.input("Enter profile id to add (or press Enter to skip): ")
-                if input_add_id.strip() == "":
+            def valid_add_id(value: str) -> str | None:
+                if not value.isdigit():
+                    return f"Invalid profile id: {value}. Please try again."
+                if int(value) not in available_profiles:
+                    return f"Invalid profile id: {int(value)}. Please try again."
+                return None
+
+            while available_profiles:
+                input_add_id = self.prompt.prompt_choice(
+                    "Enter profile id to add (or press Enter to skip): ",
+                    valid=valid_add_id,
+                    render=render_available_profiles,
+                    allow_cancel=True,
+                )
+                if input_add_id is None:
                     break
 
-                if not input_add_id.isdigit():
-                    self.prompt.print(f"Invalid profile id: {input_add_id}. Please try again.")
-                    continue
-
                 profile_id_to_add = int(input_add_id)
-                if profile_id_to_add not in available_profiles:
-                    self.prompt.print(f"Invalid profile id: {profile_id_to_add}. Please try again.")
-                    continue
-
                 profile_to_add = available_profiles[profile_id_to_add]
 
                 if self.sqlite_handler.add_monitor_profile_map(
@@ -546,8 +580,9 @@ class MonitorCommands:
                     self.prompt.print("All profiles have been added.")
                     break
 
-                input_continue = self.prompt.input("Do you want to add another profile? (y/N): ")
-                if input_continue.strip().lower() not in ("y", "yes"):
+                if not self.prompt.prompt_yes_no(
+                    "Do you want to add another profile? (y/N): ", default=False
+                ):
                     break
 
     # ------------------------------------------------------------------
@@ -677,55 +712,63 @@ class MonitorCommands:
             self.logger.warning("Please add profiles first")
             return
 
-        while True:
-            self.prompt.print("Please enter monitor name")
-            input_monitor_name = self.prompt.input("Enter monitor name: ")
-            if input_monitor_name.strip() == "":
-                self.prompt.print("Monitor name cannot be just spaces.")
-                return
-            self.prompt.print(f"You entered monitor name: {input_monitor_name}")
-            monitor = self.sqlite_handler.get_monitor(monitor_name=input_monitor_name)
-            if monitor:
-                self.prompt.print(f"Monitor name: {input_monitor_name} already exists. Please try again")
-                continue
-            break
+        def valid_monitor_name(value: str) -> str | None:
+            if self.sqlite_handler.get_monitor(monitor_name=value):
+                return f"Monitor name: {value} already exists. Please try again"
+            return None
 
-        while True:
-            input_monitor_path = self.prompt.input("Please enter monitor path: ")
-            if input_monitor_path.strip() == "":
-                self.prompt.print("monitor path cannot be just spaces.")
-                return
-            self.prompt.print(f"You entered monitor path: {input_monitor_path}")
-            break
+        input_monitor_name = self.prompt.prompt_required(
+            "Enter monitor name: ",
+            allow_cancel=True,
+            validator=valid_monitor_name,
+            render=lambda: self.prompt.print("Please enter monitor name"),
+            echo_label="monitor name",
+        )
+        if input_monitor_name is None:
+            self.prompt.print("Monitor name cannot be just spaces.")
+            return
 
-        while True:
-            input_remote_path = self.prompt.input("Please enter remote path: ")
-            if input_remote_path.strip() == "":
-                self.prompt.print("Remote path cannot be just spaces.")
-                return
-            self.prompt.print(f"You entered remote path: {input_remote_path}")
-            break
+        input_monitor_path = self.prompt.prompt_required(
+            "Please enter monitor path: ",
+            allow_cancel=True,
+            echo_label="monitor path",
+        )
+        if input_monitor_path is None:
+            self.prompt.print("monitor path cannot be just spaces.")
+            return
+
+        input_remote_path = self.prompt.prompt_required(
+            "Please enter remote path: ",
+            allow_cancel=True,
+            echo_label="remote path",
+        )
+        if input_remote_path is None:
+            self.prompt.print("Remote path cannot be just spaces.")
+            return
 
         monitor_types = reference_data.MONITOR_TYPES
         if not monitor_types:
             self.prompt.print("No monitor types available")
             return
 
-        while True:
+        def render_monitor_types() -> None:
             for i, (name, description) in enumerate(monitor_types):
                 self.prompt.print(f"{i+1}. {name} - {description}")
 
-            input_monitor_type_number = self.prompt.input("Please select number of monitor type: ")
-            if input_monitor_type_number.strip() == "":
-                self.prompt.print("Monitor type cannot be just spaces")
+        def valid_monitor_type(value: str) -> str | None:
+            if not value.isdigit() or not (0 < int(value) <= len(monitor_types)):
+                return f"Invalid monitor type number: {value}. Please try again."
+            return None
 
-            if not input_monitor_type_number.isdigit():
-                self.prompt.print(f"Invalid monitor type number: {input_monitor_type_number}. Please try again.")
-                continue
-
-            input_monitor_type_number = int(input_monitor_type_number)
-            if input_monitor_type_number > 0 and input_monitor_type_number <= len(monitor_types):
-                break
+        raw_monitor_type_number = self.prompt.prompt_choice(
+            "Please select number of monitor type: ",
+            valid=valid_monitor_type,
+            render=render_monitor_types,
+            empty_message="Monitor type cannot be just spaces",
+        )
+        if raw_monitor_type_number is None:  # Defensive: there is no cancel path here.
+            return
+        input_monitor_type_number = int(raw_monitor_type_number)
 
         self.prompt.print(f"You entered monitor type number: {input_monitor_type_number}")
         monitor_type = monitor_types[input_monitor_type_number - 1][0]
@@ -743,30 +786,35 @@ class MonitorCommands:
         selected_profiles = []
         unselected_profiles: dict = {p.get("id"): p for p in profiles}
 
-        while True:
-            if not unselected_profiles:
-                self.prompt.print("All profiles have been selected.")
-                break
-
+        def render_unselected_profiles() -> None:
             self.prompt.print("Profiles:")
             for pid, v in unselected_profiles.items():
                 self.prompt.print(
                     f"Id: {pid}, Profile name: {v.get('name', 'N/A')}, Profile type: {v.get('profile_type', 'N/A')}"
                 )
 
-            input_profile_id = self.prompt.input("Please select profile id (or press Enter to finish): ")
-            if input_profile_id.strip() == "":
+        def valid_profile_id(value: str) -> str | None:
+            if not value.isdigit():
+                return f"Invalid profile id: {value}. Please try again."
+            if int(value) not in unselected_profiles:
+                return f"You entered an invalid profile id: {int(value)}"
+            return None
+
+        while True:
+            if not unselected_profiles:
+                self.prompt.print("All profiles have been selected.")
                 break
 
-            if not input_profile_id.isdigit():
-                self.prompt.print(f"Invalid profile id: {input_profile_id}. Please try again.")
-                continue
+            raw_profile_id = self.prompt.prompt_choice(
+                "Please select profile id (or press Enter to finish): ",
+                valid=valid_profile_id,
+                render=render_unselected_profiles,
+                allow_cancel=True,
+            )
+            if raw_profile_id is None:
+                break
 
-            profile_id = int(input_profile_id)
-            if profile_id not in unselected_profiles:
-                self.prompt.print(f"You entered an invalid profile id: {profile_id}")
-                continue
-
+            profile_id = int(raw_profile_id)
             self.prompt.print(f"You entered profile id: {profile_id}")
             chosen = unselected_profiles[profile_id]
             selected_profiles.append(chosen)
@@ -776,8 +824,9 @@ class MonitorCommands:
                 self.prompt.print("All profiles have been selected.")
                 break
 
-            input_continue = self.prompt.input("Do you want to add another profile? (y/N): ")
-            if input_continue.strip().lower() not in ("y", "yes"):
+            if not self.prompt.prompt_yes_no(
+                "Do you want to add another profile? (y/N): ", default=False
+            ):
                 break
 
         monitor_id = self.sqlite_handler.add_monitor(

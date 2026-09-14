@@ -120,8 +120,7 @@ class DiagnosticUtil:
         self.prompt.print("Ok to import profiles? (Y/n)")
         self.prompt.print("Y: Yes is default value, press Enter to accept")
         self.prompt.print("N: No")
-        import_ok = self.prompt.input("Import Rclone profiles (Y/n)\n")
-        if (import_ok.strip() != "" and import_ok.lower() != "y"):
+        if not self.prompt.prompt_yes_no("Import Rclone profiles (Y/n)\n", default=True):
             self.prompt.print("Profile import cancelled")
             return
 
