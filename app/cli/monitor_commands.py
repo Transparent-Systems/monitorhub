@@ -53,6 +53,11 @@ class MonitorCommands:
         self.log_config = log_config
         self.log_level = log_level
         self.prompt = prompt
+        # Child monitor processes launched by this instance, keyed by monitor id.
+        # Holding the Popen handles lets us reap finished children with ``poll``
+        # (avoiding zombies) and detect their exit reliably, since os.kill(pid, 0)
+        # reports a terminated-but-unreaped child as alive.
+        self._monitor_processes: dict[int, subprocess.Popen] = {}
 
     @staticmethod
     def _resolve_python_interpreter(script_dir: Path) -> str:
@@ -103,21 +108,60 @@ class MonitorCommands:
             self.prompt.print(f"Permission denied when sending SIGKILL to monitor '{name}' (pid={pid}).")
             return False
 
-    def _wait_for_exit(self, pid: int, timeout: float, interval: float = 0.5) -> bool:
+    def _reap_tracked_process(self, monitor_id: int | None) -> None:
+        """Reap a monitor child launched by this instance, if one is tracked.
+
+        A finished child stays a zombie until its parent collects its exit
+        status, so ``wait`` is called here to release the PID. Monitors started
+        by a different process are not tracked and are left to their owner.
+        """
+        if monitor_id is None:
+            return
+        process = self._monitor_processes.get(monitor_id)
+        if process is None:
+            return
+        try:
+            process.wait(timeout=1.0)
+        except subprocess.TimeoutExpired:
+            # Still running after the short wait; it will be reaped on exit.
+            self.logger.debug(f"Monitor process (id={monitor_id}) not reaped within 1s.")
+        except Exception as e:  # noqa: BLE001 - never fail a stop on bookkeeping.
+            self.logger.debug(f"Could not reap monitor process (id={monitor_id}): {e}")
+
+    def _is_monitor_process_alive(self, monitor_id: int | None, pid: int) -> bool:
+        """Return whether a monitor process is still running.
+
+        Prefers the ``Popen`` handle for a monitor launched by this instance so
+        that ``poll`` reaps a finished child and an unreaped zombie is not
+        mistaken for a live process. Falls back to the generic PID check for
+        monitors started by another process (e.g. a previous CLI invocation),
+        because that process is responsible for reaping its own child.
+        """
+        if monitor_id is not None and pid and pid > 0:
+            process = self._monitor_processes.get(monitor_id)
+            if process is not None and process.pid == pid:
+                return process.poll() is None
+        return is_process_alive(pid)
+
+    def _wait_for_exit(
+        self, pid: int, timeout: float, interval: float = 0.5, monitor_id: int | None = None
+    ) -> bool:
         """Wait up to ``timeout`` seconds for ``pid`` to exit.
 
         Returns True if the process is no longer alive (or there is no pid).
+        ``monitor_id`` lets the check reap and recognise a child launched by
+        this instance instead of relying solely on the plain PID check.
         """
         if not pid:
             return True
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
-            if not is_process_alive(pid):
+            if not self._is_monitor_process_alive(monitor_id, pid):
                 return True
             time.sleep(interval)
-        return not is_process_alive(pid)
+        return not self._is_monitor_process_alive(monitor_id, pid)
 
-    def _escalate_stop(self, pid: int, name: str) -> None:
+    def _escalate_stop(self, pid: int, name: str, monitor_id: int | None = None) -> None:
         """Escalate a graceful stop that has not taken effect.
 
         Sends SIGTERM (which triggers the monitor's own graceful shutdown
@@ -136,7 +180,7 @@ class MonitorCommands:
             )
             return
 
-        if self._wait_for_exit(pid, timeout=5.0):
+        if self._wait_for_exit(pid, timeout=5.0, monitor_id=monitor_id):
             return
         self._force_kill_process(pid, name)
 
@@ -172,6 +216,7 @@ class MonitorCommands:
 
             self.sqlite_handler.update_monitor_status(monitor_id=monitor_id_val, status=MONITOR_STATUS_STOPPED)
             self.sqlite_handler.update_monitor_pid(monitor_id=monitor_id_val, pid=0)
+            self._reap_tracked_process(monitor_id_val)
             stale_monitors.append(monitor)
 
         return stale_monitors
@@ -324,13 +369,15 @@ class MonitorCommands:
             logs_dir.mkdir(exist_ok=True)
             error_log = logs_dir / f"monitor_{monitor_id_val}.log"
             with open(error_log, "a") as error_log_fh:
-                subprocess.Popen(
+                process = subprocess.Popen(
                     cmd,
                     stdout=subprocess.DEVNULL,
                     stderr=error_log_fh,
                     start_new_session=True,
                     env=child_env,
                 )
+            # Track the child so we can reap it and detect its exit reliably.
+            self._monitor_processes[monitor_id_val] = process
         except Exception as e:  # noqa: BLE001
             self.prompt.print(f"Failed to start monitor '{monitor_name}' (id={monitor_id_val}): {e}")
             return False
@@ -896,7 +943,9 @@ class MonitorCommands:
         # again during that window would create a duplicate monitor process.
         current_status = monitor.get("status")
         current_pid = int(monitor.get("pid") or 0)
-        pid_alive = current_pid != 0 and is_process_alive(current_pid)
+        pid_alive = current_pid != 0 and self._is_monitor_process_alive(
+            monitor_id_val, current_pid
+        )
 
         if pid_alive:
             if current_status == MONITOR_STATUS_RUNNING:
@@ -962,7 +1011,7 @@ class MonitorCommands:
             deadline = time.monotonic() + STOP_GRACE_SECONDS
             for pid, name, monitor_id_val in graceful:
                 remaining = max(0.0, deadline - time.monotonic())
-                if self._wait_for_exit(pid, remaining):
+                if self._wait_for_exit(pid, remaining, monitor_id=monitor_id_val):
                     self.prompt.print(
                         f"Monitor '{name}' (id={monitor_id_val}) stopped gracefully."
                     )
@@ -971,7 +1020,8 @@ class MonitorCommands:
                         f"Monitor '{name}' (id={monitor_id_val}) did not exit within "
                         f"{STOP_GRACE_SECONDS:g}s; escalating."
                     )
-                    self._escalate_stop(pid, name)
+                    self._escalate_stop(pid, name, monitor_id_val)
+                self._reap_tracked_process(monitor_id_val)
                 self.sqlite_handler.update_monitor_status(
                     monitor_id=monitor_id_val, status=MONITOR_STATUS_STOPPED
                 )
@@ -1009,6 +1059,7 @@ class MonitorCommands:
 
             self.sqlite_handler.update_monitor_status(monitor_id=monitor_id_val, status=MONITOR_STATUS_STOPPED)
             self.sqlite_handler.update_monitor_pid(monitor_id=monitor_id_val, pid=0)
+            self._reap_tracked_process(monitor_id_val)
             self.prompt.print(f"Monitor '{monitor_name}' (id={monitor_id_val}) status set to 'stopped'.")
             return None
 

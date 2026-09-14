@@ -6,6 +6,7 @@ import datetime
 import os
 import subprocess
 import sys
+import time
 import unittest
 
 from app.utils.constants import TIMESTAMP_FORMAT
@@ -135,6 +136,36 @@ class TestGenericUtilFunctions(unittest.TestCase):
         child = subprocess.Popen([sys.executable, "-c", "pass"])
         child.wait()
         self.assertFalse(is_process_alive(child.pid))
+
+    @unittest.skipUnless(
+        sys.platform.startswith("linux"), "requires /proc to detect the process state"
+    )
+    def test_is_process_alive_zombie_child_is_not_alive(self):
+        """A terminated child that has not been reaped must not count as alive.
+
+        Such a child is a zombie: it still holds its PID, so os.kill(pid, 0)
+        succeeds and a naive check would report it as running. The liveness check
+        must detect the 'Z' state, otherwise a monitor that shut down gracefully
+        looks like it needs a forceful stop.
+        """
+        child = subprocess.Popen([sys.executable, "-c", "pass"])
+        try:
+            # Wait for the child to terminate WITHOUT reaping it (never call
+            # wait/poll, which would release the PID).
+            for _ in range(100):
+                if self._proc_state(child.pid) == "Z":
+                    break
+                time.sleep(0.05)
+            self.assertEqual(self._proc_state(child.pid), "Z")
+            self.assertFalse(is_process_alive(child.pid))
+        finally:
+            child.wait()  # reap to avoid leaving a zombie behind
+
+    @staticmethod
+    def _proc_state(pid: int) -> str:
+        """Return the Linux process state from /proc/<pid>/stat (e.g. 'Z')."""
+        with open(f"/proc/{pid}/stat", "r") as stat_file:
+            return stat_file.read().rsplit(")", 1)[1].split()[0]
 
 
 if __name__ == "__main__":

@@ -11,6 +11,9 @@ import datetime
 import logging
 import os
 import signal
+import subprocess
+import sys
+import time
 import unittest
 from unittest import mock
 
@@ -454,6 +457,87 @@ class TestCommands(unittest.TestCase):
             commands.monitor._escalate_stop(4242, "test")
         kill_mock.assert_called_once_with(4242, signal.SIGTERM)
         force_mock.assert_called_once_with(4242, "test")
+
+    # ------------------------------------------------------------------
+    # Zombie-aware graceful stop / child reaping (interactive-test regression)
+    # ------------------------------------------------------------------
+
+    def test_wait_for_exit_uses_tracked_popen_instead_of_pid_check(self):
+        """A tracked, exited child is recognised as stopped even if its PID
+        still exists (unreaped zombie), proving ``poll`` is preferred."""
+        commands, _ = self._make_commands([])
+        child = subprocess.Popen([sys.executable, "-c", "pass"])
+        child.wait()  # reaped so the handle reports a return code
+        commands.monitor._monitor_processes[7] = child
+        with mock.patch(
+            "app.cli.monitor_commands.is_process_alive", return_value=True
+        ) as pid_check:
+            self.assertTrue(
+                commands.monitor._wait_for_exit(child.pid, timeout=1.0, monitor_id=7)
+            )
+        pid_check.assert_not_called()
+
+    def test_wait_for_exit_falls_back_to_pid_check_when_untracked(self):
+        """Without a tracked handle the generic PID check is still used."""
+        commands, _ = self._make_commands([])
+        with mock.patch(
+            "app.cli.monitor_commands.is_process_alive", return_value=False
+        ) as pid_check:
+            self.assertTrue(
+                commands.monitor._wait_for_exit(4242, timeout=1.0, monitor_id=7)
+            )
+        pid_check.assert_called()
+
+    def test_launch_monitor_process_tracks_child(self):
+        """The Popen handle is retained so the child can be reaped later."""
+        commands, _ = self._make_commands([])
+        fake_process = mock.Mock()
+        with mock.patch(
+            "app.cli.monitor_commands.subprocess.Popen", return_value=fake_process
+        ) as popen:
+            self.assertTrue(
+                commands.monitor._launch_monitor_process({"id": 99, "name": "tracked"})
+            )
+        popen.assert_called_once()
+        self.assertIs(commands.monitor._monitor_processes[99], fake_process)
+
+    def test_monitor_stop_graceful_with_tracked_exited_child(self):
+        """A tracked child that already exited must stop gracefully, not escalate.
+
+        Reproduces the interactive-test scenario: the monitor child has exited
+        but the parent has not reaped it, so os.kill(pid, 0) reports it as alive.
+        Using the tracked Popen handle avoids the false escalation.
+        """
+        commands, mock_prompt = self._make_commands([])
+        monitor = commands.sqlite_handler.get_monitors()[0]
+        child = subprocess.Popen([sys.executable, "-c", "pass"])
+        try:
+            commands.sqlite_handler.update_monitor_status(
+                monitor_id=monitor["id"], status=MONITOR_STATUS_RUNNING
+            )
+            commands.sqlite_handler.update_monitor_pid(
+                monitor_id=monitor["id"], pid=child.pid
+            )
+            commands.monitor._monitor_processes[monitor["id"]] = child
+            # Let the child exit WITHOUT reaping it (it becomes a zombie).
+            time.sleep(0.5)
+
+            with (
+                mock.patch.object(commands.monitor, "_escalate_stop") as escalate,
+                mock.patch("app.cli.monitor_commands.os.kill") as kill_mock,
+            ):
+                commands.monitor.stop(monitor_id=monitor["id"])
+
+            escalate.assert_not_called()
+            kill_mock.assert_not_called()
+            self.assertIn("stopped gracefully", mock_prompt.output_text)
+            self.assertNotIn("escalating", mock_prompt.output_text)
+            self.assertIsNotNone(child.returncode)  # reaped by the stop path
+            after = commands.sqlite_handler.get_monitor(monitor_id=monitor["id"])
+            self.assertEqual(after["status"], "stopped")
+            self.assertEqual(after["pid"], 0)
+        finally:
+            child.wait()
 
     def test_monitor_start_without_args_starts_all_not_running(self):
         """No id/name starts every monitor that is not already running."""

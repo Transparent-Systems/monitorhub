@@ -5,6 +5,7 @@ This script contains utility static methods and data structures.
 import datetime
 import os
 import re
+import sys
 from collections import OrderedDict
 from typing import Any
 
@@ -125,7 +126,9 @@ def is_process_alive(pid: int | None) -> bool:
 
     Note: the OS may reuse PIDs, so a ``True`` result cannot prove the process
     is the *same* one we recorded; it is only used to avoid creating an
-    obviously duplicate monitor process.
+    obviously duplicate monitor process. A terminated but not-yet-reaped child
+    (zombie) is reported as **not** alive, so a monitor whose parent is still
+    running is not mistaken for a live process while it shuts down.
     """
     if not pid or pid <= 0:
         return False
@@ -143,7 +146,47 @@ def is_process_alive(pid: int | None) -> bool:
         return True
     except OSError:
         return False
-    return True
+
+    # The PID exists, but it may be a terminated child still awaiting reaping.
+    # os.kill(pid, 0) succeeds for such zombies, which would otherwise make a
+    # gracefully shut-down monitor look like it is still running.
+    return not _is_zombie_process(pid)
+
+
+def _is_zombie_process(pid: int) -> bool:
+    """Return True when ``pid`` is a terminated but unreaped (zombie) process.
+
+    A zombie keeps occupying its PID until its parent reaps it (``wait`` /
+    ``waitpid``), so a plain existence check reports it as alive. Detecting the
+    ``Z`` state avoids the false positive that occurs when a monitor child has
+    already exited but its parent (e.g. an interactive test harness that
+    discarded the ``Popen`` handle) has not collected its exit status yet.
+    """
+    if sys.platform.startswith("linux"):
+        try:
+            with open(f"/proc/{pid}/stat", "r") as stat_file:
+                # The process name may contain spaces and parentheses, so read
+                # the state field (the token after the final ')') instead of
+                # splitting the whole line.
+                state = stat_file.read().rsplit(")", 1)[1].split()[0]
+        except (FileNotFoundError, IndexError, OSError):
+            # /proc entry already gone or unavailable; not detectable as zombie.
+            return False
+        return state in ("Z", "X")
+
+    # Best-effort fallback for other POSIX platforms (e.g. macOS).
+    try:
+        import subprocess
+
+        result = subprocess.run(
+            ["ps", "-o", "state=", "-p", str(pid)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except (OSError, ValueError):
+        return False
+    return result.stdout.strip().upper().startswith("Z")
 
 
 def _is_process_alive_windows(pid: int) -> bool:
