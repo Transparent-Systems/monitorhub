@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- ``mhub profile new`` and ``mhub profile edit`` now prompt for
+  ``command_max_workers`` (the maximum number of concurrent command processes,
+  default ``100``, min ``1``, max ``1000``). ``mhub profile test`` also displays
+  and validates the value.
+
 - ``mhub monitor start`` and ``mhub monitor stop`` now operate on all monitors
   when neither ``--monitor-id`` nor ``--monitor-name`` is given, matching
   ``mhub monitor show``. The separate ``monitor start-all`` and

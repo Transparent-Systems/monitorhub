@@ -221,8 +221,12 @@ notify-send "Testing command of monitor = {monitor_name}, profile = {profile_nam
   event within the window. `0s` disables throttling.
 
 Configuration is stored in the command profile's `config` under the keys
-`command`, `command_events`, `command_cooldown`, `command_timeout`, and
-`command_shell`.
+`command`, `command_events`, `command_cooldown`, `command_timeout`,
+`command_shell`, and `command_max_workers`.
+
+`command_max_workers` bounds the number of command processes that run
+concurrently (default `100`, min `1`, max `1000`). When the limit is reached
+further commands are queued FIFO and are never dropped.
 
 `command_events` may include `timer` to fire on scheduled (backup/restore)
 timer ticks in addition to file system events. For a timer event, the command

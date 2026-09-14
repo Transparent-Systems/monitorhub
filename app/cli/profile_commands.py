@@ -5,6 +5,11 @@ import shlex
 from typing import Any
 
 from app.cli.prompt_service import PromptService
+from app.monitor.action_handler import (
+    DEFAULT_COMMAND_MAX_WORKERS,
+    MAX_COMMAND_MAX_WORKERS,
+    MIN_COMMAND_MAX_WORKERS,
+)
 from app.monitor.rclone_handler import RcloneHandler
 from app.monitor.s3_factory import S3Factory
 from app.utils import reference_data
@@ -197,6 +202,20 @@ class ProfileCommands:
         # Shell flag
         shell = config.get("command_shell", False)
         self.prompt.print(f"Shell execution: {'yes' if shell else 'no'}")
+
+        # Max concurrent command workers
+        max_workers = config.get("command_max_workers", DEFAULT_COMMAND_MAX_WORKERS)
+        self.prompt.print(f"Max concurrent command workers: {max_workers}")
+        try:
+            max_workers_int = int(max_workers)
+        except (TypeError, ValueError):
+            errors.append(f"Invalid command_max_workers: {max_workers!r}")
+        else:
+            if not (MIN_COMMAND_MAX_WORKERS <= max_workers_int <= MAX_COMMAND_MAX_WORKERS):
+                errors.append(
+                    f"command_max_workers {max_workers_int} is out of range "
+                    f"[{MIN_COMMAND_MAX_WORKERS}, {MAX_COMMAND_MAX_WORKERS}]"
+                )
 
         if errors:
             self.prompt.print("")
@@ -588,6 +607,11 @@ class ProfileCommands:
         current_cooldown = existing.get("command_cooldown", "0s") if existing else "0s"
         current_shell = existing.get("command_shell", False) if existing else False
         current_timeout = existing.get("command_timeout", "10s") if existing else "10s"
+        current_max_workers = (
+            existing.get("command_max_workers", DEFAULT_COMMAND_MAX_WORKERS)
+            if existing
+            else DEFAULT_COMMAND_MAX_WORKERS
+        )
         
         # Command template
         self.prompt.print()
@@ -671,6 +695,38 @@ class ProfileCommands:
             timeout = input_timeout
             break
 
+        # Max concurrent command workers
+        self.prompt.print(
+            f"Max concurrent command workers (default: {DEFAULT_COMMAND_MAX_WORKERS}, "
+            f"min: {MIN_COMMAND_MAX_WORKERS}, max: {MAX_COMMAND_MAX_WORKERS})."
+        )
+        self.prompt.print(
+            "Commands are queued FIFO and never dropped when the limit is reached."
+        )
+        while True:
+            input_max_workers = self.prompt.input(
+                f"Max concurrent command workers (default: {DEFAULT_COMMAND_MAX_WORKERS}, "
+                f"min: {MIN_COMMAND_MAX_WORKERS}, max: {MAX_COMMAND_MAX_WORKERS}; "
+                f"current: {current_max_workers}; Enter to keep): "
+            ).strip()
+            if input_max_workers == "":
+                max_workers = current_max_workers
+                break
+            try:
+                max_workers = int(input_max_workers)
+            except ValueError:
+                self.prompt.print(
+                    f"Invalid number of workers: {input_max_workers}. Please try again."
+                )
+                continue
+            if not (MIN_COMMAND_MAX_WORKERS <= max_workers <= MAX_COMMAND_MAX_WORKERS):
+                self.prompt.print(
+                    f"Number of workers must be between {MIN_COMMAND_MAX_WORKERS} and "
+                    f"{MAX_COMMAND_MAX_WORKERS}. Please try again."
+                )
+                continue
+            break
+
         # Shell flag
         shell = bool(current_shell)
         while True:
@@ -700,6 +756,7 @@ class ProfileCommands:
             "command_cooldown": cooldown,
             "command_timeout": timeout,
             "command_shell": shell,
+            "command_max_workers": max_workers,
         }
 
     def new(self):

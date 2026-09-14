@@ -19,6 +19,7 @@ from unittest import mock
 
 from app.cli.commands import Commands, build_commands
 from app.cli.monitor_commands import STALE_HEARTBEAT_SECONDS, MonitorCommands
+from app.monitor.action_handler import DEFAULT_COMMAND_MAX_WORKERS
 from app.utils.constants import MONITOR_STATUS_RUNNING, TIMESTAMP_FORMAT
 from app.utils.generic_util import parse_timestamp, utc_timestamp_now
 
@@ -247,20 +248,43 @@ class TestCommands(unittest.TestCase):
 
     def test_profile_new_command(self):
         commands, _ = self._make_commands(
-            ["2", "my-cmd-profile", "echo hello", "", "", "", "n"]
+            ["2", "my-cmd-profile", "echo hello", "", "", "", "", "n"]
         )
         commands.profile.new()
         profile = commands.sqlite_handler.get_profile(profile_name="my-cmd-profile")
         self.assertTrue(profile)
         self.assertEqual(profile["profile_type"], "event_command")
         self.assertEqual(profile["config"]["command"], "echo hello")
+        self.assertEqual(
+            profile["config"]["command_max_workers"], DEFAULT_COMMAND_MAX_WORKERS
+        )
+
+    def test_profile_new_command_custom_max_workers(self):
+        commands, _ = self._make_commands(
+            ["2", "my-cmd-profile", "echo hello", "", "", "", "250", "n"]
+        )
+        commands.profile.new()
+        profile = commands.sqlite_handler.get_profile(profile_name="my-cmd-profile")
+        self.assertTrue(profile)
+        self.assertEqual(profile["config"]["command_max_workers"], 250)
+
+    def test_profile_new_command_invalid_max_workers_reprompts(self):
+        commands, mock_prompt = self._make_commands(
+            ["2", "my-cmd-profile", "echo hello", "", "", "", "abc", "0", "5", "n"]
+        )
+        commands.profile.new()
+        profile = commands.sqlite_handler.get_profile(profile_name="my-cmd-profile")
+        self.assertTrue(profile)
+        self.assertEqual(profile["config"]["command_max_workers"], 5)
+        self.assertIn("Invalid number of workers: abc", mock_prompt.output_text)
+        self.assertIn("Number of workers must be between 1 and 1000", mock_prompt.output_text)
 
     def test_profile_edit_command(self):
         profile_id = self.database_test_data.sqlite_handler.get_profile(
             profile_name="command-test"
         )["id"]
         commands, _ = self._make_commands(
-            [str(profile_id), "echo updated", "", "", "", ""]
+            [str(profile_id), "echo updated", "", "", "", "", ""]
         )
         commands.profile.edit()
         profile = commands.sqlite_handler.get_profile(profile_id=profile_id)
@@ -270,13 +294,13 @@ class TestCommands(unittest.TestCase):
         profile_id = self.database_test_data.sqlite_handler.get_profile(
             profile_name="command-test"
         )["id"]
-        commands, _ = self._make_commands(["echo updated", "", "", "", ""])
+        commands, _ = self._make_commands(["echo updated", "", "", "", "", ""])
         commands.profile.edit(profile_id=profile_id)
         profile = commands.sqlite_handler.get_profile(profile_id=profile_id)
         self.assertEqual(profile["config"]["command"], "echo updated")
 
     def test_profile_edit_command_by_name(self):
-        commands, _ = self._make_commands(["echo updated", "", "", "", ""])
+        commands, _ = self._make_commands(["echo updated", "", "", "", "", ""])
         commands.profile.edit(profile_name="command-test")
         profile = commands.sqlite_handler.get_profile(profile_name="command-test")
         self.assertEqual(profile["config"]["command"], "echo updated")
