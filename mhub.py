@@ -121,6 +121,33 @@ _SUBCOMMAND_DISPATCH = {
     ("database", "sample-data"): ("database", "sample_data", lambda _: {}),
 }
 
+
+def _add_selector_args(
+    parser: argparse.ArgumentParser,
+    target: str,
+    verb: str,
+    omit_hint: str,
+) -> None:
+    """Add the shared ``-i/--<target>-id`` and ``-n/--<target>-name`` arguments.
+
+    Every profile/monitor subcommand selects its target the same way; only the
+    verb and the parenthetical hint differ. Centralising the definition keeps
+    the flag names, types and metavars consistent across all subcommands.
+    """
+    parser.add_argument(
+        "-i", f"--{target}-id",
+        type=int,
+        metavar="<ID>",
+        help=f"ID of the {target} to {verb} ({omit_hint})",
+    )
+    parser.add_argument(
+        "-n", f"--{target}-name",
+        type=str,
+        metavar="<NAME>",
+        help=f"Name of the {target} to {verb} ({omit_hint})",
+    )
+
+
 if __name__ == "__main__":
     # Hidden in-process dispatch used by the frozen PyInstaller binary.
     # When the binary re-invokes itself to start a monitor child process it
@@ -180,51 +207,15 @@ if __name__ == "__main__":
 
     # Profile subcommands
     profile_show_parser = profile_subparsers.add_parser("show", help="Show all profiles")
-    profile_show_parser.add_argument("-i", "--profile-id",
-        type=int,
-        metavar="<ID>",
-        help="ID of the profile to show (omit to show all profiles)"
-    )
-    profile_show_parser.add_argument("-n", "--profile-name",
-        type=str,
-        metavar="<NAME>",
-        help="Name of the profile to show (omit to show all profiles)"
-    )
+    _add_selector_args(profile_show_parser, "profile", "show", "omit to show all profiles")
     profile_subparsers.add_parser("import", help="Import profiles from rclone")
     profile_new_parser = profile_subparsers.add_parser("new", help="Create a new profile (select profile category interactively)")
     profile_edit_parser = profile_subparsers.add_parser("edit", help="Edit a profile")
-    profile_edit_parser.add_argument("-i", "--profile-id",
-        type=int,
-        metavar="<ID>",
-        help="ID of the profile to edit (omit to select interactively)"
-    )
-    profile_edit_parser.add_argument("-n", "--profile-name",
-        type=str,
-        metavar="<NAME>",
-        help="Name of the profile to edit (omit to select interactively)"
-    )
+    _add_selector_args(profile_edit_parser, "profile", "edit", "omit to select interactively")
     profile_delete_parser = profile_subparsers.add_parser("delete", help="Delete a profile")
-    profile_delete_parser.add_argument("-i", "--profile-id",
-        type=int,
-        metavar="<ID>",
-        help="ID of the profile to delete (omit to select interactively)"
-    )
-    profile_delete_parser.add_argument("-n", "--profile-name",
-        type=str,
-        metavar="<NAME>",
-        help="Name of the profile to delete (omit to select interactively)"
-    )
+    _add_selector_args(profile_delete_parser, "profile", "delete", "omit to select interactively")
     profile_test_parser = profile_subparsers.add_parser("test", help="Test a profile")
-    profile_test_parser.add_argument("-i", "--profile-id",
-        type=int,
-        metavar="<ID>",
-        help="ID of the profile to test (omit to select interactively)"
-    )
-    profile_test_parser.add_argument("-n", "--profile-name",
-        type=str,
-        metavar="<NAME>",
-        help="Name of the profile to test (omit to select interactively)"
-    )
+    _add_selector_args(profile_test_parser, "profile", "test", "omit to select interactively")
     profile_test_parser.add_argument("--live",
         action="store_true",
         default=False,
@@ -257,71 +248,17 @@ if __name__ == "__main__":
 
     monitor_new_parser = monitor_subparsers.add_parser("new", help="Create a new monitor")
     monitor_edit_parser = monitor_subparsers.add_parser("edit", help="Edit a monitor")
-    monitor_edit_parser.add_argument("-i", "--monitor-id",
-        type=int,
-        metavar="<ID>",
-        help="ID of the monitor to edit (omit to select interactively)"
-    )
-    monitor_edit_parser.add_argument("-n", "--monitor-name",
-        type=str,
-        metavar="<NAME>",
-        help="Name of the monitor to edit (omit to select interactively)"
-    )
+    _add_selector_args(monitor_edit_parser, "monitor", "edit", "omit to select interactively")
     monitor_delete_parser = monitor_subparsers.add_parser("delete", help="Delete a monitor")
-    monitor_delete_parser.add_argument("-i", "--monitor-id",
-        type=int,
-        metavar="<ID>",
-        help="ID of the monitor to delete (omit to select interactively)"
-    )
-    monitor_delete_parser.add_argument("-n", "--monitor-name",
-        type=str,
-        metavar="<NAME>",
-        help="Name of the monitor to delete (omit to select interactively)"
-    )
+    _add_selector_args(monitor_delete_parser, "monitor", "delete", "omit to select interactively")
     monitor_show_parser = monitor_subparsers.add_parser("show", help="Show all monitors")
-    monitor_show_parser.add_argument("-i", "--monitor-id",
-        type=int,
-        metavar="<ID>",
-        help="ID of the monitor to show (omit to show all monitors)"
-    )
-    monitor_show_parser.add_argument("-n", "--monitor-name",
-        type=str,
-        metavar="<NAME>",
-        help="Name of the monitor to show (omit to show all monitors)"
-    )
+    _add_selector_args(monitor_show_parser, "monitor", "show", "omit to show all monitors")
     monitor_start_parser = monitor_subparsers.add_parser("start", help="Start a monitor")
-    monitor_start_parser.add_argument("-i", "--monitor-id",
-        type=int,
-        metavar="<ID>",
-        help="ID of the monitor to start (omit to start all monitors)"
-    )
-    monitor_start_parser.add_argument("-n", "--monitor-name",
-        type=str,
-        metavar="<NAME>",
-        help="Name of the monitor to start (omit to start all monitors)"
-    )
+    _add_selector_args(monitor_start_parser, "monitor", "start", "omit to start all monitors")
     monitor_test_parser = monitor_subparsers.add_parser("test", help="Test a monitor")
-    monitor_test_parser.add_argument("-i", "--monitor-id",
-        type=int,
-        metavar="<ID>",
-        help="ID of the monitor to test (omit to select interactively)"
-    )
-    monitor_test_parser.add_argument("-n", "--monitor-name",
-        type=str,
-        metavar="<NAME>",
-        help="Name of the monitor to test (omit to select interactively)"
-    )
+    _add_selector_args(monitor_test_parser, "monitor", "test", "omit to select interactively")
     monitor_stop_parser = monitor_subparsers.add_parser("stop", help="Stop a running monitor")
-    monitor_stop_parser.add_argument("-i", "--monitor-id",
-        type=int,
-        metavar="<ID>",
-        help="ID of the monitor to stop (omit to stop all monitors)"
-    )
-    monitor_stop_parser.add_argument("-n", "--monitor-name",
-        type=str,
-        metavar="<NAME>",
-        help="Name of the monitor to stop (omit to stop all monitors)"
-    )
+    _add_selector_args(monitor_stop_parser, "monitor", "stop", "omit to stop all monitors")
     monitor_stop_parser.add_argument("--immediate",
         action="store_true",
         default=False,
