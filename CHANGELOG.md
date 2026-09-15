@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+- Internal refactor: the oversized ``MonitorCommands`` and ``ProfileCommands``
+  handlers are split into focused collaborators. ``MonitorProcessManager``
+  now owns the launch/track/kill/reap mechanics of monitor child processes,
+  ``MonitorSelector``/``ProfileSelector`` own interactive list selection, and
+  ``ProfileEditor`` owns the ``profile new``/``profile edit`` prompt flows.
+  The public command handlers and their behaviour are unchanged; only the
+  internal structure moved.
+
 - The ``monitor edit`` and ``monitor new`` profile-selection prompts are faster
   and more consistent: the available-profiles list is redrawn after every
   selection and the list is stopped by pressing Enter (``Enter profile id to

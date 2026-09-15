@@ -131,11 +131,10 @@ classDiagram
     print_overview()
   }
   class MonitorCommands {
-    db_dir : str
-    log_config : str
-    log_level : str | None
     logger : Logger
+    processes
     prompt
+    selector
     sqlite_handler
     delete(monitor_id: int | None, monitor_name: str | None)
     edit(monitor_id: int | None, monitor_name: str | None)
@@ -144,6 +143,26 @@ classDiagram
     start(monitor_id: int | None, monitor_name: str | None)
     stop(monitor_id: int | None, immediate: bool, monitor_name: str | None)
     test(monitor_id: int | None, monitor_name: str | None)
+  }
+  class MonitorProcessManager {
+    db_dir : str
+    log_config : str
+    log_level : str | None
+    logger : Logger
+    prompt
+    tracked_processes : dict[int, Popen]
+    escalate_stop(pid: int, name: str, monitor_id: int | None)
+    force_kill(pid: int, name: str) bool
+    is_alive(monitor_id: int | None, pid: int) bool
+    launch(monitor: dict) bool
+    reap(monitor_id: int | None)
+    resolve_python_interpreter(script_dir: Path) str
+    wait_for_exit(pid: int, timeout: float, interval: float, monitor_id: int | None) bool
+  }
+  class MonitorSelector {
+    prompt
+    sqlite_handler
+    select_interactive(monitors: list[dict] | None, allow_all: bool, prompt: str) int | None
   }
   class ProfileCommands {
     diagnostic_util
@@ -156,6 +175,17 @@ classDiagram
     new()
     show(profile_id: int | None, profile_name: str | None)
     test(profile_id: int | None, live: bool) bool
+  }
+  class ProfileEditor {
+    prompt
+    sqlite_handler
+    edit(profile_id: int | None, profile_name: str | None)
+    new()
+  }
+  class ProfileSelector {
+    prompt
+    sqlite_handler
+    select_interactive() dict[str, Any]
   }
   class PromptService {
     input(prompt: str) str
@@ -201,6 +231,10 @@ classDiagram
   Commands --> PromptService : prompt
   Commands --> SQLiteHandler : sqlite_handler
   Commands --> DiagnosticUtil : diagnostic_util
+  MonitorCommands *-- MonitorProcessManager : processes
+  MonitorCommands *-- MonitorSelector : selector
+  ProfileCommands *-- ProfileEditor : editor
+  ProfileCommands *-- ProfileSelector : selector
   PromptService --o AppCommands : prompt
   PromptService --o DatabaseCommands : prompt
   PromptService --o MonitorCommands : prompt

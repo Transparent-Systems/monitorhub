@@ -21,8 +21,9 @@ pytest -k "not interactive"
 
 ## Monitor Process Lifecycle and Child Reaping
 
-A monitor runs as a detached child process launched by `MonitorCommands._launch_monitor_process()`
-via `subprocess.Popen(..., start_new_session=True)`. `start_new_session` only calls `setsid()`
+A monitor runs as a detached child process launched by `MonitorProcessManager.launch()`
+(owned by `MonitorCommands` as its `processes` collaborator) via
+`subprocess.Popen(..., start_new_session=True)`. `start_new_session` only calls `setsid()`
 (new session / controlling terminal); it does **not** change the parent-child relationship, so
 the launching process remains responsible for reaping the child.
 
@@ -33,15 +34,15 @@ the launching process remains responsible for reaping the child.
 1. `_stop_monitor()` writes `status='stop'` to the database (the graceful request). The monitor's
    own status poller (`run_monitor.py`, ~10s interval) observes this and shuts itself down.
 2. `stop()` waits up to `STOP_GRACE_SECONDS` (15s) for the process to exit.
-3. Only if it has not exited does `_escalate_stop()` send `SIGTERM`, wait briefly, then fall back
-   to `SIGKILL` via `_force_kill_process()`.
+3. Only if it has not exited does `MonitorProcessManager.escalate_stop()` send `SIGTERM`, wait
+   briefly, then fall back to `SIGKILL` via `MonitorProcessManager.force_kill()`.
 
 `--immediate` (`immediate=True`) is a separate, explicit opt-in that skips the graceful request.
 
 ### Why we track and reap the Popen handle
 
-`MonitorCommands` keeps every child it spawns in `self._monitor_processes` (keyed by monitor id)
-and uses `poll()` / `wait()` to detect the exit and release the PID. This matters because a
+`MonitorProcessManager` keeps every child it spawns in `self.tracked_processes` (keyed by monitor
+id) and uses `poll()` / `wait()` to detect the exit and release the PID. This matters because a
 terminated child that the parent has not yet reaped stays a **zombie**: it still occupies its PID,
 so `os.kill(pid, 0)` succeeds and a naive liveness check reports it as still running. Without
 reaping, a monitor that shut down gracefully within the grace window could be misdetected and
@@ -49,9 +50,9 @@ force-killed unnecessarily.
 
 Two complementary safeguards are in place:
 
-- **Tracked handle (preferred):** `_is_monitor_process_alive()` uses the tracked `Popen.poll()`
+- **Tracked handle (preferred):** `MonitorProcessManager.is_alive()` uses the tracked `Popen.poll()`
   when this instance launched the monitor, which reaps the child and reports its true state.
-  `_reap_tracked_process()` collects exit status after a stop, immediate kill, or stale cleanup.
+  `MonitorProcessManager.reap()` collects exit status after a stop, immediate kill, or stale cleanup.
 - **Zombie-aware generic check (fallback):** `is_process_alive()` (in `app/utils/generic_util.py`)
   treats a process in state `Z` as not alive (Linux `/proc/<pid>/stat`; best-effort `ps` on other
   POSIX systems). This covers monitors started by another process that this instance does not own.

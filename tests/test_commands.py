@@ -476,7 +476,7 @@ class TestCommands(unittest.TestCase):
         monitor = commands.sqlite_handler.get_monitors()[0]
         commands.sqlite_handler.update_monitor_status(monitor_id=monitor["id"], status="stop")
         commands.sqlite_handler.update_monitor_pid(monitor_id=monitor["id"], pid=os.getpid())
-        with mock.patch.object(commands.monitor, "_launch_monitor_process") as launch:
+        with mock.patch.object(commands.monitor.processes, "launch") as launch:
             commands.monitor.start(monitor_id=monitor["id"])
         launch.assert_not_called()
         self.assertIn("still shutting down", mock_prompt.output_text)
@@ -486,7 +486,7 @@ class TestCommands(unittest.TestCase):
         monitor = commands.sqlite_handler.get_monitors()[0]
         commands.sqlite_handler.update_monitor_status(monitor_id=monitor["id"], status="running")
         commands.sqlite_handler.update_monitor_pid(monitor_id=monitor["id"], pid=os.getpid())
-        with mock.patch.object(commands.monitor, "_launch_monitor_process") as launch:
+        with mock.patch.object(commands.monitor.processes, "launch") as launch:
             commands.monitor.start(monitor_id=monitor["id"])
         launch.assert_not_called()
         self.assertIn("already running", mock_prompt.output_text)
@@ -498,7 +498,7 @@ class TestCommands(unittest.TestCase):
         commands.sqlite_handler.update_monitor_status(monitor_id=monitor["id"], status="running")
         commands.sqlite_handler.update_monitor_pid(monitor_id=monitor["id"], pid=0)
         with mock.patch.object(
-            commands.monitor, "_launch_monitor_process", return_value=True
+            commands.monitor.processes, "launch", return_value=True
         ) as launch:
             commands.monitor.start(monitor_id=monitor["id"])
         launch.assert_called_once()
@@ -510,8 +510,8 @@ class TestCommands(unittest.TestCase):
         commands.sqlite_handler.update_monitor_status(monitor_id=monitor["id"], status="running")
         commands.sqlite_handler.update_monitor_pid(monitor_id=monitor["id"], pid=4242)
         with (
-            mock.patch.object(commands.monitor, "_wait_for_exit", return_value=False),
-            mock.patch.object(commands.monitor, "_escalate_stop") as escalate,
+            mock.patch.object(commands.monitor.processes, "wait_for_exit", return_value=False),
+            mock.patch.object(commands.monitor.processes, "escalate_stop") as escalate,
         ):
             commands.monitor.stop(monitor_id=monitor["id"])
         escalate.assert_called_once()
@@ -526,8 +526,8 @@ class TestCommands(unittest.TestCase):
         commands.sqlite_handler.update_monitor_status(monitor_id=monitor["id"], status="running")
         commands.sqlite_handler.update_monitor_pid(monitor_id=monitor["id"], pid=4242)
         with (
-            mock.patch.object(commands.monitor, "_wait_for_exit", return_value=True),
-            mock.patch.object(commands.monitor, "_escalate_stop") as escalate,
+            mock.patch.object(commands.monitor.processes, "wait_for_exit", return_value=True),
+            mock.patch.object(commands.monitor.processes, "escalate_stop") as escalate,
         ):
             commands.monitor.stop(monitor_id=monitor["id"])
         escalate.assert_not_called()
@@ -536,11 +536,11 @@ class TestCommands(unittest.TestCase):
     def test_escalate_stop_sends_sigterm_then_force_kills(self):
         commands, _ = self._make_commands([])
         with (
-            mock.patch("app.cli.monitor_commands.os.kill") as kill_mock,
-            mock.patch.object(commands.monitor, "_wait_for_exit", return_value=False),
-            mock.patch.object(commands.monitor, "_force_kill_process") as force_mock,
+            mock.patch("app.cli.monitor_process_manager.os.kill") as kill_mock,
+            mock.patch.object(commands.monitor.processes, "wait_for_exit", return_value=False),
+            mock.patch.object(commands.monitor.processes, "force_kill") as force_mock,
         ):
-            commands.monitor._escalate_stop(4242, "test")
+            commands.monitor.processes.escalate_stop(4242, "test")
         kill_mock.assert_called_once_with(4242, signal.SIGTERM)
         force_mock.assert_called_once_with(4242, "test")
 
@@ -554,12 +554,12 @@ class TestCommands(unittest.TestCase):
         commands, _ = self._make_commands([])
         child = subprocess.Popen([sys.executable, "-c", "pass"])
         child.wait()  # reaped so the handle reports a return code
-        commands.monitor._monitor_processes[7] = child
+        commands.monitor.processes.tracked_processes[7] = child
         with mock.patch(
-            "app.cli.monitor_commands.is_process_alive", return_value=True
+            "app.cli.monitor_process_manager.is_process_alive", return_value=True
         ) as pid_check:
             self.assertTrue(
-                commands.monitor._wait_for_exit(child.pid, timeout=1.0, monitor_id=7)
+                commands.monitor.processes.wait_for_exit(child.pid, timeout=1.0, monitor_id=7)
             )
         pid_check.assert_not_called()
 
@@ -567,10 +567,10 @@ class TestCommands(unittest.TestCase):
         """Without a tracked handle the generic PID check is still used."""
         commands, _ = self._make_commands([])
         with mock.patch(
-            "app.cli.monitor_commands.is_process_alive", return_value=False
+            "app.cli.monitor_process_manager.is_process_alive", return_value=False
         ) as pid_check:
             self.assertTrue(
-                commands.monitor._wait_for_exit(4242, timeout=1.0, monitor_id=7)
+                commands.monitor.processes.wait_for_exit(4242, timeout=1.0, monitor_id=7)
             )
         pid_check.assert_called()
 
@@ -579,13 +579,13 @@ class TestCommands(unittest.TestCase):
         commands, _ = self._make_commands([])
         fake_process = mock.Mock()
         with mock.patch(
-            "app.cli.monitor_commands.subprocess.Popen", return_value=fake_process
+            "app.cli.monitor_process_manager.subprocess.Popen", return_value=fake_process
         ) as popen:
             self.assertTrue(
-                commands.monitor._launch_monitor_process({"id": 99, "name": "tracked"})
+                commands.monitor.processes.launch({"id": 99, "name": "tracked"})
             )
         popen.assert_called_once()
-        self.assertIs(commands.monitor._monitor_processes[99], fake_process)
+        self.assertIs(commands.monitor.processes.tracked_processes[99], fake_process)
 
     def test_monitor_stop_graceful_with_tracked_exited_child(self):
         """A tracked child that already exited must stop gracefully, not escalate.
@@ -604,13 +604,13 @@ class TestCommands(unittest.TestCase):
             commands.sqlite_handler.update_monitor_pid(
                 monitor_id=monitor["id"], pid=child.pid
             )
-            commands.monitor._monitor_processes[monitor["id"]] = child
+            commands.monitor.processes.tracked_processes[monitor["id"]] = child
             # Let the child exit WITHOUT reaping it (it becomes a zombie).
             time.sleep(0.5)
 
             with (
-                mock.patch.object(commands.monitor, "_escalate_stop") as escalate,
-                mock.patch("app.cli.monitor_commands.os.kill") as kill_mock,
+                mock.patch.object(commands.monitor.processes, "escalate_stop") as escalate,
+                mock.patch("app.cli.monitor_process_manager.os.kill") as kill_mock,
             ):
                 commands.monitor.stop(monitor_id=monitor["id"])
 
@@ -646,7 +646,7 @@ class TestCommands(unittest.TestCase):
             commands.sqlite_handler.update_monitor_pid(monitor_id=monitor["id"], pid=0)
 
         with mock.patch.object(
-            commands.monitor, "_launch_monitor_process", return_value=True
+            commands.monitor.processes, "launch", return_value=True
         ) as launch:
             commands.monitor.start()
 
@@ -664,8 +664,8 @@ class TestCommands(unittest.TestCase):
             commands.sqlite_handler.update_monitor_pid(monitor_id=monitor["id"], pid=4242)
 
         with (
-            mock.patch.object(commands.monitor, "_wait_for_exit", return_value=True),
-            mock.patch.object(commands.monitor, "_escalate_stop") as escalate,
+            mock.patch.object(commands.monitor.processes, "wait_for_exit", return_value=True),
+            mock.patch.object(commands.monitor.processes, "escalate_stop") as escalate,
         ):
             commands.monitor.stop()
 
