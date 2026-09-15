@@ -15,12 +15,9 @@ classDiagram
   }
   class ActionDispatcher {
     handlers : list[ActionHandler]
-    logger
     queue : Queue
-    thread : NoneType, Thread
     queue_action(context: ActionContext)
-    start()
-    stop()
+    run()
   }
   class ActionHandler {
     handle_action(context: ActionContext)*
@@ -33,24 +30,23 @@ classDiagram
     cooldown_seconds : int, str
     events : NoneType
     logger
+    max_workers : int
     monitor_name : str
+    pending_commands : int
     profile_name : str
     shell : bool
     timeout_seconds : int, str
     handle_action(context: ActionContext)
+    stop(wait: bool, cancel_futures: bool) None
   }
   class DebounceManager {
     callback
     condition : Condition
     delay : float
-    logger : Logger
     pending_files : dict[str, float]
-    running : bool
-    thread : threading.Thread | None
     add_event(file_path: str)
     cancel_event(file_path: str)
-    start()
-    stop()
+    run()
   }
   class RemoteActionHandler {
     debounce_manager
@@ -73,15 +69,28 @@ classDiagram
     normalize_path(path: str) str
     restore_folder(remote_path: str)* tuple[int, str]
   }
+  class StoppableWorker {
+    is_running : bool
+    is_stopped : bool
+    logger
+    name : str
+    stop_event : Event
+    thread : threading.Thread | None
+    run()* None
+    start() None
+    stop(timeout: float) None
+    wait_stop(timeout: float | None) bool
+  }
   ActionDispatcher --|> StoppableWorker
-  DebounceManager --|> StoppableWorker
   CommandActionHandler --|> ActionHandler
+  DebounceManager --|> StoppableWorker
   RemoteActionHandler --|> ActionHandler
   DebounceManager --* RemoteActionHandler : debounce_manager
   ActionHandler --o ActionDispatcher : handlers
   RemoteHandler --o RemoteActionHandler : remote_handler
 ```
 <!-- ACTIONHANDLER_MERMAID_END -->
+
 
 
 
@@ -131,10 +140,13 @@ classDiagram
     print_overview()
   }
   class MonitorCommands {
+    db_dir : str
+    log_config : str
+    log_level : str | None
     logger : Logger
-    processes
+    processes : MonitorProcessManager
     prompt
-    selector
+    selector : MonitorSelector
     sqlite_handler
     delete(monitor_id: int | None, monitor_name: str | None)
     edit(monitor_id: int | None, monitor_name: str | None)
@@ -144,56 +156,30 @@ classDiagram
     stop(monitor_id: int | None, immediate: bool, monitor_name: str | None)
     test(monitor_id: int | None, monitor_name: str | None)
   }
-  class MonitorProcessManager {
-    db_dir : str
-    log_config : str
-    log_level : str | None
-    logger : Logger
-    prompt
-    tracked_processes : dict[int, Popen]
-    escalate_stop(pid: int, name: str, monitor_id: int | None)
-    force_kill(pid: int, name: str) bool
-    is_alive(monitor_id: int | None, pid: int) bool
-    launch(monitor: dict) bool
-    reap(monitor_id: int | None)
-    resolve_python_interpreter(script_dir: Path) str
-    wait_for_exit(pid: int, timeout: float, interval: float, monitor_id: int | None) bool
-  }
-  class MonitorSelector {
-    prompt
-    sqlite_handler
-    select_interactive(monitors: list[dict] | None, allow_all: bool, prompt: str) int | None
-  }
   class ProfileCommands {
     diagnostic_util
+    editor : ProfileEditor
     logger : Logger
     prompt
+    selector : ProfileSelector
     sqlite_handler
     delete(profile_id: int | None, profile_name: str | None)
     edit(profile_id: int | None, profile_name: str | None)
     import_profiles()
     new()
     show(profile_id: int | None, profile_name: str | None)
-    test(profile_id: int | None, live: bool) bool
-  }
-  class ProfileEditor {
-    prompt
-    sqlite_handler
-    edit(profile_id: int | None, profile_name: str | None)
-    new()
-  }
-  class ProfileSelector {
-    prompt
-    sqlite_handler
-    select_interactive() dict[str, Any]
+    test(profile_id: int | None, profile_name: str | None, live: bool) bool
   }
   class PromptService {
     input(prompt: str) str
     print() None
+    prompt_choice(prompt: str) str | None
+    prompt_required(prompt: str) str | None
+    prompt_yes_no(prompt: str) bool
   }
   class SQLiteHandler {
-    connection : Connection
-    cursor : Cursor
+    connection
+    cursor : sqlite3.Cursor
     db_path
     logger : Logger
     add_monitor(name: str, monitor_path: str, remote_path: str, monitor_type: str, config: dict[str, Any], status: str, pid: int) int | None
@@ -215,6 +201,7 @@ classDiagram
     get_profiles_for_monitor(monitor_id: int) list[dict[str, Any]]
     get_schema_versions() list[dict[str, Any]]
     is_initialized() bool
+    transaction() Generator[sqlite3.Cursor, None, None]
     update_monitor(monitor_id: int, name: str, monitor_path: str, remote_path: str, monitor_type: str, config: dict[str, Any], status: str, pid: int) int | None
     update_monitor_config(monitor_id: int, config: dict[str, Any]) bool
     update_monitor_last_heartbeat(monitor_id: int, last_heartbeat: str) bool
@@ -229,24 +216,21 @@ classDiagram
   Commands --> MonitorCommands : monitor
   Commands --> ProfileCommands : profile
   Commands --> PromptService : prompt
-  Commands --> SQLiteHandler : sqlite_handler
+  DiagnosticUtil --> PromptService : prompt
   Commands --> DiagnosticUtil : diagnostic_util
-  MonitorCommands *-- MonitorProcessManager : processes
-  MonitorCommands *-- MonitorSelector : selector
-  ProfileCommands *-- ProfileEditor : editor
-  ProfileCommands *-- ProfileSelector : selector
+  Commands --> SQLiteHandler : sqlite_handler
   PromptService --o AppCommands : prompt
   PromptService --o DatabaseCommands : prompt
   PromptService --o MonitorCommands : prompt
   PromptService --o ProfileCommands : prompt
-  PromptService --o DiagnosticUtil : prompt
+  DiagnosticUtil --o AppCommands : diagnostic_util
+  DiagnosticUtil --o ProfileCommands : diagnostic_util
   SQLiteHandler --o DatabaseCommands : sqlite_handler
   SQLiteHandler --o MonitorCommands : sqlite_handler
   SQLiteHandler --o ProfileCommands : sqlite_handler
   SQLiteHandler --o DiagnosticUtil : sqlite_handler
-  DiagnosticUtil --o AppCommands : diagnostic_util
-  DiagnosticUtil --o ProfileCommands : diagnostic_util
 ```
 <!-- COMMANDS_MERMAID_END -->
+
 
 
