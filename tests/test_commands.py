@@ -127,6 +127,34 @@ class TestCommands(unittest.TestCase):
         self.assertEqual(monitor["monitor_type"], "instant")
         self.assertEqual(monitor["config"].get("exclude_patterns"), [])
 
+    def test_monitor_new_adds_selected_profile(self):
+        profiles = self.database_test_data.sqlite_handler.get_profiles()
+        first_profile_id = profiles[0]["id"]
+        second_profile_id = profiles[1]["id"]
+        # Inputs: name, paths, type, no exclude patterns, two profile ids, then
+        # Enter to stop. Selecting two profiles back-to-back proves there is no
+        # per-profile y/N confirmation step in between.
+        commands, _ = self._make_commands(
+            [
+                "my-monitor",
+                "/tmp/source",
+                "remote:dest",
+                "1",
+                "",
+                str(first_profile_id),
+                str(second_profile_id),
+                "",
+            ]
+        )
+        commands.monitor.new()
+        monitor = commands.sqlite_handler.get_monitor(monitor_name="my-monitor")
+        self.assertTrue(monitor)
+        linked = commands.sqlite_handler.get_profiles_for_monitor(monitor_id=monitor["id"])
+        self.assertEqual(
+            {profile["id"] for profile in linked},
+            {first_profile_id, second_profile_id},
+        )
+
     def test_monitor_edit(self):
         first_id = self.database_test_data.sqlite_handler.get_monitors()[0]["id"]
         commands, _ = self._make_commands(
@@ -184,6 +212,40 @@ class TestCommands(unittest.TestCase):
         self.assertIn("Current restore interval: 1m", mock_prompt.output_text)
         updated_monitor = commands.sqlite_handler.get_monitor(monitor_id=monitor["id"])
         self.assertEqual(updated_monitor["config"]["interval"], "20m")
+
+    def test_monitor_edit_adds_profile_and_stops_with_enter(self):
+        profiles = self.database_test_data.sqlite_handler.get_profiles()
+        first_profile_id = profiles[0]["id"]
+        second_profile_id = profiles[1]["id"]
+        monitor_id = self.database_test_data.sqlite_handler.add_monitor(
+            name="edit-profile-monitor",
+            monitor_path="/tmp/edit-source",
+            remote_path="remote:edit-dest",
+            monitor_type="instant",
+            config={"exclude_patterns": []},
+            status="stopped",
+        )
+        # Inputs: keep name/path/remote/type, keep exclude patterns, two profile
+        # ids, then Enter to stop. Selecting two profiles back-to-back proves
+        # there is no per-profile y/N confirmation step in between.
+        commands, _ = self._make_commands(
+            [
+                "",
+                "",
+                "",
+                "",
+                "",
+                str(first_profile_id),
+                str(second_profile_id),
+                "",
+            ]
+        )
+        commands.monitor.edit(monitor_id=monitor_id)
+        linked = commands.sqlite_handler.get_profiles_for_monitor(monitor_id=monitor_id)
+        self.assertEqual(
+            {profile["id"] for profile in linked},
+            {first_profile_id, second_profile_id},
+        )
 
     def test_monitor_delete(self):
         first_id = self.database_test_data.sqlite_handler.get_monitors()[0]["id"]

@@ -540,8 +540,8 @@ class MonitorCommands:
         }
 
         if available_profiles:
-            self.prompt.print("\nAvailable profiles to add:")
             def render_available_profiles() -> None:
+                self.prompt.print("\nAvailable profiles to add:")
                 for pid, v in available_profiles.items():
                     self.prompt.print(
                         f"Id: {pid}, Profile name: {v.get('name', 'N/A')}, Profile type: {v.get('profile_type', 'N/A')}"
@@ -556,7 +556,7 @@ class MonitorCommands:
 
             while available_profiles:
                 input_add_id = self.prompt.prompt_choice(
-                    "Enter profile id to add (or press Enter to skip): ",
+                    "Enter profile id to add. To stop just press Enter: ",
                     valid=valid_add_id,
                     render=render_available_profiles,
                     allow_cancel=True,
@@ -578,11 +578,6 @@ class MonitorCommands:
 
                 if not available_profiles:
                     self.prompt.print("All profiles have been added.")
-                    break
-
-                if not self.prompt.prompt_yes_no(
-                    "Do you want to add another profile? (y/N): ", default=False
-                ):
                     break
 
     # ------------------------------------------------------------------
@@ -806,7 +801,7 @@ class MonitorCommands:
                 break
 
             raw_profile_id = self.prompt.prompt_choice(
-                "Please select profile id (or press Enter to finish): ",
+                "Enter profile id to add. To stop just press Enter: ",
                 valid=valid_profile_id,
                 render=render_unselected_profiles,
                 allow_cancel=True,
@@ -822,11 +817,6 @@ class MonitorCommands:
 
             if len(unselected_profiles) == 0:
                 self.prompt.print("All profiles have been selected.")
-                break
-
-            if not self.prompt.prompt_yes_no(
-                "Do you want to add another profile? (y/N): ", default=False
-            ):
                 break
 
         monitor_id = self.sqlite_handler.add_monitor(

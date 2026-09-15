@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+- The ``monitor edit`` and ``monitor new`` profile-selection prompts are faster
+  and more consistent: the available-profiles list is redrawn after every
+  selection and the list is stopped by pressing Enter (``Enter profile id to
+  add. To stop just press Enter:``). The per-profile
+  ``Do you want to add another profile? (y/N)`` confirmation has been removed.
+
 - Internal refactor: ``PromptService`` now exposes reusable ``prompt_required``,
   ``prompt_choice`` and ``prompt_yes_no`` helpers, and the interactive
   ``monitor``/``profile``/``database`` command flows use them instead of
