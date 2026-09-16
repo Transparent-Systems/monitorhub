@@ -2,8 +2,10 @@
 
 import datetime
 import logging
+import sqlite3
 import time
 
+from app.cli.db_error_messages import integrity_error_message
 from app.cli.monitor_process_manager import MonitorProcessManager
 from app.cli.prompt_service import PromptService
 from app.cli.selectors import MonitorSelector
@@ -475,15 +477,24 @@ class MonitorCommands:
         self._edit_profiles(monitor, monitor_id)
 
         # Update monitor
-        rowid = self.sqlite_handler.update_monitor(
-            monitor_id=monitor.get("id", 0),
-            name=monitor.get("name", "N/A"),
-            monitor_path=monitor.get("monitor_path", "N/A"),
-            remote_path=monitor.get("remote_path", "N/A"),
-            monitor_type=monitor.get("monitor_type", "N/A"),
-            config=monitor.get("config", {}),
-            status=monitor.get("status", MONITOR_STATUS_STOPPED),
-        )
+        try:
+            rowid = self.sqlite_handler.update_monitor(
+                monitor_id=monitor.get("id", 0),
+                name=monitor.get("name", "N/A"),
+                monitor_path=monitor.get("monitor_path", "N/A"),
+                remote_path=monitor.get("remote_path", "N/A"),
+                monitor_type=monitor.get("monitor_type", "N/A"),
+                config=monitor.get("config", {}),
+                status=monitor.get("status", MONITOR_STATUS_STOPPED),
+            )
+        except sqlite3.IntegrityError as error:
+            self.prompt.print(
+                integrity_error_message(
+                    error, entity="Monitor", name=monitor.get("name", "N/A")
+                )
+            )
+            return
+
         if rowid is not None:
             self.prompt.print(f"Monitor name: {monitor.get('name', 'N/A')} has been updated")
         else:
@@ -609,14 +620,20 @@ class MonitorCommands:
                 self.prompt.print("All profiles have been selected.")
                 break
 
-        monitor_id = self.sqlite_handler.add_monitor(
-            name=input_monitor_name,
-            monitor_path=input_monitor_path,
-            remote_path=input_remote_path,
-            monitor_type=monitor_types[input_monitor_type_number - 1][0],
-            config=monitor_config,
-            status=MONITOR_STATUS_STOPPED,
-        )
+        try:
+            monitor_id = self.sqlite_handler.add_monitor(
+                name=input_monitor_name,
+                monitor_path=input_monitor_path,
+                remote_path=input_remote_path,
+                monitor_type=monitor_types[input_monitor_type_number - 1][0],
+                config=monitor_config,
+                status=MONITOR_STATUS_STOPPED,
+            )
+        except sqlite3.IntegrityError as error:
+            self.prompt.print(
+                integrity_error_message(error, entity="Monitor", name=input_monitor_name)
+            )
+            return
 
         if monitor_id is None:
             self.prompt.print(f"Monitor name: {input_monitor_name} not created")

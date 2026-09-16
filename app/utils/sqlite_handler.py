@@ -660,6 +660,8 @@ class SQLiteHandler:
         Add a mapping between a monitor and a profile in the database.
 
         :return: False when the mapping already exists (INSERT OR IGNORE).
+            A foreign key violation (unknown monitor or profile id) raises
+            sqlite3.IntegrityError: INSERT OR IGNORE does not suppress it.
         """
         return self._execute_statement(
             """

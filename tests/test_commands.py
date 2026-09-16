@@ -96,6 +96,34 @@ class TestCommands(unittest.TestCase):
 
         self.assertIn("Database is not initialised", mock_prompt.output_text)
 
+    def test_database_sample_data_duplicate_monitor_name(self):
+        """A duplicate sample monitor is reported as a friendly message."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            mock_prompt = MockPromptService(inputs=[])
+            commands = build_commands(
+                logger=self.logger,
+                db_dir=tmp_dir,
+                prompt=mock_prompt,
+            )
+            try:
+                commands.sqlite_handler.create_schema()
+                commands.sqlite_handler.add_monitor(
+                    name="Example monitor",
+                    monitor_path="/tmp/example",
+                    remote_path="/example",
+                    monitor_type="instant",
+                    config={},
+                    status="stopped",
+                )
+
+                commands.database.sample_data()
+            finally:
+                commands.sqlite_handler.close()
+
+        self.assertIn(
+            "Monitor name: Example monitor already exists", mock_prompt.output_text
+        )
+
     def test_database_upgrade_already_up_to_date(self):
         commands, mock_prompt = self._make_commands([])
         commands.database.upgrade()

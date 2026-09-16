@@ -21,6 +21,7 @@ import sys
 
 from app.cli.app_config import AppConfig
 from app.cli.commands import build_commands
+from app.cli.db_error_messages import integrity_error_message
 from app.utils.logger_setup import setup_logging
 
 # Data-driven mapping of (command, subcommand) to the command object attribute
@@ -304,6 +305,12 @@ if __name__ == "__main__":
             command_obj = getattr(commands, owner_attr)
             kwargs = kwargs_builder(args)
             getattr(command_obj, method_name)(**kwargs)
+        except sqlite3.IntegrityError as error:
+            # A constraint violation is a data problem, not a broken database:
+            # report it without the "is the database initialised?" hint.
+            logger.error(f"Database constraint error: {error}")
+            print(integrity_error_message(error), file=sys.stderr)
+            sys.exit(1)
         except sqlite3.Error as error:
             logger.error(f"Database error: {error}")
             print(

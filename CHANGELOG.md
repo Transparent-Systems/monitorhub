@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+- Database constraint violations are translated into user-facing messages
+  instead of raw SQLite text (new ``app/cli/db_error_messages.py``). A duplicate
+  monitor name now reports "Monitor name: X already exists" from
+  ``monitor new``, ``monitor edit`` and ``database sample-data``, or "A monitor
+  with that name already exists." if it reaches the CLI boundary; a mapping whose
+  profile was deleted reports "The referenced record does not exist (it may have
+  been deleted)." Previously these surfaced as
+  "Database error: UNIQUE constraint failed: monitors.name" with an irrelevant
+  "is the database initialised?" hint.
+
 - ``SQLiteHandler`` reads now go through a ``read_cursor`` context manager (the
   read-only twin of ``transaction``), so every reader logs a database error and
   re-raises it with the same messages-and-raising convention as the mutators.

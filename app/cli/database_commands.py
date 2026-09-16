@@ -1,9 +1,11 @@
 """Database subcommands for MonitorHub."""
 
 import os
+import sqlite3
 
 from version import VERSION_STRING
 
+from app.cli.db_error_messages import integrity_error_message
 from app.cli.prompt_service import PromptService
 from app.cli.schema_versioning import DATABASE_SCHEMA_VERSION, classify
 from app.utils.constants import MONITOR_STATUS_STOPPED, MONITOR_TYPE_INSTANT
@@ -178,15 +180,21 @@ class DatabaseCommands:
         )
 
         monitor_name = "Example monitor"
-        monitor_id = self.sqlite_handler.add_monitor(
-            name=monitor_name,
-            monitor_path="/path/to/your/folder",
-            remote_path="example-remote-folder",
-            monitor_type=MONITOR_TYPE_INSTANT,
-            config={},
-            status=MONITOR_STATUS_STOPPED,
-            pid=0,
-        )
+        try:
+            monitor_id = self.sqlite_handler.add_monitor(
+                name=monitor_name,
+                monitor_path="/path/to/your/folder",
+                remote_path="example-remote-folder",
+                monitor_type=MONITOR_TYPE_INSTANT,
+                config={},
+                status=MONITOR_STATUS_STOPPED,
+                pid=0,
+            )
+        except sqlite3.IntegrityError as error:
+            self.prompt.print(
+                integrity_error_message(error, entity="Monitor", name=monitor_name)
+            )
+            return
 
         if profile_id is not None and monitor_id is not None:
             self.sqlite_handler.add_monitor_profile_map(
