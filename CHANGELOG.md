@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+- The monitor's status poller now retries a heartbeat write once when SQLite
+  reports a transient lock ("database is locked") before it warns and, as
+  before, continues with the next poll. The two attempts are separated by a
+  short pause that a shutdown request interrupts, so stopping a monitor is
+  never delayed by a retry. The poll tick is split into
+  ``MonitorRunContext._write_heartbeat`` and ``_poll_status_once``, so both
+  halves are unit-testable without a running thread.
+
 - Database constraint violations are translated into user-facing messages
   instead of raw SQLite text (new ``app/cli/db_error_messages.py``). A duplicate
   monitor name now reports "Monitor name: X already exists" from

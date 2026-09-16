@@ -32,7 +32,10 @@ the launching process remains responsible for reaping the child.
 `monitor stop` is graceful first and forceful only as a fallback:
 
 1. `_stop_monitor()` writes `status='stop'` to the database (the graceful request). The monitor's
-   own status poller (`run_monitor.py`, ~10s interval) observes this and shuts itself down.
+   own status poller (`run_monitor.py`, ~10s interval) observes this and shuts itself down. Each
+   poll tick writes a heartbeat first; if that write hits a transient SQLite lock it is retried
+   once after a short pause (interruptible, so a pending shutdown is never delayed by it) before
+   the poller logs a warning and moves on to the next tick.
 2. `stop()` waits up to `STOP_GRACE_SECONDS` (15s) for the process to exit.
 3. Only if it has not exited does `MonitorProcessManager.escalate_stop()` send `SIGTERM`, wait
    briefly, then fall back to `SIGKILL` via `MonitorProcessManager.force_kill()`.

@@ -40,6 +40,11 @@ STATUS_POLL_SECONDS = 10
 # Maximum time (seconds) to wait for the status poller thread to finish.
 POLLER_JOIN_TIMEOUT_SECONDS = 2.0
 
+# A heartbeat write that hits transient lock contention (another process writing
+# to the same database) is retried once after this short pause. The pause is
+# interruptible, so a shutdown request cancels the retry.
+HEARTBEAT_RETRY_DELAY_SECONDS = 0.5
+
 
 @dataclass
 class MonitorRunContext:
@@ -158,6 +163,60 @@ class MonitorRunContext:
             monitor_handler=monitor_handler,
         )
 
+    def _write_heartbeat(self) -> bool:
+        """
+        Write a heartbeat, retrying once after a transient database error.
+
+        The heartbeat is best-effort: a missed one makes the monitor look stale
+        to the CLI's stale-monitor detection, so a transient lock ('database is
+        locked') gets one retry before the failure is reported. Only
+        sqlite3.OperationalError is retried; other database errors fail fast.
+
+        :return: False when no heartbeat was written (unknown monitor id, or a
+            shutdown request arrived during the retry pause). A failed retry is
+            raised for the caller to report.
+        """
+        try:
+            self.sqlite_handler.update_monitor_last_heartbeat(
+                monitor_id=self.monitor_id, last_heartbeat=utc_timestamp_now()
+            )
+            return True
+        except sqlite3.OperationalError as error:
+            self.logger.info(
+                f"Heartbeat write for monitor_id={self.monitor_id} hit a transient "
+                f"database error ({error}); retrying once in "
+                f"{HEARTBEAT_RETRY_DELAY_SECONDS}s"
+            )
+
+        if self.stop_event.wait(HEARTBEAT_RETRY_DELAY_SECONDS):
+            # Shutting down: no point retrying a heartbeat nobody will read.
+            return False
+
+        # A fresh timestamp: the first attempt may have waited on the lock.
+        return self.sqlite_handler.update_monitor_last_heartbeat(
+            monitor_id=self.monitor_id, last_heartbeat=utc_timestamp_now()
+        )
+
+    def _poll_status_once(self) -> bool:
+        """
+        Write a heartbeat and check the database for a 'stop' command.
+
+        :return: True when the monitor was asked to stop via its DB status.
+        """
+        try:
+            self._write_heartbeat()
+
+            current = self.sqlite_handler.get_monitor(monitor_id=self.monitor_id)
+            if current and current.get("status") == "stop":
+                self.logger.info(
+                    f"Monitor '{self.monitor.get('name')}' (id={self.monitor_id}) "
+                    f"received 'stop' command via DB status"
+                )
+                return True
+        except Exception as e:  # noqa: BLE001
+            self.logger.warning(f"Status poller error for monitor_id={self.monitor_id}: {e}")
+        return False
+
     def run_until_shutdown(self) -> str | None:
         """
         Start the monitor handler and status poller, then block until shutdown.
@@ -197,22 +256,9 @@ class MonitorRunContext:
                 if stop_event.wait(STATUS_POLL_SECONDS):
                     break  # stop_event was set, exit cleanly
 
-                try:
-                    last_heartbeat = utc_timestamp_now()
-                    sqlite_handler.update_monitor_last_heartbeat(
-                        monitor_id=monitor_id, last_heartbeat=last_heartbeat
-                    )
-
-                    current = sqlite_handler.get_monitor(monitor_id=monitor_id)
-                    if current and current.get("status") == "stop":
-                        logger.info(
-                            f"Monitor '{monitor.get('name')}' (id={monitor_id}) "
-                            f"received 'stop' command via DB status"
-                        )
-                        request_shutdown("stop command received via DB poll")
-                        break
-                except Exception as e:  # noqa: BLE001
-                    logger.warning(f"Status poller error for monitor_id={monitor_id}: {e}")
+                if self._poll_status_once():
+                    request_shutdown("stop command received via DB poll")
+                    break
 
         self.poller_thread = threading.Thread(target=status_poller, daemon=True, name="status-poller")
         self.poller_thread.start()

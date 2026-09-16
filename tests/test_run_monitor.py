@@ -377,6 +377,116 @@ class TestRunMonitorPhases(BaseTestClass):
         # Clean up the poller thread started by run_until_shutdown.
         context.teardown(reason)
 
+    def test_write_heartbeat_retries_once_on_operational_error(self):
+        """A transient database error gets one retry before it is reported."""
+        mock_sqlite = MagicMock()
+        mock_sqlite.update_monitor_last_heartbeat.side_effect = [
+            sqlite3.OperationalError("database is locked"),
+            True,
+        ]
+        context = self._make_context(sqlite_handler=mock_sqlite)
+
+        with patch("app.monitor.run_monitor.HEARTBEAT_RETRY_DELAY_SECONDS", 0):
+            written = context._write_heartbeat()
+
+        self.assertTrue(written)
+        self.assertEqual(mock_sqlite.update_monitor_last_heartbeat.call_count, 2)
+        context.logger.warning.assert_not_called()
+
+    def test_write_heartbeat_raises_when_the_retry_also_fails(self):
+        """The failure surfaces only after the retry has been attempted."""
+        mock_sqlite = MagicMock()
+        mock_sqlite.update_monitor_last_heartbeat.side_effect = sqlite3.OperationalError(
+            "database is locked"
+        )
+        context = self._make_context(sqlite_handler=mock_sqlite)
+
+        with (
+            patch("app.monitor.run_monitor.HEARTBEAT_RETRY_DELAY_SECONDS", 0),
+            self.assertRaises(sqlite3.OperationalError),
+        ):
+            context._write_heartbeat()
+
+        self.assertEqual(mock_sqlite.update_monitor_last_heartbeat.call_count, 2)
+
+    def test_write_heartbeat_does_not_retry_other_database_errors(self):
+        """Only lock contention is transient; other database errors fail fast."""
+        mock_sqlite = MagicMock()
+        mock_sqlite.update_monitor_last_heartbeat.side_effect = sqlite3.IntegrityError("boom")
+        context = self._make_context(sqlite_handler=mock_sqlite)
+
+        with self.assertRaises(sqlite3.IntegrityError):
+            context._write_heartbeat()
+
+        mock_sqlite.update_monitor_last_heartbeat.assert_called_once()
+
+    def test_write_heartbeat_skips_the_retry_when_shutting_down(self):
+        """A shutdown request cancels the retry instead of waiting it out."""
+        mock_sqlite = MagicMock()
+        mock_sqlite.update_monitor_last_heartbeat.side_effect = sqlite3.OperationalError(
+            "database is locked"
+        )
+        context = self._make_context(sqlite_handler=mock_sqlite)
+        context.stop_event.set()
+
+        # The 30s pause would hang the test if the wait were not interruptible.
+        with patch("app.monitor.run_monitor.HEARTBEAT_RETRY_DELAY_SECONDS", 30):
+            written = context._write_heartbeat()
+
+        self.assertFalse(written)
+        mock_sqlite.update_monitor_last_heartbeat.assert_called_once()
+
+    def test_poll_status_once_detects_stop_command(self):
+        """The heartbeat is written before the status is inspected."""
+        mock_sqlite = MagicMock()
+        mock_sqlite.get_monitor.return_value = {"id": 1, "status": "stop"}
+        context = self._make_context(sqlite_handler=mock_sqlite)
+
+        self.assertTrue(context._poll_status_once())
+
+        mock_sqlite.update_monitor_last_heartbeat.assert_called_once()
+        context.logger.warning.assert_not_called()
+
+    def test_poll_status_once_warns_and_continues_on_database_error(self):
+        """A persistent database error is warned about, not raised."""
+        mock_sqlite = MagicMock()
+        mock_sqlite.update_monitor_last_heartbeat.side_effect = sqlite3.OperationalError(
+            "database is locked"
+        )
+        context = self._make_context(sqlite_handler=mock_sqlite)
+
+        with patch("app.monitor.run_monitor.HEARTBEAT_RETRY_DELAY_SECONDS", 0):
+            stop_requested = context._poll_status_once()
+
+        self.assertFalse(stop_requested)
+        self.assertEqual(mock_sqlite.update_monitor_last_heartbeat.call_count, 2)
+        context.logger.warning.assert_called_once()
+
+    def test_status_poller_requests_shutdown_on_stop_status(self):
+        """The poller observes a 'stop' status and shuts the monitor down."""
+        mock_sqlite = MagicMock()
+        mock_sqlite.get_monitor.return_value = {"id": 1, "status": "stop"}
+        mock_handler = MagicMock()
+        mock_handler.start.return_value = True
+        context = self._make_context(
+            sqlite_handler=mock_sqlite, monitor_handler=mock_handler
+        )
+
+        # Fail the test rather than hang if the poller never requests shutdown.
+        watchdog = threading.Thread(
+            target=lambda: (time.sleep(2.0), context.stop_event.set()), daemon=True
+        )
+        watchdog.start()
+
+        try:
+            with patch("app.monitor.run_monitor.STATUS_POLL_SECONDS", 0.01):
+                reason = context.run_until_shutdown()
+        finally:
+            context.stop_event.set()
+
+        self.assertEqual(reason, "stop command received via DB poll")
+        context.teardown(reason)
+
     def test_teardown_marks_stopped_and_closes(self):
         mock_sqlite = MagicMock()
         mock_handler = MagicMock()
