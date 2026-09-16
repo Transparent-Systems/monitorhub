@@ -586,6 +586,61 @@ class TestSqliteHandlerErrorConvention(BaseTestClass):
             finally:
                 handler.close()
 
+    def test_schema_readers_raise_when_the_schema_is_missing(self):
+        """The schema readers do not probe for the table; a missing table raises."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            handler = SQLiteHandler(logger=self.logger, db_dir=tmp_dir)
+            try:
+                with self.assertRaises(sqlite3.Error):
+                    handler.get_current_schema_version()
+                with self.assertRaises(sqlite3.Error):
+                    handler.get_schema_versions()
+            finally:
+                handler.close()
+
+    def test_schema_readers_tolerate_an_empty_version_table(self):
+        """An existing but empty schema_version table still yields "" and []."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            handler = SQLiteHandler(logger=self.logger, db_dir=tmp_dir)
+            try:
+                handler.create_schema()
+                with handler.transaction() as cur:
+                    cur.execute("DELETE FROM schema_version")
+
+                self.assertEqual(handler.get_current_schema_version(), "")
+                self.assertEqual(handler.get_schema_versions(), [])
+            finally:
+                handler.close()
+
+    def test_readers_log_before_raising_on_a_missing_table(self):
+        """Every reader logs the failing query and then re-raises."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            handler = SQLiteHandler(logger=self.logger, db_dir=tmp_dir)
+            try:
+                readers = {
+                    "get_monitor": lambda: handler.get_monitor(monitor_id=1),
+                    "get_monitors": handler.get_monitors,
+                    "get_profile": lambda: handler.get_profile(profile_id=1),
+                    "get_profiles": handler.get_profiles,
+                    "get_profiles_for_monitor": lambda: handler.get_profiles_for_monitor(1),
+                    "get_monitors_for_profile": lambda: handler.get_monitors_for_profile(1),
+                    "get_current_schema_version": handler.get_current_schema_version,
+                    "get_schema_versions": handler.get_schema_versions,
+                }
+                for name, reader in readers.items():
+                    with self.subTest(reader=name):
+                        with (
+                            self.assertLogs(self.logger, level="ERROR") as captured,
+                            self.assertRaises(sqlite3.Error),
+                        ):
+                            reader()
+                        self.assertTrue(
+                            captured.output,
+                            f"{name} raised without logging",
+                        )
+            finally:
+                handler.close()
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(

@@ -13,6 +13,7 @@ import os
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 import unittest
 from unittest import mock
@@ -78,6 +79,22 @@ class TestCommands(unittest.TestCase):
         self.assertIn("Version of SQLite database", text)
         self.assertIn("Supported database schema version", text)
         self.assertIn("Database schema is up to date.", text)
+
+    def test_database_version_uninitialised(self):
+        """The command reports an uninitialised database; the getter does not."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            mock_prompt = MockPromptService(inputs=[])
+            commands = build_commands(
+                logger=self.logger,
+                db_dir=tmp_dir,
+                prompt=mock_prompt,
+            )
+            try:
+                commands.database.version()
+            finally:
+                commands.sqlite_handler.close()
+
+        self.assertIn("Database is not initialised", mock_prompt.output_text)
 
     def test_database_upgrade_already_up_to_date(self):
         commands, mock_prompt = self._make_commands([])

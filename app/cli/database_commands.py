@@ -34,6 +34,10 @@ class DatabaseCommands:
         Print the database schema version together with the application version
         and the schema version this application supports.
         """
+        if not self.sqlite_handler.is_initialized():
+            self.prompt.print("Database is not initialised. Run 'database init' first.")
+            return
+
         db_version = self.sqlite_handler.get_current_schema_version()
         self.prompt.print(f"Application version: {VERSION_STRING}")
         self.prompt.print(f"Supported database schema version: {DATABASE_SCHEMA_VERSION}")

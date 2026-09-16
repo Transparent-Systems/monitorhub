@@ -44,22 +44,56 @@ class SQLiteHandler:
         return self.connection.cursor()
 
     @contextmanager
-    def transaction(self) -> Generator[sqlite3.Cursor, None, None]:
+    def transaction(
+        self, error_message: str | None = None
+    ) -> Generator[sqlite3.Cursor, None, None]:
         """
         Context manager for thread-safe atomic transactions.
+
+        :param error_message: When given, a sqlite3.Error is logged with this
+            message before being re-raised. Other exceptions are re-raised
+            without logging.
 
         Acquires the handler's RLock, yields a standard cursor, commits on
         successful completion, or rolls back if an unhandled exception is raised.
         The decision to use `with self.transaction()` is based on whether the operation mutates state 
         and requires a commit/rollback, not on the count of statements.
+        Read-only queries use :meth:`read_cursor` instead, which never commits.
         """
         with self._lock:
             cur = self.connection.cursor()
             try:
                 yield cur
                 self.connection.commit()
-            except Exception:
+            except Exception as exception:
                 self.connection.rollback()
+                if error_message and isinstance(exception, sqlite3.Error):
+                    self.logger.error(f"{error_message}: {exception}")
+                raise
+            finally:
+                cur.close()
+
+    @contextmanager
+    def read_cursor(
+        self, error_message: str | None = None
+    ) -> Generator[sqlite3.Cursor, None, None]:
+        """
+        Context manager for a thread-safe read-only cursor.
+
+        Does not commit or roll back: reads never modify the database. Use it
+        for queries; use :meth:`transaction` when state is mutated.
+
+        :param error_message: When given, a sqlite3.Error is logged with this
+            message before being re-raised. Other exceptions are re-raised
+            without logging.
+        """
+        with self._lock:
+            cur = self.connection.cursor()
+            try:
+                yield cur
+            except sqlite3.Error as exception:
+                if error_message:
+                    self.logger.error(f"{error_message}: {exception}")
                 raise
             finally:
                 cur.close()
@@ -75,13 +109,9 @@ class SQLiteHandler:
             while a database error is logged and re-raised so the caller can
             decide how to report it.
         """
-        try:
-            with self.transaction() as cur:
-                cur.execute(sql, params)
-                return cur.rowcount > 0
-        except sqlite3.Error as e:
-            self.logger.error(f"{error_message}: {e}")
-            raise
+        with self.transaction(error_message) as cur:
+            cur.execute(sql, params)
+            return cur.rowcount > 0
 
     def close(self) -> None:
         with self._lock:
@@ -101,15 +131,13 @@ class SQLiteHandler:
         The database is considered initialised when the 'monitors' table
         exists in sqlite_master.
         """
-        with self._lock:
-            cur = self.connection.cursor()
-            try:
-                cur.execute(
-                    "SELECT name FROM sqlite_master WHERE type='table' AND name='monitors'"
-                )
-                return cur.fetchone() is not None
-            finally:
-                cur.close()
+        with self.read_cursor(
+            "Error checking whether the database is initialised"
+        ) as cur:
+            cur.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='monitors'"
+            )
+            return cur.fetchone() is not None
 
     def drop_schema(self) -> None:
         """
@@ -187,6 +215,8 @@ class SQLiteHandler:
         Rows are never overwritten, so the table remains an audit trail of every
         schema version that has been applied to this database.
         """
+        # Write without committing: the caller (create_schema or
+        # apply_pending_migrations) owns the transaction and commits it.
         with self._lock:
             cur = self.connection.cursor()
             try:
@@ -208,6 +238,8 @@ class SQLiteHandler:
         ascending version order and recorded in the ``schema_version`` table.
         Returns the list of schema versions that were applied (possibly empty).
         """
+        # Deliberately not using the context managers: this loop holds the lock
+        # across several migrations and commits each one as it is applied.
         with self._lock:
             current = self.get_current_schema_version()
             applied: list[str] = []
@@ -255,58 +287,48 @@ class SQLiteHandler:
         Get the highest schema version recorded in the database.
 
         Versions are compared numerically (``"9.0.0"`` is older than
-        ``"10.0.0"``), not lexicographically. Returns ``""`` when the database
-        does not yet have a ``schema_version`` table.
+        ``"10.0.0"``), not lexicographically. Returns ``""`` when the table
+        exists but no version has been recorded yet. Raises ``sqlite3.Error``
+        when the database has no ``schema_version`` table; callers that must
+        tolerate an uninitialised database check :meth:`is_initialized` first.
         """
-        with self._lock:
-            cur = self.connection.cursor()
-            try:
-                cur.execute(
-                    "SELECT name FROM sqlite_master WHERE type='table' AND name='schema_version'"
-                )
-                if cur.fetchone() is None:
-                    return ""
-                cur.execute("SELECT version FROM schema_version")
-                rows = cur.fetchall()
-                if not rows:
-                    return ""
-                return max((row["version"] for row in rows), key=parse_version)
-            finally:
-                cur.close()
+        with self.read_cursor("Error reading the current schema version") as cur:
+            cur.execute("SELECT version FROM schema_version")
+            rows = cur.fetchall()
+
+        if not rows:
+            return ""
+        return max((row["version"] for row in rows), key=parse_version)
 
     def get_schema_versions(self) -> list[dict[str, Any]]:
         """
         Return all schema versions in ascending numeric order of version.
 
         Each entry is a dictionary with keys 'version', 'description' and
-        'updated_at'. Returns an empty list when the database does not yet have
-        a ``schema_version`` table.
+        'updated_at'. Returns an empty list when the table exists but no version has
+        been recorded yet. Raises ``sqlite3.Error`` when the database has no
+        ``schema_version`` table; callers that must tolerate an uninitialised
+        database check :meth:`is_initialized` first.
         """
-        with self._lock:
-            cur = self.connection.cursor()
-            try:
-                cur.execute(
-                    "SELECT name FROM sqlite_master WHERE type='table' AND name='schema_version'"
-                )
-                if cur.fetchone() is None:
-                    return []
-                cur.execute("""
-                    SELECT version, description, updated_at
-                    FROM schema_version
-                """)
-                rows = cur.fetchall()
-                entries = [
-                    {
-                        "version": row["version"],
-                        "description": row["description"],
-                        "updated_at": row["updated_at"],
-                    }
-                    for row in rows
-                ]
-                entries.sort(key=lambda entry: parse_version(entry["version"]))
-                return entries
-            finally:
-                cur.close()
+        with self.read_cursor("Error reading schema versions") as cur:
+            cur.execute(
+                """
+                SELECT version, description, updated_at
+                FROM schema_version
+                """
+            )
+            rows = cur.fetchall()
+
+        entries = [
+            {
+                "version": row["version"],
+                "description": row["description"],
+                "updated_at": row["updated_at"],
+            }
+            for row in rows
+        ]
+        entries.sort(key=lambda entry: parse_version(entry["version"]))
+        return entries
 
     def _row_to_monitor(self, row: sqlite3.Row) -> dict[str, Any]:
         """Convert a monitors table sqlite3.Row to a monitor dictionary."""
@@ -427,20 +449,14 @@ class SQLiteHandler:
         if monitor_id is None and monitor_name is None:
             raise ValueError("Either monitor_id or monitor_name must be provided")
 
-        with self._lock:
-            cur = self.connection.cursor()
-            try:
-                if monitor_id is not None:
-                    cur.execute("SELECT * FROM monitors WHERE id = :id", {"id": monitor_id})
-                else:
-                    cur.execute("SELECT * FROM monitors WHERE name = :name", {"name": monitor_name})
+        selector = f"id={monitor_id}" if monitor_id is not None else f"name={monitor_name!r}"
+        with self.read_cursor(f"Error fetching monitor {selector}") as cur:
+            if monitor_id is not None:
+                cur.execute("SELECT * FROM monitors WHERE id = :id", {"id": monitor_id})
+            else:
+                cur.execute("SELECT * FROM monitors WHERE name = :name", {"name": monitor_name})
 
-                row = cur.fetchone()
-            except sqlite3.Error as e:
-                self.logger.error(f"Error fetching monitor: {e}")
-                raise
-            finally:
-                cur.close()
+            row = cur.fetchone()
 
         if row:
             return self._row_to_monitor(row)
@@ -450,14 +466,11 @@ class SQLiteHandler:
         """
         Get all monitors from the database
         """
-        with self._lock:
-            cur = self.connection.cursor()
-            try:
-                cur.execute("SELECT * FROM monitors")
-                rows = cur.fetchall()
-                return [self._row_to_monitor(row) for row in rows]
-            finally:
-                cur.close()
+        with self.read_cursor("Error fetching monitors") as cur:
+            cur.execute("SELECT * FROM monitors")
+            rows = cur.fetchall()
+
+        return [self._row_to_monitor(row) for row in rows]
 
     def update_monitor_status(self, monitor_id: int, status: str) -> bool:
         """
@@ -570,20 +583,14 @@ class SQLiteHandler:
         if profile_id is None and profile_name is None:
             raise ValueError("Either profile_id or profile_name must be provided")
 
-        with self._lock:
-            cur = self.connection.cursor()
-            try:
-                if profile_id is not None:
-                    cur.execute("SELECT * FROM profiles WHERE id = :id", {"id": profile_id})
-                else:
-                    cur.execute("SELECT * FROM profiles WHERE name = :name", {"name": profile_name})
+        selector = f"id={profile_id}" if profile_id is not None else f"name={profile_name!r}"
+        with self.read_cursor(f"Error fetching profile {selector}") as cur:
+            if profile_id is not None:
+                cur.execute("SELECT * FROM profiles WHERE id = :id", {"id": profile_id})
+            else:
+                cur.execute("SELECT * FROM profiles WHERE name = :name", {"name": profile_name})
 
-                row = cur.fetchone()
-            except sqlite3.Error as e:
-                self.logger.error(f"Error occurred while fetching profile: {e}")
-                raise
-            finally:
-                cur.close()
+            row = cur.fetchone()
 
         if row:
             return self._row_to_profile(row)
@@ -642,14 +649,11 @@ class SQLiteHandler:
         """
         Get all profiles from the database
         """
-        with self._lock:
-            cur = self.connection.cursor()
-            try:
-                cur.execute("SELECT * FROM profiles")
-                rows = cur.fetchall()
-                return [self._row_to_profile(row) for row in rows]
-            finally:
-                cur.close()
+        with self.read_cursor("Error fetching profiles") as cur:
+            cur.execute("SELECT * FROM profiles")
+            rows = cur.fetchall()
+
+        return [self._row_to_profile(row) for row in rows]
 
     def add_monitor_profile_map(self, monitor_id: int, profile_id: int) -> bool:
         """
@@ -685,37 +689,41 @@ class SQLiteHandler:
         """
         Get all profiles linked to a specific monitor from the database
         """
-        with self._lock:
-            cur = self.connection.cursor()
-            try:
-                cur.execute("""
-                    SELECT p.*
-                    FROM profiles p
-                    JOIN monitor_profile_map mpm ON p.id = mpm.profile_id
-                    WHERE mpm.monitor_id = :monitor_id
-                """, {"monitor_id": monitor_id})
-                rows = cur.fetchall()
-                return [self._row_to_profile(row) for row in rows]
-            finally:
-                cur.close()
+        with self.read_cursor(
+            f"Error fetching profiles for monitor id={monitor_id}"
+        ) as cur:
+            cur.execute(
+                """
+                SELECT p.*
+                FROM profiles p
+                JOIN monitor_profile_map mpm ON p.id = mpm.profile_id
+                WHERE mpm.monitor_id = :monitor_id
+                """,
+                {"monitor_id": monitor_id},
+            )
+            rows = cur.fetchall()
+
+        return [self._row_to_profile(row) for row in rows]
 
     def get_monitors_for_profile(self, profile_id: int) -> list[dict[str, Any]]:
         """
         Get all monitors linked to a profile from the database
         """
-        with self._lock:
-            cur = self.connection.cursor()
-            try:
-                cur.execute("""
-                    SELECT m.*
-                    FROM monitors m
-                    JOIN monitor_profile_map mpm ON m.id = mpm.monitor_id
-                    WHERE mpm.profile_id = :profile_id
-                """, {"profile_id": profile_id})
-                rows = cur.fetchall()
-                return [self._row_to_monitor(row) for row in rows]
-            finally:
-                cur.close()
+        with self.read_cursor(
+            f"Error fetching monitors for profile id={profile_id}"
+        ) as cur:
+            cur.execute(
+                """
+                SELECT m.*
+                FROM monitors m
+                JOIN monitor_profile_map mpm ON m.id = mpm.monitor_id
+                WHERE mpm.profile_id = :profile_id
+                """,
+                {"profile_id": profile_id},
+            )
+            rows = cur.fetchall()
+
+        return [self._row_to_monitor(row) for row in rows]
 
     def __del__(self) -> None:
         self.close()

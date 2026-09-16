@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+- ``SQLiteHandler`` reads now go through a ``read_cursor`` context manager (the
+  read-only twin of ``transaction``), so every reader logs a database error and
+  re-raises it with the same messages-and-raising convention as the mutators.
+  ``get_current_schema_version`` and ``get_schema_versions`` no longer probe for
+  the ``schema_version`` table themselves: like every other reader they just
+  query it, returning ``""``/``[]`` only when the table exists but is empty, and
+  raising when the schema is missing. ``mhub database version`` therefore
+  reports "Database is not initialised. Run 'database init' first." for an
+  uninitialised database, rather than relying on an in-band empty string.
+
 - ``SQLiteHandler`` now follows a single error convention: an expected absence
   returns ``None`` (unknown monitor/profile) or ``False`` (an UPDATE/DELETE that
   matched no row), while an unexpected ``sqlite3.Error`` is logged and re-raised
