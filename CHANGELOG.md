@@ -9,6 +9,12 @@
   the behaviour of a standalone monitor process are unchanged; only the
   internal structure moved.
 
+- Internal refactor: the monitor lifecycle phases are now methods of
+  ``MonitorRunContext`` (``from_args``, ``run_until_shutdown`` and
+  ``teardown``), with a ``run()`` convenience that combines them;
+  ``parse_args`` stays a module-level function. Behaviour and the public entry
+  points are unchanged.
+
 - Internal refactor: the oversized ``MonitorCommands`` and ``ProfileCommands``
   handlers are split into focused collaborators. ``MonitorProcessManager``
   now owns the launch/track/kill/reap mechanics of monitor child processes,

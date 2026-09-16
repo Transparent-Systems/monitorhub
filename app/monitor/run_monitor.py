@@ -45,10 +45,10 @@ class MonitorRunContext:
     """
     Runtime state shared by the monitor lifecycle phases.
 
-    Built by ``load_context`` and consumed by ``run_until_shutdown`` and
-    ``teardown``. Keeping the state in one object lets every phase be tested in
-    isolation while sharing the same logger, database handler and monitor
-    handler.
+    Built by ``from_args`` and driven by ``run`` (which combines
+    ``run_until_shutdown`` and ``teardown``). Keeping the state in one object
+    lets every phase be tested in isolation while sharing the same logger,
+    database handler and monitor handler.
     """
     monitor_id: int
     db_dir: str
@@ -60,6 +60,218 @@ class MonitorRunContext:
     monitor_handler: MonitorHandler
     stop_event: threading.Event = field(default_factory=threading.Event)
     poller_thread: threading.Thread | None = None
+
+    @classmethod
+    def from_args(cls, args: argparse.Namespace) -> "MonitorRunContext | None":
+        """
+        Prepare a monitor run: logging, database, configuration and handler.
+
+        Loads the monitor and its profiles, enforces the single-instance guard,
+        marks the monitor as 'running' and creates the handler for its
+        monitor_type.
+
+        :return: A populated MonitorRunContext, or None when a precondition
+            fails. On failure the reason is logged, the status is left
+            consistent and the database connection is closed.
+        """
+        monitor_id = args.monitor_id
+        db_dir = args.db_dir
+
+        # Setup logging
+        logger, log_config = setup_logging(args.log, log_level=args.log_level)
+        logger.info(f"Monitor process started with PID {os.getpid()} for monitor_id={monitor_id}")
+
+        # Initialize database handler
+        sqlite_handler = SQLiteHandler(logger=logger, db_dir=db_dir)
+
+        # Load monitor configuration from database
+        monitor = sqlite_handler.get_monitor(monitor_id=monitor_id)
+        if not monitor:
+            logger.error(f"Monitor with id={monitor_id} not found in database. Exiting.")
+            sqlite_handler.close()
+            return None
+
+        # Load profiles from database for this monitor
+        profiles = sqlite_handler.get_profiles_for_monitor(monitor_id=monitor_id)
+        # If no profiles are found, log an error and exit.
+        if not profiles:
+            logger.error(f"No profiles found for monitor '{monitor.get('name')}' (id={monitor_id}). Exiting.")
+            sqlite_handler.close()
+            return None
+
+        # Single-instance guard: refuse to start if another live process still owns
+        # this monitor. This closes the stop -> start race where a graceful stop was
+        # requested (status 'stop') but the previous process had not yet exited, and
+        # prevents two observers from running on the same monitor path.
+        existing_pid = int(monitor.get("pid") or 0)
+        if existing_pid and existing_pid != os.getpid() and is_process_alive(existing_pid):
+            logger.error(
+                f"Monitor '{monitor.get('name')}' (id={monitor_id}) is already running as "
+                f"pid={existing_pid}. Exiting to avoid a duplicate monitor process."
+            )
+            sqlite_handler.close()
+            return None
+
+        # Update status to "running" and store PID
+        pid = os.getpid()
+        sqlite_handler.update_monitor_status(monitor_id=monitor_id, status="running")
+        sqlite_handler.update_monitor_pid(monitor_id=monitor_id, pid=pid)
+
+        last_run = utc_timestamp_now()
+        sqlite_handler.update_monitor_last_run(monitor_id=monitor_id, last_run=last_run)
+
+        # Write the initial heartbeat immediately so the monitor is not misdetected
+        # as stale during the window before the status poller's first tick (which
+        # otherwise would not happen for another 10 seconds).
+        last_heartbeat = utc_timestamp_now()
+        sqlite_handler.update_monitor_last_heartbeat(monitor_id=monitor_id, last_heartbeat=last_heartbeat)
+
+        logger.info(f"Monitor '{monitor.get('name')}' (id={monitor_id}) status set to 'running' with PID {pid}")
+
+        # Create the monitor handler based on its monitor_type
+        monitor_type = monitor.get("monitor_type", "")
+        try:
+            monitor_handler: MonitorHandler = MonitorHandlerFactory.create(
+                monitor_type=monitor_type,
+                monitor=monitor,
+                profiles=profiles,
+                log_config=log_config,
+            )
+        except ValueError as e:
+            logger.error(
+                f"Failed to start monitor '{monitor.get('name')}' (id={monitor_id}): {e}"
+            )
+            sqlite_handler.update_monitor_status(monitor_id=monitor_id, status="stopped")
+            sqlite_handler.update_monitor_pid(monitor_id=monitor_id, pid=0)
+            sqlite_handler.close()
+            return None
+
+        return cls(
+            monitor_id=monitor_id,
+            db_dir=db_dir,
+            logger=logger,
+            log_config=log_config,
+            sqlite_handler=sqlite_handler,
+            monitor=monitor,
+            profiles=profiles,
+            monitor_handler=monitor_handler,
+        )
+
+    def run_until_shutdown(self) -> str | None:
+        """
+        Start the monitor handler and status poller, then block until shutdown.
+
+        :return: The shutdown reason, or None when the handler failed to start.
+            On start failure the monitor is marked 'stopped' and the database
+            closed, matching the behaviour before this class was introduced.
+        """
+        monitor_id = self.monitor_id
+        logger = self.logger
+        monitor = self.monitor
+        sqlite_handler = self.sqlite_handler
+        stop_event = self.stop_event
+
+        # Reason for shutdown
+        shutdown_reason = "normal exit"
+        shutdown_lock = threading.Lock()
+
+        def request_shutdown(reason: str):
+            """Signal shutdown to be handled cleanly by the main thread."""
+            nonlocal shutdown_reason
+            with shutdown_lock:
+                if not stop_event.is_set():
+                    shutdown_reason = reason
+                stop_event.set()
+
+        if not self.monitor_handler.start(on_complete=request_shutdown):
+            logger.error(f"Failed to start monitor '{monitor.get('name')}' (id={monitor_id}). Exiting.")
+            sqlite_handler.update_monitor_status(monitor_id=monitor_id, status="stopped")
+            sqlite_handler.update_monitor_pid(monitor_id=monitor_id, pid=0)
+            sqlite_handler.close()
+            return None
+
+        def status_poller():
+            """Background thread: periodically checks DB for a 'stop' command."""
+            while not stop_event.is_set():
+                if stop_event.wait(STATUS_POLL_SECONDS):
+                    break  # stop_event was set, exit cleanly
+
+                try:
+                    last_heartbeat = utc_timestamp_now()
+                    sqlite_handler.update_monitor_last_heartbeat(
+                        monitor_id=monitor_id, last_heartbeat=last_heartbeat
+                    )
+
+                    current = sqlite_handler.get_monitor(monitor_id=monitor_id)
+                    if current and current.get("status") == "stop":
+                        logger.info(
+                            f"Monitor '{monitor.get('name')}' (id={monitor_id}) "
+                            f"received 'stop' command via DB status"
+                        )
+                        request_shutdown("stop command received via DB poll")
+                        break
+                except Exception as e:  # noqa: BLE001
+                    logger.warning(f"Status poller error for monitor_id={monitor_id}: {e}")
+
+        self.poller_thread = threading.Thread(target=status_poller, daemon=True, name="status-poller")
+        self.poller_thread.start()
+
+        def shutdown_handler(signum, frame):
+            request_shutdown(f"received signal {signal.Signals(signum).name}")
+
+        signal.signal(signal.SIGTERM, shutdown_handler)
+        signal.signal(signal.SIGINT, shutdown_handler)
+
+        # Block the main thread cleanly until shutdown is requested.
+        # Using a timed wait on stop_event allows signals (SIGINT/SIGTERM) to be
+        # processed promptly by the main thread without blocking indefinitely.
+        try:
+            while not stop_event.is_set():
+                stop_event.wait(timeout=1.0)
+        except (KeyboardInterrupt, SystemExit):
+            request_shutdown("interrupted")
+
+        return shutdown_reason
+
+    def teardown(self, reason: str) -> None:
+        """
+        Stop the handler and poller, then record the stopped state in the DB.
+        """
+        monitor_id = self.monitor_id
+        logger = self.logger
+        monitor = self.monitor
+
+        # Main thread performs full teardown and cleanup
+        logger.info(
+            f"Shutting down monitor '{monitor.get('name')}' (id={monitor_id}) — reason: {reason}"
+        )
+        self.stop_event.set()
+        self.monitor_handler.stop()
+        poller_thread = self.poller_thread
+        if poller_thread is not None and poller_thread.is_alive():
+            poller_thread.join(timeout=POLLER_JOIN_TIMEOUT_SECONDS)
+
+        self.sqlite_handler.update_monitor_status(monitor_id=monitor_id, status="stopped")
+        self.sqlite_handler.update_monitor_pid(monitor_id=monitor_id, pid=0)
+        logger.info(
+            f"Monitor '{monitor.get('name')}' (id={monitor_id}) status set to 'stopped'"
+        )
+        self.sqlite_handler.close()
+
+    def run(self) -> int:
+        """
+        Run the monitor to completion and return its exit code.
+
+        Combines run_until_shutdown() with teardown(). Returns 1 when the
+        handler failed to start; in that case the stopped state has already
+        been persisted and no teardown is performed.
+        """
+        reason = self.run_until_shutdown()
+        if reason is None:
+            return 1
+
+        self.teardown(reason)
+        return 0
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -100,204 +312,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def load_context(args: argparse.Namespace) -> MonitorRunContext | None:
-    """
-    Prepare a monitor run: logging, database, configuration and handler.
-
-    Loads the monitor and its profiles, enforces the single-instance guard,
-    marks the monitor as 'running' and creates the handler for its monitor_type.
-
-    :return: A populated MonitorRunContext, or None when a precondition fails.
-        On failure the reason is logged, the status is left consistent and the
-        database connection is closed.
-    """
-    monitor_id = args.monitor_id
-    db_dir = args.db_dir
-
-    # Setup logging
-    logger, log_config = setup_logging(args.log, log_level=args.log_level)
-    logger.info(f"Monitor process started with PID {os.getpid()} for monitor_id={monitor_id}")
-
-    # Initialize database handler
-    sqlite_handler = SQLiteHandler(logger=logger, db_dir=db_dir)
-
-    # Load monitor configuration from database
-    monitor = sqlite_handler.get_monitor(monitor_id=monitor_id)
-    if not monitor:
-        logger.error(f"Monitor with id={monitor_id} not found in database. Exiting.")
-        sqlite_handler.close()
-        return None
-
-    # Load profiles from database for this monitor
-    profiles = sqlite_handler.get_profiles_for_monitor(monitor_id=monitor_id)
-    # If no profiles are found, log an error and exit.
-    if not profiles:
-        logger.error(f"No profiles found for monitor '{monitor.get('name')}' (id={monitor_id}). Exiting.")
-        sqlite_handler.close()
-        return None
-
-    # Single-instance guard: refuse to start if another live process still owns
-    # this monitor. This closes the stop -> start race where a graceful stop was
-    # requested (status 'stop') but the previous process had not yet exited, and
-    # prevents two observers from running on the same monitor path.
-    existing_pid = int(monitor.get("pid") or 0)
-    if existing_pid and existing_pid != os.getpid() and is_process_alive(existing_pid):
-        logger.error(
-            f"Monitor '{monitor.get('name')}' (id={monitor_id}) is already running as "
-            f"pid={existing_pid}. Exiting to avoid a duplicate monitor process."
-        )
-        sqlite_handler.close()
-        return None
-
-    # Update status to "running" and store PID
-    pid = os.getpid()
-    sqlite_handler.update_monitor_status(monitor_id=monitor_id, status="running")
-    sqlite_handler.update_monitor_pid(monitor_id=monitor_id, pid=pid)
-
-    last_run = utc_timestamp_now()
-    sqlite_handler.update_monitor_last_run(monitor_id=monitor_id, last_run=last_run)
-
-    # Write the initial heartbeat immediately so the monitor is not misdetected
-    # as stale during the window before the status poller's first tick (which
-    # otherwise would not happen for another 10 seconds).
-    last_heartbeat = utc_timestamp_now()
-    sqlite_handler.update_monitor_last_heartbeat(monitor_id=monitor_id, last_heartbeat=last_heartbeat)
-
-    logger.info(f"Monitor '{monitor.get('name')}' (id={monitor_id}) status set to 'running' with PID {pid}")
-
-    # Create the monitor handler based on its monitor_type
-    monitor_type = monitor.get("monitor_type", "")
-    try:
-        monitor_handler: MonitorHandler = MonitorHandlerFactory.create(
-            monitor_type=monitor_type,
-            monitor=monitor,
-            profiles=profiles,
-            log_config=log_config,
-        )
-    except ValueError as e:
-        logger.error(
-            f"Failed to start monitor '{monitor.get('name')}' (id={monitor_id}): {e}"
-        )
-        sqlite_handler.update_monitor_status(monitor_id=monitor_id, status="stopped")
-        sqlite_handler.update_monitor_pid(monitor_id=monitor_id, pid=0)
-        sqlite_handler.close()
-        return None
-
-    return MonitorRunContext(
-        monitor_id=monitor_id,
-        db_dir=db_dir,
-        logger=logger,
-        log_config=log_config,
-        sqlite_handler=sqlite_handler,
-        monitor=monitor,
-        profiles=profiles,
-        monitor_handler=monitor_handler,
-    )
-
-
-def run_until_shutdown(context: MonitorRunContext) -> str | None:
-    """
-    Start the monitor handler and status poller, then block until shutdown.
-
-    :return: The shutdown reason, or None when the handler failed to start. On
-        start failure the monitor is marked 'stopped' and the database closed,
-        matching the previous behaviour of the single-function implementation.
-    """
-    monitor_id = context.monitor_id
-    logger = context.logger
-    monitor = context.monitor
-    sqlite_handler = context.sqlite_handler
-    stop_event = context.stop_event
-
-    # Reason for shutdown
-    shutdown_reason = "normal exit"
-    shutdown_lock = threading.Lock()
-
-    def request_shutdown(reason: str):
-        """Signal shutdown to be handled cleanly by the main thread."""
-        nonlocal shutdown_reason
-        with shutdown_lock:
-            if not stop_event.is_set():
-                shutdown_reason = reason
-            stop_event.set()
-
-    if not context.monitor_handler.start(on_complete=request_shutdown):
-        logger.error(f"Failed to start monitor '{monitor.get('name')}' (id={monitor_id}). Exiting.")
-        sqlite_handler.update_monitor_status(monitor_id=monitor_id, status="stopped")
-        sqlite_handler.update_monitor_pid(monitor_id=monitor_id, pid=0)
-        sqlite_handler.close()
-        return None
-
-    def status_poller():
-        """Background thread: periodically checks DB for a 'stop' command."""
-        while not stop_event.is_set():
-            if stop_event.wait(STATUS_POLL_SECONDS):
-                break  # stop_event was set, exit cleanly
-
-            try:
-                last_heartbeat = utc_timestamp_now()
-                sqlite_handler.update_monitor_last_heartbeat(
-                    monitor_id=monitor_id, last_heartbeat=last_heartbeat
-                )
-
-                current = sqlite_handler.get_monitor(monitor_id=monitor_id)
-                if current and current.get("status") == "stop":
-                    logger.info(
-                        f"Monitor '{monitor.get('name')}' (id={monitor_id}) "
-                        f"received 'stop' command via DB status"
-                    )
-                    request_shutdown("stop command received via DB poll")
-                    break
-            except Exception as e:  # noqa: BLE001
-                logger.warning(f"Status poller error for monitor_id={monitor_id}: {e}")
-
-    context.poller_thread = threading.Thread(target=status_poller, daemon=True, name="status-poller")
-    context.poller_thread.start()
-
-    def shutdown_handler(signum, frame):
-        request_shutdown(f"received signal {signal.Signals(signum).name}")
-
-    signal.signal(signal.SIGTERM, shutdown_handler)
-    signal.signal(signal.SIGINT, shutdown_handler)
-
-    # Block the main thread cleanly until shutdown is requested.
-    # Using a timed wait on stop_event allows signals (SIGINT/SIGTERM) to be
-    # processed promptly by the main thread without blocking indefinitely.
-    try:
-        while not stop_event.is_set():
-            stop_event.wait(timeout=1.0)
-    except (KeyboardInterrupt, SystemExit):
-        request_shutdown("interrupted")
-
-    return shutdown_reason
-
-
-def teardown(context: MonitorRunContext, reason: str) -> None:
-    """
-    Stop the handler and poller, then record the stopped state in the database.
-    """
-    monitor_id = context.monitor_id
-    logger = context.logger
-    monitor = context.monitor
-
-    # Main thread performs full teardown and cleanup
-    logger.info(
-        f"Shutting down monitor '{monitor.get('name')}' (id={monitor_id}) — reason: {reason}"
-    )
-    context.stop_event.set()
-    context.monitor_handler.stop()
-    poller_thread = context.poller_thread
-    if poller_thread is not None and poller_thread.is_alive():
-        poller_thread.join(timeout=POLLER_JOIN_TIMEOUT_SECONDS)
-
-    context.sqlite_handler.update_monitor_status(monitor_id=monitor_id, status="stopped")
-    context.sqlite_handler.update_monitor_pid(monitor_id=monitor_id, pid=0)
-    logger.info(
-        f"Monitor '{monitor.get('name')}' (id={monitor_id}) status set to 'stopped'"
-    )
-    context.sqlite_handler.close()
-
-
 def run_monitor_main(argv=None) -> int:
     """
     Run a single monitor as a standalone entry point.
@@ -308,15 +322,14 @@ def run_monitor_main(argv=None) -> int:
     """
     args = parse_args(argv)
 
-    context = load_context(args)
+    context = MonitorRunContext.from_args(args)
     if context is None:
         sys.exit(1)
 
-    reason = run_until_shutdown(context)
-    if reason is None:
-        sys.exit(1)
+    exit_code = context.run()
+    if exit_code != 0:
+        sys.exit(exit_code)
 
-    teardown(context, reason)
     return 0
 
 
