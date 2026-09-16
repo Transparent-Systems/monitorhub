@@ -1,3 +1,5 @@
+import contextlib
+import io
 import os
 import signal
 import subprocess
@@ -6,7 +8,15 @@ import threading
 import time
 from unittest.mock import MagicMock, patch
 
-from app.monitor.run_monitor import main, run_monitor_main
+from app.monitor.run_monitor import (
+    MonitorRunContext,
+    load_context,
+    main,
+    parse_args,
+    run_monitor_main,
+    run_until_shutdown,
+    teardown,
+)
 
 from tests.base_test_class import BaseTestClass
 
@@ -193,3 +203,199 @@ class TestRunMonitor(BaseTestClass):
         mock_sqlite.update_monitor_status.assert_called_with(monitor_id=1, status="stopped")
         mock_sqlite.update_monitor_pid.assert_called_with(monitor_id=1, pid=0)
         mock_sqlite.close.assert_called_once()
+
+
+class TestRunMonitorPhases(BaseTestClass):
+    """Unit tests for the individual monitor lifecycle phases.
+
+    These exercise parse_args/load_context/run_until_shutdown/teardown in
+    isolation. The end-to-end behaviour is covered by TestRunMonitor above.
+    """
+
+    def _make_context(self, **overrides) -> MonitorRunContext:
+        """Build a MonitorRunContext with mocked collaborators."""
+        defaults = {
+            "monitor_id": 1,
+            "db_dir": self.db_dir,
+            "logger": MagicMock(),
+            "log_config": {},
+            "sqlite_handler": MagicMock(),
+            "monitor": {"id": 1, "name": "test_monitor", "monitor_type": "scheduled"},
+            "profiles": [{"id": 1, "name": "p1"}],
+            "monitor_handler": MagicMock(),
+        }
+        defaults.update(overrides)
+        return MonitorRunContext(**defaults)
+
+    def test_parse_args_defaults(self):
+        args = parse_args(["--monitor-id", "7"])
+
+        self.assertEqual(args.monitor_id, 7)
+        self.assertEqual(args.db_dir, "data")
+        self.assertEqual(args.log, "conf/log.yaml")
+        self.assertIsNone(args.log_level)
+
+    def test_parse_args_requires_monitor_id(self):
+        with self.assertRaises(SystemExit) as cm, contextlib.redirect_stderr(io.StringIO()):
+            parse_args([])
+
+        self.assertEqual(cm.exception.code, 2)
+
+    @patch("app.monitor.run_monitor.SQLiteHandler")
+    @patch("app.monitor.run_monitor.setup_logging")
+    def test_load_context_missing_monitor_returns_none(
+        self, mock_setup_logging, mock_sqlite_cls
+    ):
+        mock_setup_logging.return_value = (MagicMock(), {})
+        mock_sqlite = MagicMock()
+        mock_sqlite.get_monitor.return_value = None
+        mock_sqlite_cls.return_value = mock_sqlite
+
+        context = load_context(parse_args(["--monitor-id", "999", "--db-dir", self.db_dir]))
+
+        self.assertIsNone(context)
+        mock_sqlite.close.assert_called_once()
+
+    @patch("app.monitor.run_monitor.SQLiteHandler")
+    @patch("app.monitor.run_monitor.setup_logging")
+    def test_load_context_missing_profiles_returns_none(
+        self, mock_setup_logging, mock_sqlite_cls
+    ):
+        mock_setup_logging.return_value = (MagicMock(), {})
+        mock_sqlite = MagicMock()
+        mock_sqlite.get_monitor.return_value = {"id": 1, "name": "test_monitor"}
+        mock_sqlite.get_profiles_for_monitor.return_value = []
+        mock_sqlite_cls.return_value = mock_sqlite
+
+        context = load_context(parse_args(["--monitor-id", "1", "--db-dir", self.db_dir]))
+
+        self.assertIsNone(context)
+        mock_sqlite.close.assert_called_once()
+
+    @patch("app.monitor.run_monitor.MonitorHandlerFactory")
+    @patch("app.monitor.run_monitor.SQLiteHandler")
+    @patch("app.monitor.run_monitor.setup_logging")
+    def test_load_context_returns_context(
+        self, mock_setup_logging, mock_sqlite_cls, mock_factory
+    ):
+        mock_setup_logging.return_value = (MagicMock(), {"version": 1})
+        mock_sqlite = MagicMock()
+        mock_sqlite.get_monitor.return_value = {
+            "id": 1,
+            "name": "test_monitor",
+            "monitor_type": "scheduled",
+            "pid": 0,
+        }
+        mock_sqlite.get_profiles_for_monitor.return_value = [{"id": 1, "name": "p1"}]
+        mock_sqlite_cls.return_value = mock_sqlite
+        mock_handler = MagicMock()
+        mock_factory.create.return_value = mock_handler
+
+        context = load_context(parse_args(["--monitor-id", "1", "--db-dir", self.db_dir]))
+
+        self.assertIsInstance(context, MonitorRunContext)
+        self.assertEqual(context.monitor_id, 1)
+        self.assertEqual(context.db_dir, self.db_dir)
+        self.assertIs(context.sqlite_handler, mock_sqlite)
+        self.assertIs(context.monitor_handler, mock_handler)
+        self.assertIsNotNone(context.stop_event)
+        mock_sqlite.update_monitor_status.assert_called_with(monitor_id=1, status="running")
+        mock_sqlite.update_monitor_pid.assert_called_with(monitor_id=1, pid=os.getpid())
+        mock_sqlite.update_monitor_last_run.assert_called_once()
+        mock_sqlite.update_monitor_last_heartbeat.assert_called_once()
+        mock_factory.create.assert_called_once()
+
+    @patch("app.monitor.run_monitor.MonitorHandlerFactory")
+    @patch("app.monitor.run_monitor.SQLiteHandler")
+    @patch("app.monitor.run_monitor.setup_logging")
+    @patch("app.monitor.run_monitor.is_process_alive")
+    def test_load_context_refuses_when_pid_alive(
+        self, mock_is_alive, mock_setup_logging, mock_sqlite_cls, mock_factory
+    ):
+        """Phase-level single-instance guard: no handler is created."""
+        mock_setup_logging.return_value = (MagicMock(), {})
+        mock_is_alive.return_value = True
+        mock_sqlite = MagicMock()
+        mock_sqlite.get_monitor.return_value = {
+            "id": 1,
+            "name": "test_monitor",
+            "monitor_type": "instant",
+            "status": "stop",
+            "pid": os.getpid() + 12345,
+        }
+        mock_sqlite.get_profiles_for_monitor.return_value = [{"id": 1, "name": "p1"}]
+        mock_sqlite_cls.return_value = mock_sqlite
+
+        context = load_context(parse_args(["--monitor-id", "1", "--db-dir", self.db_dir]))
+
+        self.assertIsNone(context)
+        mock_factory.create.assert_not_called()
+        mock_sqlite.update_monitor_status.assert_not_called()
+        mock_sqlite.close.assert_called_once()
+
+    def test_run_until_shutdown_start_failure_returns_none(self):
+        mock_sqlite = MagicMock()
+        mock_handler = MagicMock()
+        mock_handler.start.return_value = False
+        context = self._make_context(
+            sqlite_handler=mock_sqlite, monitor_handler=mock_handler
+        )
+
+        reason = run_until_shutdown(context)
+
+        self.assertIsNone(reason)
+        mock_handler.stop.assert_not_called()
+        mock_sqlite.update_monitor_status.assert_called_with(monitor_id=1, status="stopped")
+        mock_sqlite.update_monitor_pid.assert_called_with(monitor_id=1, pid=0)
+        mock_sqlite.close.assert_called_once()
+
+    def test_run_until_shutdown_returns_reason(self):
+        mock_handler = MagicMock()
+
+        def fake_start(on_complete=None):
+            def complete_worker():
+                time.sleep(0.05)
+                if on_complete:
+                    on_complete("one-off task finished")
+
+            threading.Thread(target=complete_worker).start()
+            return True
+
+        mock_handler.start.side_effect = fake_start
+        context = self._make_context(monitor_handler=mock_handler)
+
+        reason = run_until_shutdown(context)
+
+        self.assertEqual(reason, "one-off task finished")
+        # Clean up the poller thread started by run_until_shutdown.
+        teardown(context, reason)
+
+    def test_teardown_marks_stopped_and_closes(self):
+        mock_sqlite = MagicMock()
+        mock_handler = MagicMock()
+        mock_poller = MagicMock()
+        mock_poller.is_alive.return_value = True
+        context = self._make_context(
+            sqlite_handler=mock_sqlite,
+            monitor_handler=mock_handler,
+            poller_thread=mock_poller,
+        )
+
+        teardown(context, "unit-test reason")
+
+        self.assertTrue(context.stop_event.is_set())
+        mock_handler.stop.assert_called_once()
+        mock_poller.join.assert_called_once()
+        mock_sqlite.update_monitor_status.assert_called_with(monitor_id=1, status="stopped")
+        mock_sqlite.update_monitor_pid.assert_called_with(monitor_id=1, pid=0)
+        mock_sqlite.close.assert_called_once()
+
+    def test_teardown_without_poller_thread(self):
+        mock_sqlite = MagicMock()
+        context = self._make_context(sqlite_handler=mock_sqlite, poller_thread=None)
+
+        teardown(context, "no poller")
+
+        mock_sqlite.update_monitor_status.assert_called_with(monitor_id=1, status="stopped")
+        mock_sqlite.close.assert_called_once()
+

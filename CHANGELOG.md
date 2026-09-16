@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+- Internal refactor: ``run_monitor_main()`` in ``app/monitor/run_monitor.py`` is
+  decomposed into the lifecycle phases ``parse_args``, ``load_context``,
+  ``run_until_shutdown`` and ``teardown``, which share a ``MonitorRunContext``
+  dataclass. The public entry points (``run_monitor_main`` and ``main``) and
+  the behaviour of a standalone monitor process are unchanged; only the
+  internal structure moved.
+
 - Internal refactor: the oversized ``MonitorCommands`` and ``ProfileCommands``
   handlers are split into focused collaborators. ``MonitorProcessManager``
   now owns the launch/track/kill/reap mechanics of monitor child processes,
