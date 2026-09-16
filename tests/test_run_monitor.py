@@ -205,7 +205,7 @@ class TestRunMonitor(BaseTestClass):
 class TestRunMonitorPhases(BaseTestClass):
     """Unit tests for the individual monitor lifecycle phases.
 
-    These exercise parse_args, MonitorRunContext.from_args and the
+    These exercise parse_args, MonitorRunContext.get_monitor_context and the
     run_until_shutdown/teardown/run methods in isolation. The end-to-end
     behaviour is covered by TestRunMonitor above.
     """
@@ -241,7 +241,7 @@ class TestRunMonitorPhases(BaseTestClass):
 
     @patch("app.monitor.run_monitor.SQLiteHandler")
     @patch("app.monitor.run_monitor.setup_logging")
-    def test_from_args_missing_monitor_returns_none(
+    def test_get_monitor_context_missing_monitor_returns_none(
         self, mock_setup_logging, mock_sqlite_cls
     ):
         mock_setup_logging.return_value = (MagicMock(), {})
@@ -249,7 +249,7 @@ class TestRunMonitorPhases(BaseTestClass):
         mock_sqlite.get_monitor.return_value = None
         mock_sqlite_cls.return_value = mock_sqlite
 
-        context = MonitorRunContext.from_args(
+        context = MonitorRunContext.get_monitor_context(
             parse_args(["--monitor-id", "999", "--db-dir", self.db_dir])
         )
 
@@ -258,7 +258,7 @@ class TestRunMonitorPhases(BaseTestClass):
 
     @patch("app.monitor.run_monitor.SQLiteHandler")
     @patch("app.monitor.run_monitor.setup_logging")
-    def test_from_args_missing_profiles_returns_none(
+    def test_get_monitor_context_missing_profiles_returns_none(
         self, mock_setup_logging, mock_sqlite_cls
     ):
         mock_setup_logging.return_value = (MagicMock(), {})
@@ -267,7 +267,7 @@ class TestRunMonitorPhases(BaseTestClass):
         mock_sqlite.get_profiles_for_monitor.return_value = []
         mock_sqlite_cls.return_value = mock_sqlite
 
-        context = MonitorRunContext.from_args(
+        context = MonitorRunContext.get_monitor_context(
             parse_args(["--monitor-id", "1", "--db-dir", self.db_dir])
         )
 
@@ -277,7 +277,7 @@ class TestRunMonitorPhases(BaseTestClass):
     @patch("app.monitor.run_monitor.MonitorHandlerFactory")
     @patch("app.monitor.run_monitor.SQLiteHandler")
     @patch("app.monitor.run_monitor.setup_logging")
-    def test_from_args_returns_context(
+    def test_get_monitor_context_returns_context(
         self, mock_setup_logging, mock_sqlite_cls, mock_factory
     ):
         mock_setup_logging.return_value = (MagicMock(), {"version": 1})
@@ -293,7 +293,7 @@ class TestRunMonitorPhases(BaseTestClass):
         mock_handler = MagicMock()
         mock_factory.create.return_value = mock_handler
 
-        context = MonitorRunContext.from_args(
+        context = MonitorRunContext.get_monitor_context(
             parse_args(["--monitor-id", "1", "--db-dir", self.db_dir])
         )
 
@@ -313,7 +313,7 @@ class TestRunMonitorPhases(BaseTestClass):
     @patch("app.monitor.run_monitor.SQLiteHandler")
     @patch("app.monitor.run_monitor.setup_logging")
     @patch("app.monitor.run_monitor.is_process_alive")
-    def test_from_args_refuses_when_pid_alive(
+    def test_get_monitor_context_refuses_when_pid_alive(
         self, mock_is_alive, mock_setup_logging, mock_sqlite_cls, mock_factory
     ):
         """Phase-level single-instance guard: no handler is created."""
@@ -330,7 +330,7 @@ class TestRunMonitorPhases(BaseTestClass):
         mock_sqlite.get_profiles_for_monitor.return_value = [{"id": 1, "name": "p1"}]
         mock_sqlite_cls.return_value = mock_sqlite
 
-        context = MonitorRunContext.from_args(
+        context = MonitorRunContext.get_monitor_context(
             parse_args(["--monitor-id", "1", "--db-dir", self.db_dir])
         )
 

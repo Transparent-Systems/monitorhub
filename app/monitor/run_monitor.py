@@ -45,7 +45,7 @@ class MonitorRunContext:
     """
     Runtime state shared by the monitor lifecycle phases.
 
-    Built by ``from_args`` and driven by ``run`` (which combines
+    Built by ``get_monitor_context`` and driven by ``run`` (which combines
     ``run_until_shutdown`` and ``teardown``). Keeping the state in one object
     lets every phase be tested in isolation while sharing the same logger,
     database handler and monitor handler.
@@ -62,7 +62,7 @@ class MonitorRunContext:
     poller_thread: threading.Thread | None = None
 
     @classmethod
-    def from_args(cls, args: argparse.Namespace) -> "MonitorRunContext | None":
+    def get_monitor_context(cls, args: argparse.Namespace) -> "MonitorRunContext | None":
         """
         Prepare a monitor run: logging, database, configuration and handler.
 
@@ -322,7 +322,7 @@ def run_monitor_main(argv=None) -> int:
     """
     args = parse_args(argv)
 
-    context = MonitorRunContext.from_args(args)
+    context = MonitorRunContext.get_monitor_context(args)
     if context is None:
         sys.exit(1)
 

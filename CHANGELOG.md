@@ -3,14 +3,14 @@
 ## [Unreleased]
 
 - Internal refactor: ``run_monitor_main()`` in ``app/monitor/run_monitor.py`` is
-  decomposed into the lifecycle phases ``parse_args``, ``load_context``,
+  decomposed into the lifecycle phases ``parse_args``, ``get_monitor_context``,
   ``run_until_shutdown`` and ``teardown``, which share a ``MonitorRunContext``
   dataclass. The public entry points (``run_monitor_main`` and ``main``) and
   the behaviour of a standalone monitor process are unchanged; only the
   internal structure moved.
 
 - Internal refactor: the monitor lifecycle phases are now methods of
-  ``MonitorRunContext`` (``from_args``, ``run_until_shutdown`` and
+  ``MonitorRunContext`` (``get_monitor_context``, ``run_until_shutdown`` and
   ``teardown``), with a ``run()`` convenience that combines them;
   ``parse_args`` stays a module-level function. Behaviour and the public entry
   points are unchanged.
