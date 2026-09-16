@@ -2,6 +2,7 @@ import contextlib
 import io
 import os
 import signal
+import sqlite3
 import subprocess
 import sys
 import threading
@@ -438,5 +439,41 @@ class TestRunMonitorPhases(BaseTestClass):
 
         self.assertEqual(exit_code, 1)
         mock_handler.stop.assert_not_called()
+        mock_sqlite.close.assert_called_once()
+
+
+    def test_run_monitor_main_reports_database_error_from_context(self):
+        """A database error is reported cleanly instead of tracebacking."""
+        with patch.object(
+            MonitorRunContext,
+            "get_monitor_context",
+            side_effect=sqlite3.Error("no such table: monitors"),
+        ), contextlib.redirect_stderr(io.StringIO()):
+            exit_code = run_monitor_main(["--monitor-id", "1", "--db-dir", self.db_dir])
+
+        self.assertEqual(exit_code, 1)
+
+    def test_run_monitor_main_reports_database_error_from_run(self):
+        """A database error raised while running is reported, not propagated."""
+        mock_context = MagicMock()
+        mock_context.monitor_id = 1
+        mock_context.run.side_effect = sqlite3.Error("database is locked")
+
+        with patch.object(
+            MonitorRunContext, "get_monitor_context", return_value=mock_context
+        ), contextlib.redirect_stderr(io.StringIO()):
+            exit_code = run_monitor_main(["--monitor-id", "1", "--db-dir", self.db_dir])
+
+        self.assertEqual(exit_code, 1)
+
+    def test_teardown_closes_the_connection_when_a_write_fails(self):
+        """teardown releases the database even when recording 'stopped' fails."""
+        mock_sqlite = MagicMock()
+        mock_sqlite.update_monitor_status.side_effect = sqlite3.Error("database is locked")
+        context = self._make_context(sqlite_handler=mock_sqlite)
+
+        with self.assertRaises(sqlite3.Error):
+            context.teardown("unit-test reason")
+
         mock_sqlite.close.assert_called_once()
 

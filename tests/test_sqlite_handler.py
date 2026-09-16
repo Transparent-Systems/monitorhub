@@ -6,6 +6,7 @@ python3 -m tests.test_sqlite_handler
 """
 import argparse
 import logging
+import sqlite3
 import tempfile
 import unittest
 
@@ -329,7 +330,7 @@ class TestSqliteHandler(BaseTestClass):
             monitor_id = 9999
             monitor = self.sqlite_handler.get_monitor(monitor_id)
             self.logger.info(f"Non-existent monitor retrieved: {monitor}")
-            self.assertEqual(monitor, {}, "Expected empty dict for non-existent monitor")
+            self.assertIsNone(monitor, "Expected None for non-existent monitor")
         except Exception as e: # noqa: BLE001
             self.fail(f"get_monitor raised an exception for non-existent monitor: {e}")
 
@@ -338,7 +339,7 @@ class TestSqliteHandler(BaseTestClass):
             profile_id = 9999
             profile = self.sqlite_handler.get_profile(profile_id)
             self.logger.info(f"Non-existent profile retrieved: {profile}")
-            self.assertEqual(profile, {}, "Expected empty dict for non-existent profile")
+            self.assertIsNone(profile, "Expected None for non-existent profile")
         except Exception as e: # noqa: BLE001
             self.fail(f"get_profile raised an exception for non-existent profile: {e}")     
 
@@ -346,24 +347,27 @@ class TestSqliteHandler(BaseTestClass):
         try:
             monitor_id = 9999
             status = "stopped"
-            self.sqlite_handler.update_monitor_status(monitor_id, status)
+            updated = self.sqlite_handler.update_monitor_status(monitor_id, status)
             self.logger.info(f"Attempted to update non-existent monitor with ID: {monitor_id}")
+            self.assertFalse(updated, "Expected False for a non-existent monitor")
         except Exception as e: # noqa: BLE001
             self.fail(f"update_monitor_status raised an exception for non-existent monitor: {e}")
 
     def test_33_delete_nonexistent_monitor(self):
         try:
             monitor_id = 9999
-            self.sqlite_handler.delete_monitor(monitor_id)
+            deleted = self.sqlite_handler.delete_monitor(monitor_id)
             self.logger.info(f"Attempted to delete non-existent monitor with ID: {monitor_id}")
+            self.assertFalse(deleted, "Expected False for a non-existent monitor")
         except Exception as e: # noqa: BLE001
             self.fail(f"delete_monitor raised an exception for non-existent monitor: {e}")  
     
     def test_34_delete_nonexistent_profile(self):
         try:
             profile_id = 9999
-            self.sqlite_handler.delete_profile(profile_id)
+            deleted = self.sqlite_handler.delete_profile(profile_id)
             self.logger.info(f"Attempted to delete non-existent profile with ID: {profile_id}")
+            self.assertFalse(deleted, "Expected False for a non-existent profile")
         except Exception as e: # noqa: BLE001
             self.fail(f"delete_profile raised an exception for non-existent profile: {e}")
 
@@ -469,6 +473,118 @@ class TestSqliteHandler(BaseTestClass):
     def test_62_delete_profile_missing_arguments_raises_value_error(self):
         with self.assertRaises(ValueError):
             self.sqlite_handler.delete_profile()
+
+
+class TestSqliteHandlerErrorConvention(BaseTestClass):
+    """
+    Expected absence returns None/False; unexpected database errors are raised.
+
+    The handler distinguishes "nothing matched" (an expected outcome) from
+    "the database is broken" (an unexpected sqlite3.Error, which is logged and
+    re-raised so the caller can decide how to report it).
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.sqlite_handler = SQLiteHandler(logger=cls.logger, db_dir=cls.db_dir)
+        cls.sqlite_handler.create_schema()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.sqlite_handler.close()
+        super().tearDownClass()
+
+    def test_missing_monitor_and_profile_return_none(self):
+        self.assertIsNone(self.sqlite_handler.get_monitor(monitor_id=9999))
+        self.assertIsNone(self.sqlite_handler.get_monitor(monitor_name="missing"))
+        self.assertIsNone(self.sqlite_handler.get_profile(profile_id=9999))
+        self.assertIsNone(self.sqlite_handler.get_profile(profile_name="missing"))
+
+    def test_update_missing_monitor_and_profile_return_none(self):
+        self.assertIsNone(
+            self.sqlite_handler.update_monitor(
+                monitor_id=9999,
+                name="missing",
+                monitor_path="/tmp/missing",
+                remote_path="/missing",
+                monitor_type="instant",
+                config={},
+                status="stopped",
+            )
+        )
+        self.assertIsNone(
+            self.sqlite_handler.update_profile(
+                profile_id=9999,
+                name="missing",
+                profile_type="s3",
+                config={},
+            )
+        )
+
+    def test_mutations_that_match_no_row_return_false(self):
+        self.assertFalse(self.sqlite_handler.update_monitor_status(9999, "stopped"))
+        self.assertFalse(self.sqlite_handler.update_monitor_pid(9999, 0))
+        self.assertFalse(self.sqlite_handler.update_monitor_last_run(9999, "2026-01-01"))
+        self.assertFalse(
+            self.sqlite_handler.update_monitor_last_heartbeat(9999, "2026-01-01")
+        )
+        self.assertFalse(self.sqlite_handler.update_monitor_config(9999, {}))
+        self.assertFalse(self.sqlite_handler.delete_monitor(9999))
+        self.assertFalse(self.sqlite_handler.delete_profile(profile_id=9999))
+        self.assertFalse(self.sqlite_handler.delete_monitor_profile_map(9999, 9999))
+
+    def test_duplicate_monitor_profile_map_returns_false(self):
+        monitor_id = self.sqlite_handler.add_monitor(
+            name="map_test_monitor",
+            monitor_path="/tmp/map_test",
+            remote_path="/map_test",
+            monitor_type="instant",
+            config={},
+            status="stopped",
+        )
+        profile_id = self.sqlite_handler.add_profile(
+            name="map_test_profile", profile_type="s3", config={}
+        )
+        try:
+            self.assertTrue(
+                self.sqlite_handler.add_monitor_profile_map(monitor_id, profile_id)
+            )
+            # Already mapped / already removed: expected no-ops, not errors.
+            self.assertFalse(
+                self.sqlite_handler.add_monitor_profile_map(monitor_id, profile_id)
+            )
+            self.assertTrue(
+                self.sqlite_handler.delete_monitor_profile_map(monitor_id, profile_id)
+            )
+            self.assertFalse(
+                self.sqlite_handler.delete_monitor_profile_map(monitor_id, profile_id)
+            )
+        finally:
+            self.sqlite_handler.delete_monitor(monitor_id)
+            self.sqlite_handler.delete_profile(profile_id)
+
+    def test_unexpected_database_error_is_raised(self):
+        """An uninitialised database raises instead of being swallowed as False."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            handler = SQLiteHandler(logger=self.logger, db_dir=tmp_dir)
+            try:
+                statements = {
+                    "update_monitor_status": lambda: handler.update_monitor_status(1, "stopped"),
+                    "update_monitor_pid": lambda: handler.update_monitor_pid(1, 0),
+                    "update_monitor_last_run": lambda: handler.update_monitor_last_run(1, "x"),
+                    "update_monitor_last_heartbeat": lambda: handler.update_monitor_last_heartbeat(1, "x"),
+                    "update_monitor_config": lambda: handler.update_monitor_config(1, {}),
+                    "delete_monitor": lambda: handler.delete_monitor(1),
+                    "delete_profile": lambda: handler.delete_profile(profile_id=1),
+                    "add_monitor_profile_map": lambda: handler.add_monitor_profile_map(1, 1),
+                    "delete_monitor_profile_map": lambda: handler.delete_monitor_profile_map(1, 1),
+                }
+                for name, statement in statements.items():
+                    with self.subTest(statement=name), self.assertRaises(sqlite3.Error):
+                        statement()
+            finally:
+                handler.close()
 
 
 if __name__ == "__main__":

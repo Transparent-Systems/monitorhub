@@ -16,6 +16,7 @@ Notes:
 """
 
 import argparse
+import sqlite3
 import sys
 
 from app.cli.app_config import AppConfig
@@ -157,8 +158,7 @@ if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "run-monitor":
         sys.argv.pop(1)
         from app.monitor.run_monitor import run_monitor_main
-        run_monitor_main()
-        sys.exit(0)
+        sys.exit(run_monitor_main())
 
     parser = argparse.ArgumentParser(
         description="MonitorHub CLI for managing profiles, monitors, and configuration."
@@ -288,21 +288,31 @@ if __name__ == "__main__":
 
     # Handle command line arguments via a data-driven dispatch table.
     if args.command is not None:
-        commands = build_commands(
-            logger=logger,
-            db_dir=db_dir,
-            log_config=args.log,
-            log_level=args.log_level,
-        )
-        subcommand = getattr(args, f"{args.command}_subcommand", None)
-        entry = _SUBCOMMAND_DISPATCH.get((args.command, subcommand))
-        if entry is None:
-            command_parsers.get(args.command, parser).print_help()
+        try:
+            commands = build_commands(
+                logger=logger,
+                db_dir=db_dir,
+                log_config=args.log,
+                log_level=args.log_level,
+            )
+            subcommand = getattr(args, f"{args.command}_subcommand", None)
+            entry = _SUBCOMMAND_DISPATCH.get((args.command, subcommand))
+            if entry is None:
+                command_parsers.get(args.command, parser).print_help()
+                sys.exit(1)
+            owner_attr, method_name, kwargs_builder = entry
+            command_obj = getattr(commands, owner_attr)
+            kwargs = kwargs_builder(args)
+            getattr(command_obj, method_name)(**kwargs)
+        except sqlite3.Error as error:
+            logger.error(f"Database error: {error}")
+            print(
+                f"Database error: {error}\n"
+                f"Is the database at '{db_dir}' initialised? "
+                "Create it with: python mhub.py database init",
+                file=sys.stderr,
+            )
             sys.exit(1)
-        owner_attr, method_name, kwargs_builder = entry
-        command_obj = getattr(commands, owner_attr)
-        kwargs = kwargs_builder(args)
-        getattr(command_obj, method_name)(**kwargs)
     else:
         parser.print_help()
         sys.exit(1)

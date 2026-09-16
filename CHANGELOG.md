@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+- ``SQLiteHandler`` now follows a single error convention: an expected absence
+  returns ``None`` (unknown monitor/profile) or ``False`` (an UPDATE/DELETE that
+  matched no row), while an unexpected ``sqlite3.Error`` is logged and re-raised
+  instead of being swallowed as ``False``. ``get_monitor``/``get_profile``
+  return ``None`` rather than an empty dict, ``update_monitor``/``update_profile``
+  return ``None`` when the row does not exist, and a duplicate
+  ``monitor_profile_map`` insert returns ``False``. The CLI (``mhub.py``) and the
+  monitor process (``run_monitor.py``) now report database errors with a clear
+  message and exit code 1 instead of printing a traceback, and a monitor that
+  cannot record its own state fails loudly instead of leaving a stale
+  ``running`` record.
+
 - Remote storage operations now return a typed result. The ad-hoc
   ``(result_code, result_output)`` tuple is replaced by ``RemoteResult``
   (``app/monitor/remote_result.py``), which carries ``ok``, ``message``,

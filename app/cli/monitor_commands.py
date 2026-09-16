@@ -311,7 +311,9 @@ class MonitorCommands:
                     monitor_profiles.remove(profile_to_delete)
                     del delete_profiles[profile_id_to_delete]
                 else:
-                    self.prompt.print(f"Failed to remove profile '{profile_to_delete.get('name', 'N/A')}'")
+                    self.prompt.print(
+                        f"Profile '{profile_to_delete.get('name', 'N/A')}' was not mapped to this monitor"
+                    )
 
                 if not delete_profiles:
                     break
@@ -360,7 +362,9 @@ class MonitorCommands:
                     current_profile_ids.add(profile_id_to_add)
                     del available_profiles[profile_id_to_add]
                 else:
-                    self.prompt.print(f"Failed to add profile '{profile_to_add.get('name', 'N/A')}'")
+                    self.prompt.print(
+                        f"Profile '{profile_to_add.get('name', 'N/A')}' was already mapped to this monitor"
+                    )
 
                 if not available_profiles:
                     self.prompt.print("All profiles have been added.")

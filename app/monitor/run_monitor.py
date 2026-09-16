@@ -14,6 +14,7 @@ import argparse
 import logging
 import os
 import signal
+import sqlite3
 import sys
 import threading
 from dataclasses import dataclass, field
@@ -251,12 +252,15 @@ class MonitorRunContext:
         if poller_thread is not None and poller_thread.is_alive():
             poller_thread.join(timeout=POLLER_JOIN_TIMEOUT_SECONDS)
 
-        self.sqlite_handler.update_monitor_status(monitor_id=monitor_id, status="stopped")
-        self.sqlite_handler.update_monitor_pid(monitor_id=monitor_id, pid=0)
-        logger.info(
-            f"Monitor '{monitor.get('name')}' (id={monitor_id}) status set to 'stopped'"
-        )
-        self.sqlite_handler.close()
+        try:
+            self.sqlite_handler.update_monitor_status(monitor_id=monitor_id, status="stopped")
+            self.sqlite_handler.update_monitor_pid(monitor_id=monitor_id, pid=0)
+            logger.info(
+                f"Monitor '{monitor.get('name')}' (id={monitor_id}) status set to 'stopped'"
+            )
+        finally:
+            # Always release the connection, even when the status update failed.
+            self.sqlite_handler.close()
 
     def run(self) -> int:
         """
@@ -322,11 +326,25 @@ def run_monitor_main(argv=None) -> int:
     """
     args = parse_args(argv)
 
-    context = MonitorRunContext.get_monitor_context(args)
-    if context is None:
-        sys.exit(1)
+    try:
+        context = MonitorRunContext.get_monitor_context(args)
+        if context is None:
+            sys.exit(1)
 
-    exit_code = context.run()
+        exit_code = context.run()
+    except sqlite3.Error as error:
+        # This process runs detached with its stderr redirected to
+        # logs/monitor_<id>.log, so report the failure rather than traceback.
+        logging.getLogger("MonitorHub").error(
+            f"Database error for monitor id={args.monitor_id}: {error}"
+        )
+        print(
+            f"Database error: {error}\n"
+            "Is the database initialised? Create it with: python mhub.py database init",
+            file=sys.stderr,
+        )
+        return 1
+
     if exit_code != 0:
         sys.exit(exit_code)
 

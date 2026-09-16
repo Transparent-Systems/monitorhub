@@ -64,6 +64,25 @@ class SQLiteHandler:
             finally:
                 cur.close()
 
+    def _execute_statement(
+        self, sql: str, params: dict[str, Any], error_message: str
+    ) -> bool:
+        """
+        Execute a single mutating statement.
+
+        :return: True when a row was affected, False when the statement matched
+            no rows. A no-match is an expected outcome (e.g. an unknown id),
+            while a database error is logged and re-raised so the caller can
+            decide how to report it.
+        """
+        try:
+            with self.transaction() as cur:
+                cur.execute(sql, params)
+                return cur.rowcount > 0
+        except sqlite3.Error as e:
+            self.logger.error(f"{error_message}: {e}")
+            raise
+
     def close(self) -> None:
         with self._lock:
             if self.connection:
@@ -363,6 +382,8 @@ class SQLiteHandler:
     ) -> int | None:
         """
         Update a monitor in the database
+
+        :return: The monitor id, or None when no monitor with that id exists.
         """
         config_str = json.dumps(config)
         try:
@@ -388,14 +409,20 @@ class SQLiteHandler:
                     "pid": pid,
                     "id": monitor_id,
                 })
+                if cur.rowcount == 0:
+                    return None
                 return monitor_id
         except Exception as e:
             self.logger.error(f"Error updating monitor id={monitor_id}: {e}")
             raise
 
-    def get_monitor(self, monitor_id: int | None = None, monitor_name: str | None = None) -> dict[str, Any]:
+    def get_monitor(
+        self, monitor_id: int | None = None, monitor_name: str | None = None
+    ) -> dict[str, Any] | None:
         """
         Get a monitor from the database by id or name
+
+        :return: The monitor, or None when no monitor matched.
         """
         if monitor_id is None and monitor_name is None:
             raise ValueError("Either monitor_id or monitor_name must be provided")
@@ -417,7 +444,7 @@ class SQLiteHandler:
 
         if row:
             return self._row_to_monitor(row)
-        return {}
+        return None
 
     def get_monitors(self) -> list[dict[str, Any]]:
         """
@@ -435,91 +462,75 @@ class SQLiteHandler:
     def update_monitor_status(self, monitor_id: int, status: str) -> bool:
         """
         Update the status of a monitor in the database
+
+        :return: False when no monitor with that id exists.
         """
-        try:
-            with self.transaction() as cur:
-                cur.execute(
-                    "UPDATE monitors SET status = :status, last_modified = CURRENT_TIMESTAMP WHERE id = :id",
-                    {"status": status, "id": monitor_id},
-                )
-                return True
-        except sqlite3.Error as e:
-            self.logger.error(f"Error updating monitor status: {e}")
-            return False
+        return self._execute_statement(
+            "UPDATE monitors SET status = :status, last_modified = CURRENT_TIMESTAMP WHERE id = :id",
+            {"status": status, "id": monitor_id},
+            f"Error updating status for monitor id={monitor_id}",
+        )
 
     def update_monitor_pid(self, monitor_id: int, pid: int) -> bool:
         """
         Update the pid of a monitor in the database
+
+        :return: False when no monitor with that id exists.
         """
-        try:
-            with self.transaction() as cur:
-                cur.execute(
-                    "UPDATE monitors SET pid = :pid, last_modified = CURRENT_TIMESTAMP WHERE id = :id",
-                    {"pid": pid, "id": monitor_id},
-                )
-                return True
-        except sqlite3.Error as e:
-            self.logger.error(f"Error updating monitor pid: {e}")
-            return False
+        return self._execute_statement(
+            "UPDATE monitors SET pid = :pid, last_modified = CURRENT_TIMESTAMP WHERE id = :id",
+            {"pid": pid, "id": monitor_id},
+            f"Error updating pid for monitor id={monitor_id}",
+        )
 
     def update_monitor_last_run(self, monitor_id: int, last_run: str) -> bool:
         """
         Update the last run time of a monitor in the database
+
+        :return: False when no monitor with that id exists.
         """
-        try:
-            with self.transaction() as cur:
-                cur.execute(
-                    "UPDATE monitors SET last_run = :last_run WHERE id = :id",
-                    {"last_run": last_run, "id": monitor_id},
-                )
-                return True
-        except sqlite3.Error as e:
-            self.logger.error(f"Error updating monitor last_run: {e}")
-            return False
+        return self._execute_statement(
+            "UPDATE monitors SET last_run = :last_run WHERE id = :id",
+            {"last_run": last_run, "id": monitor_id},
+            f"Error updating last_run for monitor id={monitor_id}",
+        )
 
     def update_monitor_last_heartbeat(self, monitor_id: int, last_heartbeat: str) -> bool:
         """
         Update the last heartbeat time of a monitor in the database
+
+        :return: False when no monitor with that id exists.
         """
-        try:
-            with self.transaction() as cur:
-                cur.execute(
-                    "UPDATE monitors SET last_heartbeat = :last_heartbeat WHERE id = :id",
-                    {"last_heartbeat": last_heartbeat, "id": monitor_id},
-                )
-                return True
-        except sqlite3.Error as e:
-            self.logger.error(f"Error updating monitor last_heartbeat: {e}")
-            return False
+        return self._execute_statement(
+            "UPDATE monitors SET last_heartbeat = :last_heartbeat WHERE id = :id",
+            {"last_heartbeat": last_heartbeat, "id": monitor_id},
+            f"Error updating last_heartbeat for monitor id={monitor_id}",
+        )
 
     def update_monitor_config(self, monitor_id: int, config: dict[str, Any]) -> bool:
         """
         Update the config of a monitor in the database
+
+        :return: False when no monitor with that id exists.
         """
-        config_str = json.dumps(config)
-        try:
-            with self.transaction() as cur:
-                cur.execute(
-                    "UPDATE monitors SET config = :config, last_modified = CURRENT_TIMESTAMP WHERE id = :id",
-                    {"config": config_str, "id": monitor_id},
-                )
-                return True
-        except sqlite3.Error as e:
-            self.logger.error(f"Error updating monitor config: {e}")
-            return False
+        return self._execute_statement(
+            "UPDATE monitors SET config = :config, last_modified = CURRENT_TIMESTAMP WHERE id = :id",
+            {"config": json.dumps(config), "id": monitor_id},
+            f"Error updating config for monitor id={monitor_id}",
+        )
 
     def delete_monitor(self, monitor_id: int) -> bool:
         """
         Delete a monitor from the database.
         Foreign key CASCADE automatically cleans up monitor_profile_map entries.
+
+        :return: False when no monitor with that id exists.
         """
-        try:
-            with self.transaction() as cur:
-                cur.execute("DELETE FROM monitors WHERE id = :id", {"id": monitor_id})
-                return True
-        except sqlite3.Error as e:
-            self.logger.error(f"Error occurred while deleting monitor: {e}")
-            return False
+        return self._execute_statement(
+            "DELETE FROM monitors WHERE id = :id",
+            {"id": monitor_id},
+            f"Error deleting monitor id={monitor_id}",
+        )
 
     def add_profile(self, name: str, profile_type: str, config: dict[str, Any]) -> int | None:
         """
@@ -548,8 +559,14 @@ class SQLiteHandler:
             self.logger.error(f"Error adding profile '{name}': {e}")
             raise
 
-    def get_profile(self, profile_id: int | None = None, profile_name: str | None = None) -> dict[str, Any]:
-        """Get a profile from the database by id or name"""
+    def get_profile(
+        self, profile_id: int | None = None, profile_name: str | None = None
+    ) -> dict[str, Any] | None:
+        """
+        Get a profile from the database by id or name
+
+        :return: The profile, or None when no profile matched.
+        """
         if profile_id is None and profile_name is None:
             raise ValueError("Either profile_id or profile_name must be provided")
 
@@ -570,11 +587,13 @@ class SQLiteHandler:
 
         if row:
             return self._row_to_profile(row)
-        return {}
+        return None
 
     def update_profile(self, profile_id: int, name: str, profile_type: str, config: dict[str, Any]) -> int | None:
         """
         Update a profile in the database
+
+        :return: The profile id, or None when no profile with that id exists.
         """
         try:
             with self.transaction() as cur:
@@ -591,6 +610,8 @@ class SQLiteHandler:
                     "config": json.dumps(config),
                     "id": profile_id,
                 })
+                if cur.rowcount == 0:
+                    return None
                 return profile_id
         except Exception as e:
             self.logger.error(f"Error updating profile id={profile_id}: {e}")
@@ -600,20 +621,22 @@ class SQLiteHandler:
         """
         Delete a profile from the database.
         Foreign key CASCADE automatically cleans up monitor_profile_map entries.
+
+        :return: False when no profile matched.
         """
         if profile_id is None and profile_name is None:
             raise ValueError("Either profile_id or profile_name must be provided")
 
-        try:
-            with self.transaction() as cur:
-                if profile_id is not None:
-                    cur.execute("DELETE FROM profiles WHERE id = :id", {"id": profile_id})
-                else:
-                    cur.execute("DELETE FROM profiles WHERE name = :name", {"name": profile_name})
-                return True
-        except sqlite3.Error as e:
-            self.logger.error(f"Error deleting profile: {e}")
-            return False
+        if profile_id is not None:
+            sql = "DELETE FROM profiles WHERE id = :id"
+            params = {"id": profile_id}
+            description = f"id={profile_id}"
+        else:
+            sql = "DELETE FROM profiles WHERE name = :name"
+            params = {"name": profile_name}
+            description = f"name={profile_name!r}"
+
+        return self._execute_statement(sql, params, f"Error deleting profile {description}")
 
     def get_profiles(self) -> list[dict[str, Any]]:
         """
@@ -631,32 +654,32 @@ class SQLiteHandler:
     def add_monitor_profile_map(self, monitor_id: int, profile_id: int) -> bool:
         """
         Add a mapping between a monitor and a profile in the database.
+
+        :return: False when the mapping already exists (INSERT OR IGNORE).
         """
-        try:
-            with self.transaction() as cur:
-                cur.execute("""
-                    INSERT OR IGNORE INTO monitor_profile_map (monitor_id, profile_id)
-                    VALUES (:monitor_id, :profile_id)
-                """, {"monitor_id": monitor_id, "profile_id": profile_id})
-                return True
-        except sqlite3.Error as e:
-            self.logger.error(f"Error mapping monitor {monitor_id} to profile {profile_id}: {e}")
-            return False
+        return self._execute_statement(
+            """
+                INSERT OR IGNORE INTO monitor_profile_map (monitor_id, profile_id)
+                VALUES (:monitor_id, :profile_id)
+            """,
+            {"monitor_id": monitor_id, "profile_id": profile_id},
+            f"Error mapping monitor {monitor_id} to profile {profile_id}",
+        )
 
     def delete_monitor_profile_map(self, monitor_id: int, profile_id: int) -> bool:
         """
         Delete a mapping between a monitor and a profile from the database
+
+        :return: False when the mapping did not exist.
         """
-        try:
-            with self.transaction() as cur:
-                cur.execute("""
-                    DELETE FROM monitor_profile_map
-                    WHERE monitor_id = :monitor_id AND profile_id = :profile_id
-                """, {"monitor_id": monitor_id, "profile_id": profile_id})
-                return True
-        except sqlite3.Error as e:
-            self.logger.error(f"Error unmapping monitor {monitor_id} from profile {profile_id}: {e}")
-            return False
+        return self._execute_statement(
+            """
+                DELETE FROM monitor_profile_map
+                WHERE monitor_id = :monitor_id AND profile_id = :profile_id
+            """,
+            {"monitor_id": monitor_id, "profile_id": profile_id},
+            f"Error unmapping monitor {monitor_id} from profile {profile_id}",
+        )
 
     def get_profiles_for_monitor(self, monitor_id: int) -> list[dict[str, Any]]:
         """
