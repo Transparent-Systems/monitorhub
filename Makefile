@@ -7,7 +7,7 @@ PYTHON := .venv/bin/python
 UNITTEST := $(PYTHON) -m unittest
 RUFF := $(PYTHON) -m ruff
 
-.PHONY: help check-env test test-unit test-integration test-command-action-handler test-commands lint lint-fix clean
+.PHONY: help check-env test test-unit test-integration test-command-action-handler test-commands update-diagrams update-diagram-actionhandler update-diagram-commands lint lint-fix clean
 
 help: ## Show available targets
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z_-]+:.*## / {printf "  \033[36m%-28s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -33,6 +33,16 @@ test-command-action-handler: check-env ## Run CommandActionHandler unit tests on
 
 test-commands: check-env ## Run Commands unit tests only
 	$(UNITTEST) tests.test_commands -v
+
+update-diagrams: check-env ## Regenerate both class diagrams in ARCHITECTURE.md
+	$(PYTHON) utils/update_diagram.py actionhandler
+	$(PYTHON) utils/update_diagram.py commands
+
+update-diagram-actionhandler: check-env ## Regenerate the ActionHandler class diagram
+	$(PYTHON) utils/update_diagram.py actionhandler
+
+update-diagram-commands: check-env ## Regenerate the Commands class diagram
+	$(PYTHON) utils/update_diagram.py commands
 
 lint: check-env ## Run ruff lint checks (report only)
 	$(RUFF) check .
