@@ -249,7 +249,8 @@ class ProfileEditor:
         self.prompt.print()
         prompt_text = "Please enter command to run"
         if current_command:
-            prompt_text += f" (current: {current_command}; Enter to keep)"
+            prompt_text += f" (current: {current_command}))"
+            prompt_text += "\nEnter to keep"
         prompt_text += ": "
         command = self.prompt.prompt_required(
             prompt_text,
@@ -259,32 +260,45 @@ class ProfileEditor:
 
         # Event filter
         valid_events = ["created", "deleted", "modified", "moved", "closed", "timer"]
-        self.prompt.print("Available events: created, deleted, modified, moved, closed, timer")
-        self.prompt.print("Leave empty for all events.")
 
         def parse_events(value: str) -> list[str]:
             return [e.strip() for e in value.split(",") if e.strip()]
 
+        """
+        Return None to indicate the valie is valid
+        The string returned is the error message
+        """
         def valid_events_input(value: str) -> str | None:
+            if value.strip().lower() == "all":
+                return None
             invalid = [e for e in parse_events(value) if e not in valid_events]
             if invalid:
                 return f"Invalid event(s): {', '.join(invalid)}. Please try again."
             return None
 
         current_display = ",".join(current_events) if current_events else "all"
+        prompt = f"\nAvailable events: {valid_events}"
+        prompt += f"\nCurrent events to trigger on: {current_display}"
+        if current_display != "all":
+            prompt += "\nTo select all events enter: all"
+        prompt += "\nTo select some events enter a list like: deleted,modified"
+        prompt += "\nTo keep the current event list press Enter only"
+        prompt += "\nEnter event list: "
         input_events = self.prompt.prompt_required(
-            f"Events to trigger on (current: {current_display}; Enter to keep): ",
+            prompt=prompt,
             allow_cancel=True,
             validator=valid_events_input,
         )
         if input_events is None:
             events = current_events if (current_command and current_events is not None) else []
+        elif input_events.strip().lower() ==  "all":
+            events = []
         else:
             events = parse_events(input_events)
 
         # Cooldown
         cooldown = self.prompt.prompt_required(
-            f"Cooldown between command firings (current: {current_cooldown}; Enter to keep): ",
+            f"Cooldown between command firings (current: {current_cooldown})\nEnter to keep: ",
             default=current_cooldown if current_command else "0s",
             validator=lambda value: (
                 None
@@ -295,7 +309,7 @@ class ProfileEditor:
 
         # Timeout
         timeout = self.prompt.prompt_required(
-            f"Timeout for command (current: {current_timeout}; Enter to keep): ",
+            f"Timeout for command (current: {current_timeout})\nEnter to keep: ",
             default=current_timeout or "10s",
             validator=lambda value: (
                 None
@@ -327,7 +341,7 @@ class ProfileEditor:
         input_max_workers = self.prompt.prompt_required(
             f"Max concurrent command workers (default: {DEFAULT_COMMAND_MAX_WORKERS}, "
             f"min: {MIN_COMMAND_MAX_WORKERS}, max: {MAX_COMMAND_MAX_WORKERS}; "
-            f"current: {current_max_workers}; Enter to keep): ",
+            f"current: {current_max_workers})\nEnter to keep: ",
             default=str(current_max_workers),
             validator=valid_max_workers,
         )
