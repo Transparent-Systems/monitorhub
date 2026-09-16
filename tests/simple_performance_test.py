@@ -108,9 +108,9 @@ def _test_copy_file_performance(logger: logging.Logger, remote_handler: RemoteHa
         # Derive remote_path from virtual monitor path
         remote_path = remote_handler.get_remote_path(monitor_path=monitor_path_virtual)
         logger.info(f"Remote path: {remote_path}")
-        (result_code, result_output) = remote_handler.copy_file(monitor_path=monitor_path, remote_path=remote_path)
-        if (result_code != 0):
-            logger.info(f"Error: {result_output}")
+        result = remote_handler.copy_file(monitor_path=monitor_path, remote_path=remote_path)
+        if not result.ok:
+            logger.info(f"Error: {result.message}")
             error_count += 1
 
     logger.info(f"Error count: {error_count}")

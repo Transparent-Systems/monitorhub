@@ -10,6 +10,7 @@ from dataclasses import dataclass
 
 from app.monitor.remote_handler import RemoteHandler
 from app.monitor.remote_handler_factory import RemoteHandlerFactory
+from app.monitor.remote_result import RemoteResult
 from app.monitor.worker import StoppableWorker
 from app.utils import reference_data
 from app.utils.generic_util import convert_to_seconds
@@ -204,9 +205,16 @@ class RemoteActionHandler(ActionHandler):
         """
         Executes the copy operation. Used by both DebounceManager and immediate calls.
         """
-        return_code, _ = self.remote_handler.copy_file(monitor_path=src_path)
-        if return_code != 0:
-            self.logger.warning(f"Copy failed for {src_path}. Code: {return_code}")
+        self._log_if_failed(
+            "Copy", src_path, self.remote_handler.copy_file(monitor_path=src_path)
+        )
+
+    def _log_if_failed(self, operation: str, path: str, result: RemoteResult) -> None:
+        """Log a warning when a remote operation did not succeed."""
+        if not result.ok:
+            self.logger.warning(
+                f"{operation} failed for {path}. Code: {result.code}. Message: {result.message}"
+            )
 
     def _handle_created(self, context: ActionContext):
         # Intentional no-op: file copies are deferred to the modified/closed
@@ -222,9 +230,10 @@ class RemoteActionHandler(ActionHandler):
         
         if context.is_directory:
              # watchdog typically doesn't send DirDeletedEvent but if it did:
-            self.remote_handler.delete_folder(remote_path=remote_path)
+            result = self.remote_handler.delete_folder(remote_path=remote_path)
         else:
-            self.remote_handler.delete_file(remote_path=remote_path)
+            result = self.remote_handler.delete_file(remote_path=remote_path)
+        self._log_if_failed("Delete", remote_path, result)
 
     def _handle_modified(self, context: ActionContext):
         if context.is_directory:
@@ -256,11 +265,19 @@ class RemoteActionHandler(ActionHandler):
         # The delete/copy operations differ only by file vs directory.
         remote_old = self.remote_handler.get_remote_path(context.src_path)
         if context.is_directory:
-            self.remote_handler.delete_folder(remote_path=remote_old)
-            self.remote_handler.copy_folder(monitor_path=dest_path)
+            self._log_if_failed(
+                "Delete", remote_old, self.remote_handler.delete_folder(remote_path=remote_old)
+            )
+            self._log_if_failed(
+                "Copy", dest_path, self.remote_handler.copy_folder(monitor_path=dest_path)
+            )
         else:
-            self.remote_handler.delete_file(remote_path=remote_old)
-            self.remote_handler.copy_file(monitor_path=dest_path)
+            self._log_if_failed(
+                "Delete", remote_old, self.remote_handler.delete_file(remote_path=remote_old)
+            )
+            self._log_if_failed(
+                "Copy", dest_path, self.remote_handler.copy_file(monitor_path=dest_path)
+            )
 
 
 

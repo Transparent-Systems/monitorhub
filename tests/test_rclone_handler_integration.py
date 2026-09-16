@@ -68,14 +68,15 @@ class TestRcloneHandlerIntegration(unittest.TestCase):
     def test_01_get_version(self):
         """Get Version"""
         self.logger.debug(f"==> Monitor {self.monitor_name} -> {self._testMethodName}")
-        (_, result_output) = self.rclone_handler.get_rclone_version()
-        self.assertIn("rclone", result_output.lower(), "Output should contain 'rclone'")
+        result = self.rclone_handler.get_rclone_version()
+        self.assertTrue(result.ok, f"Get version failed: {result}")
+        self.assertIn("rclone", result.message.lower(), "Output should contain 'rclone'")
 
     def test_02_list_remotes(self):
         """List Remotes"""
         self.logger.debug(f"==> Monitor {self.monitor_name} -> {self._testMethodName}")
-        (result_code, result_output) = self.rclone_handler.list_remotes()
-        self.assertEqual(result_code, 0, f"List remotes failed. Output: {result_output}")
+        result = self.rclone_handler.list_remotes()
+        self.assertTrue(result.ok, f"List remotes failed. Output: {result.message}")
 
     def test_03_copy_file_to_remote_and_check_exist(self):
         """Testing file exists"""
@@ -86,19 +87,19 @@ class TestRcloneHandlerIntegration(unittest.TestCase):
         file_path = create_test_data(path=self.monitor_path, files=[file_name])
         
         # Copy file to remote
-        (result_code, result_output) = self.rclone_handler.copy_file(monitor_path=file_path.as_posix())
-        self.assertEqual(result_code, 0, f"Copied file {file_name}. Output: {result_output}")
+        result = self.rclone_handler.copy_file(monitor_path=file_path.as_posix())
+        self.assertTrue(result.ok, f"Copied file {file_name}. Output: {result.message}")
 
         # Check file exists
         remote_path = self.rclone_handler.get_remote_path(monitor_path=file_path.as_posix())
-        (result_code, result_output) = self.rclone_handler.file_exists(remote_path=remote_path)
-        self.assertEqual(result_code, 0, f"File exist: {remote_path}")
+        result = self.rclone_handler.file_exists(remote_path=remote_path)
+        self.assertTrue(result.ok, f"File exist: {remote_path}")
 
         # Check non-existent file
         remote_path_missing = Path(self.monitor_path) / "file-does-not-exists.txt"
         remote_path = self.rclone_handler.get_remote_path(monitor_path=remote_path_missing.as_posix())
-        (result_code, result_output) = self.rclone_handler.file_exists(remote_path=remote_path)
-        self.assertNotEqual(result_code, 0, f"File should not exist: {remote_path_missing}")
+        result = self.rclone_handler.file_exists(remote_path=remote_path)
+        self.assertFalse(result.ok, f"File should not exist: {remote_path_missing}")
 
     def test_04_delete_file_at_remote(self):
         """Delete a file at remote"""
@@ -107,18 +108,18 @@ class TestRcloneHandlerIntegration(unittest.TestCase):
         file_path = create_test_data(path=self.monitor_path, files=[file_name])
 
         # Copy first
-        (result_code, result_output) = self.rclone_handler.copy_file(monitor_path=file_path.as_posix())
-        self.assertEqual(result_code, 0, "Setup failed: Copy file")
+        result = self.rclone_handler.copy_file(monitor_path=file_path.as_posix())
+        self.assertTrue(result.ok, "Setup failed: Copy file")
 
         # Delete
         remote_path = self.rclone_handler.get_remote_path(monitor_path=file_path.as_posix())
-        (result_code, result_output) = self.rclone_handler.delete_file(remote_path=remote_path)
-        self.assertEqual(result_code, 0, f"Delete file failed. Output: {result_output}")
+        result = self.rclone_handler.delete_file(remote_path=remote_path)
+        self.assertTrue(result.ok, f"Delete file failed. Output: {result.message}")
 
         # Check file has been deleted
         remote_path = self.rclone_handler.get_remote_path(monitor_path=file_path.as_posix())
-        (result_code, result_output) = self.rclone_handler.file_exists(remote_path=remote_path)
-        self.assertNotEqual(result_code, 0, f"File should have been deleted: {remote_path}")    
+        result = self.rclone_handler.file_exists(remote_path=remote_path)
+        self.assertFalse(result.ok, f"File should have been deleted: {remote_path}")    
 
     def test_05_create_folder_with_files(self):
         """Create folder with files"""
@@ -130,13 +131,13 @@ class TestRcloneHandlerIntegration(unittest.TestCase):
         head = file_path.parent # Subfolder1
 
         # Copy folder
-        (result_code, result_output) = self.rclone_handler.copy_folder(monitor_path=head.as_posix())
-        self.assertEqual(result_code, 0, f"Copied folder. Output: {result_output}")
+        result = self.rclone_handler.copy_folder(monitor_path=head.as_posix())
+        self.assertTrue(result.ok, f"Copied folder. Output: {result.message}")
 
         # Check one file
         remote_path = self.rclone_handler.get_remote_path(monitor_path=file_path.as_posix())
-        found = self.rclone_handler.file_exists(remote_path=remote_path)
-        self.assertTrue(found, f"File exist: {remote_path}")
+        result = self.rclone_handler.file_exists(remote_path=remote_path)
+        self.assertTrue(result.ok, f"File exist: {remote_path}")
 
     def test_06_remove_folder_from_remote(self):
         """Remove folder from remote"""
@@ -148,13 +149,13 @@ class TestRcloneHandlerIntegration(unittest.TestCase):
         head = file_path.parent
 
         # Copy folder
-        (result_code, result_output) = self.rclone_handler.copy_folder(monitor_path=head.as_posix())
-        self.assertEqual(result_code, 0, "Rclone copy_folder succeeded")
+        result = self.rclone_handler.copy_folder(monitor_path=head.as_posix())
+        self.assertTrue(result.ok, "Rclone copy_folder succeeded")
 
         # Delete folder
         remote_path = self.rclone_handler.get_remote_path(head.as_posix())
-        (result_code, result_output) = self.rclone_handler.delete_folder(remote_path=remote_path)
-        self.assertEqual(result_code, 0, f"Rclone delete_folder failed for {remote_path}. Output: {result_output}")
+        result = self.rclone_handler.delete_folder(remote_path=remote_path)
+        self.assertTrue(result.ok, f"Rclone delete_folder failed for {remote_path}. Output: {result.message}")
 
     def test_07_file_with_space(self):
         """Testing file with space"""
@@ -162,8 +163,8 @@ class TestRcloneHandlerIntegration(unittest.TestCase):
         file_name = "Subfolder1/file with space.txt"
         file_path = create_test_data(path=self.monitor_path, files=[file_name])
         
-        (result_code, result_output) = self.rclone_handler.copy_file(monitor_path=file_path.as_posix())
-        self.assertEqual(result_code, 0, f"Copy file with space failed. Output: {result_output}")
+        result = self.rclone_handler.copy_file(monitor_path=file_path.as_posix())
+        self.assertTrue(result.ok, f"Copy file with space failed. Output: {result.message}")
 
     def test_08_folder_with_space(self):
         """Testing folder with space"""
@@ -171,8 +172,8 @@ class TestRcloneHandlerIntegration(unittest.TestCase):
         file_name = "Subfolder with Space/test1.txt"
         file_path = create_test_data(path=self.monitor_path, files=[file_name])
         
-        (result_code, result_output) = self.rclone_handler.copy_file(monitor_path=file_path.as_posix())
-        self.assertEqual(result_code, 0, f"Copy file in folder with space failed. Output: {result_output}")
+        result = self.rclone_handler.copy_file(monitor_path=file_path.as_posix())
+        self.assertTrue(result.ok, f"Copy file in folder with space failed. Output: {result.message}")
 
 
 if __name__ == "__main__":

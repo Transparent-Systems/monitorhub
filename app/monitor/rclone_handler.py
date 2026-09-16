@@ -33,6 +33,7 @@ import time
 from pathlib import Path
 
 from app.monitor.remote_handler import RemoteHandler
+from app.monitor.remote_result import RemoteErrorKind, RemoteResult
 
 
 class RcloneHandler(RemoteHandler):
@@ -69,6 +70,13 @@ class RcloneHandler(RemoteHandler):
     # Interval (seconds) at which a still-running rclone command logs a warning.
     # This makes a hung rclone visible in the logs well before the timeout above.
     HANG_WARNING_INTERVAL = 30.0
+
+    # rclone exit codes (https://rclone.org/docs/#exit-code) used to classify
+    # failures: 3 = directory not found, 4 = file not found, 5 = temporary error
+    # (a retry may fix it), 6 = less serious error, 7 = fatal error.
+    NOT_FOUND_CODES = frozenset({3, 4})
+    RETRYABLE_CODES = frozenset({5})
+    TRANSIENT_CODES = frozenset({6})
 
     def __init__(
         self,
@@ -116,7 +124,7 @@ class RcloneHandler(RemoteHandler):
         self.exclude_patterns = exclude_patterns or []
 
     @staticmethod
-    def test_connection(profile_name: str, logger: logging.Logger, prompt) -> tuple[int, str]:
+    def test_connection(profile_name: str, logger: logging.Logger, prompt) -> RemoteResult:
         """
         Test Rclone connectivity by running the 'lsd' command.
 
@@ -131,33 +139,56 @@ class RcloneHandler(RemoteHandler):
         )
         rclone_parms = ["lsd", f"{profile_name}:"]
         try:
-            result_code, result_output = handler.run_command(rclone_parms=rclone_parms)
-            if result_code == 0:
-                if "failed to create file system" in result_output.lower():
+            result = handler.run_command(rclone_parms=rclone_parms)
+            if result.ok:
+                if "failed to create file system" in result.message.lower():
                     prompt.print(f"Connection failed to remote: {profile_name}")
-                    prompt.print(f"Error output: {result_output}")
+                    prompt.print(f"Error output: {result.message}")
                 else:
                     prompt.print(f"Connection successful to remote: {profile_name}")
-                    prompt.print(f"Output: {result_output}")
+                    prompt.print(f"Output: {result.message}")
             else:
                 prompt.print(f"Connection failed to remote: {profile_name}")
-                prompt.print(f"Error output: {result_output}")
+                prompt.print(f"Error output: {result.message}")
                 prompt.print("Test failed")
-            return result_code, result_output
+            return result
         except Exception as e:  # noqa: BLE001
             prompt.print(f"Connection failed to remote: {profile_name}")
             prompt.print(f"Error: {e}")
-            return (1, f"Connection failed to remote: {profile_name}. Error: {e}")
+            return RemoteResult.failure(
+                f"Connection failed to remote: {profile_name}. Error: {e}", code=1
+            )
     
+    @classmethod
+    def _classify_returncode(cls, returncode: int) -> RemoteErrorKind:
+        """
+        Map an rclone exit code to a failure kind.
+
+        See https://rclone.org/docs/#exit-code. Codes not listed in the class
+        constants above are reported as FATAL.
+        """
+        if returncode in cls.NOT_FOUND_CODES:
+            return RemoteErrorKind.NOT_FOUND
+        if returncode in cls.RETRYABLE_CODES or returncode in cls.TRANSIENT_CODES:
+            return RemoteErrorKind.TRANSIENT
+        return RemoteErrorKind.FATAL
+
+    @classmethod
+    def _is_retryable(cls, returncode: int) -> bool:
+        """True when rclone reported a temporary error that a retry may fix."""
+        return returncode in cls.RETRYABLE_CODES
+
     def run_command(
         self,
         rclone_parms: list[str],
         additional_args_str: str = "",
         timeout: float | None = None,
-    ) -> tuple[int, str]:
+    ) -> RemoteResult:
         """
-        Run rclone_command as a subprocess
-        Return tuple (result_code and result_output)
+        Run rclone_command as a subprocess and return a RemoteResult.
+
+        A successful result carries rclone's stdout as its message; a failure
+        carries stderr, the exit code and a classified RemoteErrorKind.
         Param rclone_parms: list of commands
         Param additional_args_str: a string with arguments
         Param timeout: optional per-call timeout override (seconds). Falls back
@@ -167,14 +198,14 @@ class RcloneHandler(RemoteHandler):
 
         if self.rclone_path is None:
             self.logger.error("rclone executable not found in the system's PATH.")
-            return (1, "rclone executable not found in the system's PATH.")
+            return RemoteResult.failure("rclone executable not found in the system's PATH.", code=1)
 
         try:
             # Parse Additional Arguments Safely
             extra_args_list = shlex.split(additional_args_str, posix=not RcloneHandler.is_windows)
         except ValueError as e:
             self.logger.error(f"Error parsing arguments: {e}")
-            return (1, f"Error parsing arguments: {e}")
+            return RemoteResult.failure(f"Error parsing arguments: {e}", code=1)
         
         # Add rclone executable
         rclone_command = rclone_parms.copy()
@@ -234,7 +265,12 @@ class RcloneHandler(RemoteHandler):
             if process.poll() is None:
                 process.kill()
                 stdout, stderr = process.communicate()
-            return (1, stderr or f"Command timed out after {effective_timeout}s")
+            return RemoteResult.failure(
+                stderr or f"Command timed out after {effective_timeout}s",
+                code=1,
+                kind=RemoteErrorKind.TIMEOUT,
+                retryable=True,
+            )
 
         returncode = process.returncode
         elapsed = time.monotonic() - start_time
@@ -242,9 +278,14 @@ class RcloneHandler(RemoteHandler):
             f"Command finished in {elapsed:.2f}s (code={returncode}): {' '.join(rclone_command)}"
         )
         if returncode == 0:
-            return (0, stdout.strip())
+            return RemoteResult.success(stdout.strip(), code=0)
 
-        return (returncode, stderr)
+        return RemoteResult.failure(
+            stderr,
+            code=returncode,
+            kind=self._classify_returncode(returncode),
+            retryable=self._is_retryable(returncode),
+        )
 
     def get_remote_path(self, monitor_path: str) -> str:
         """
@@ -256,35 +297,32 @@ class RcloneHandler(RemoteHandler):
         remote_path = self.base_remote_path / relative_path
         return remote_path.as_posix()
 
-    def get_rclone_version(self) -> tuple[int, str]:
+    def get_rclone_version(self) -> RemoteResult:
         return self.run_command(["--version"])
 
-    def list_remotes(self) -> tuple[int, str]:
+    def list_remotes(self) -> RemoteResult:
         """
         List remotes configured
         """
         return self.run_command(["listremotes"])
 
-    def file_exists(self, remote_path: str) -> tuple[int, str]:
+    def file_exists(self, remote_path: str) -> RemoteResult:
         """
-        Docstring for file_exists
+        Check whether the remote path exists.
+
+        A successful result means the path exists; a result with
+        ``kind is RemoteErrorKind.NOT_FOUND`` means it does not.
         
         :param self: Instance of this class
         :param remote_path: Remote path to check for existence
         :type remote_path: str
         """
-        (return_value, result_output) = self.run_command(
-            ["ls", remote_path]
-            )
+        return self.run_command(["ls", remote_path])
 
-        return (return_value, result_output)
-
-    def copy_file(self, monitor_path: str, remote_path: str | None = None) -> tuple[int, str]:
+    def copy_file(self, monitor_path: str, remote_path: str | None = None) -> RemoteResult:
         """
         Copy monitor_path to remote_path.
         If remote_path is None, the remote_path is derived from the monitor_path
-        Returns:
-            (result_code, result_output)
         """
 
         if remote_path is None:
@@ -297,18 +335,18 @@ class RcloneHandler(RemoteHandler):
                 remote_path = f"{self.profile_name}:{remote_path}"
 
         # copyto can fail if the file has been deleted at the destination on a versioned file system
-        (return_value, result_output) = self.run_command(
+        result = self.run_command(
             ["copyto", monitor_path, remote_path]
         )
 
-        if return_value == 0:
-            return (return_value, result_output)
+        if result.ok:
+            return result
 
         # rclone copyto can fail if a file has been deleted at the destination on a versioned file system
         # If copyto fails, we try to copy the file using rclone --include
         # This is a fallback mechanism
-        # Check result_output for MethodNotAllowed
-        if "MethodNotAllowed" in result_output:
+        # Check the result message for MethodNotAllowed
+        if "MethodNotAllowed" in result.message:
             monitor_path_obj = Path(monitor_path)
             file_name = monitor_path_obj.name
             monitor_folder = monitor_path_obj.parent
@@ -323,8 +361,8 @@ class RcloneHandler(RemoteHandler):
                 ]
             )
         # Log copy_file failed
-        self.logger.warning(f"copy_file failed; return_value={return_value}")
-        return (return_value, result_output)
+        self.logger.warning(f"copy_file failed; code={result.code}")
+        return result
 
     def _exclude_args(self) -> list[str]:
         """Build repeated rclone ``--exclude`` flags from the configured patterns."""
@@ -333,7 +371,7 @@ class RcloneHandler(RemoteHandler):
             args += ["--exclude", pattern]
         return args
 
-    def copy_folder(self, monitor_path: str) -> tuple[int, str]:
+    def copy_folder(self, monitor_path: str) -> RemoteResult:
         """
         Copy the monitor path to the derived remote path
         """
@@ -346,7 +384,7 @@ class RcloneHandler(RemoteHandler):
             ["copy", monitor_path, remote_path] + self._exclude_args()
         )
     
-    def restore_folder(self, remote_path: str) -> tuple[int, str]:
+    def restore_folder(self, remote_path: str) -> RemoteResult:
         """
         Restore the remote path to the base monitor path.
 
@@ -361,7 +399,7 @@ class RcloneHandler(RemoteHandler):
             ["copy", remote_path, str(self.base_monitor_path)] + self._exclude_args()
         )
 
-    def delete_file(self, remote_path: str) -> tuple[int, str]:
+    def delete_file(self, remote_path: str) -> RemoteResult:
         """
         Delete file at remote_path
         """
@@ -375,7 +413,7 @@ class RcloneHandler(RemoteHandler):
         # Using rclone delete reduces noise in the log
         return self.run_command(["delete", remote_path])
 
-    def delete_folder(self, remote_path: str) -> tuple[int, str]:
+    def delete_folder(self, remote_path: str) -> RemoteResult:
         """
         Delete contents inside remote_path
         """

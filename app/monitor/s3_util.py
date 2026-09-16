@@ -27,5 +27,4 @@ class S3CheckPath:
         """
         if self.check_delay > 0:
             time.sleep(self.check_delay)
-        code, _ = self.s3_handler.file_exists(remote_path)
-        return code == 0
+        return bool(self.s3_handler.file_exists(remote_path))

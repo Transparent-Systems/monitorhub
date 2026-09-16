@@ -31,13 +31,22 @@ except ImportError:
     boto3 = None
 
 from boto3.s3.transfer import TransferConfig
-from botocore.exceptions import ClientError
+from botocore.exceptions import (
+    ClientError,
+    ConnectTimeoutError,
+    EndpointConnectionError,
+    ReadTimeoutError,
+)
+from botocore.exceptions import (
+    ConnectionError as BotoConnectionError,
+)
 
 if TYPE_CHECKING:
     from mypy_boto3_s3.client import S3Client
     from mypy_boto3_s3.type_defs import ObjectIdentifierTypeDef
 
 from app.monitor.remote_handler import RemoteHandler
+from app.monitor.remote_result import RemoteErrorKind, RemoteResult
 from app.monitor.s3_factory import S3Factory
 from app.utils.path_filter import is_excluded
 
@@ -155,26 +164,65 @@ class S3Handler(RemoteHandler):
         return remote_path.as_posix()
 
   
-    def file_exists(self, remote_path: str) -> tuple[int, str]:
+    @staticmethod
+    def _classify_exception(exc: Exception) -> RemoteErrorKind:
         """
-        Check if remote path exists
+        Classify an S3/boto3 exception.
+
+        Lets callers tell an expected "not found" apart from a permission or
+        connectivity failure. Anything unrecognised is reported as FATAL.
+        """
+        if isinstance(exc, ClientError):
+            error_code = str(exc.response.get("Error", {}).get("Code", ""))
+            if error_code in {"404", "NoSuchKey", "NotFound", "NoSuchBucket"}:
+                return RemoteErrorKind.NOT_FOUND
+            if error_code in {
+                "403",
+                "AccessDenied",
+                "InvalidAccessKeyId",
+                "SignatureDoesNotMatch",
+            }:
+                return RemoteErrorKind.ACCESS_DENIED
+        if isinstance(exc, (ConnectTimeoutError, ReadTimeoutError, EndpointConnectionError)):
+            return RemoteErrorKind.TIMEOUT
+        if isinstance(exc, BotoConnectionError):
+            return RemoteErrorKind.TRANSIENT
+        return RemoteErrorKind.FATAL
+
+    def _failure_from_exception(self, exc: Exception) -> RemoteResult:
+        """Build a failed RemoteResult classified from a boto3 exception."""
+        kind = self._classify_exception(exc)
+        return RemoteResult.failure(
+            str(exc),
+            code=1,
+            kind=kind,
+            retryable=kind in {RemoteErrorKind.TIMEOUT, RemoteErrorKind.TRANSIENT},
+        )
+
+    def file_exists(self, remote_path: str) -> RemoteResult:
+        """
+        Check whether the remote path exists.
+
+        A successful result means the path exists; a NOT_FOUND result means it
+        does not. Any other failure kind means the check itself failed.
         """
         bucket, key = self._get_bucket_and_key(remote_path)
         
         try:
             self.logger.debug(f"Check if path exists: s3://{bucket}/{key}")
             self.client.head_object(Bucket=bucket, Key=key)
-            return (0, "")
+            return RemoteResult.success()
         except Exception as e:  # noqa: BLE001
             self.logger.debug(f"Path does not exist: s3://{bucket}/{key}")
-            return (1, str(e))
+            result = self._failure_from_exception(e)
+            if result.kind is RemoteErrorKind.NOT_FOUND:
+                return RemoteResult.not_found(str(e))
+            return result
 
-    def copy_file(self, monitor_path: str, remote_path: str | None = None) -> tuple[int, str]:
+    def copy_file(self, monitor_path: str, remote_path: str | None = None) -> RemoteResult:
         """
         Copy monitor_path to remote_path.
         If remote_path is None, the remote_path is derived from the monitor_path
-        Returns:
-            (result_code, result_output)
         """
 
         if remote_path is None:
@@ -197,13 +245,13 @@ class S3Handler(RemoteHandler):
 
             # We may have stored mtime in metadata during a previous upload
             if remote_mtime and remote_mtime == str(int(Path(monitor_path).stat().st_mtime)):
-                return (0, "")
+                return RemoteResult.success()
 
             # Is size and etag same as the monitor file, then return
             if size == Path(monitor_path).stat().st_size:
                 md5 = self._calculate_md5(monitor_path)
                 if etag == md5:
-                    return (0, "")
+                    return RemoteResult.success()
         except ClientError as e:
             error_code = e.response.get('Error', {}).get('Code')
             if error_code == '404':
@@ -212,18 +260,22 @@ class S3Handler(RemoteHandler):
         try:
             self.logger.debug(f"Uploading {monitor_path} to s3://{bucket}/{key}")
             self.client.upload_file(monitor_path, bucket, key, ExtraArgs=extra_args, Config=self.transfer_config)
-            return (0, "")
+            return RemoteResult.success()
         except Exception as e:  # noqa: BLE001
             self.logger.error(f"Error uploading file {monitor_path}: {e}")
-            return (1, str(e))
+            return self._failure_from_exception(e)
 
-    def copy_folder(self, monitor_path: str) -> tuple[int, str]:
+    def copy_folder(self, monitor_path: str) -> RemoteResult:
         """
         Copy the monitor path to the derived remote path.
         """
         monitor_path_obj = Path(monitor_path)
         if not monitor_path_obj.exists():
-            return (1, f"Monitor path {monitor_path} does not exist")
+            return RemoteResult.failure(
+                f"Monitor path {monitor_path} does not exist",
+                code=1,
+                kind=RemoteErrorKind.NOT_FOUND,
+            )
 
         remote_path = self.get_remote_path(monitor_path=monitor_path)
         bucket, prefix = self._get_bucket_and_key(remote_path)
@@ -298,17 +350,17 @@ class S3Handler(RemoteHandler):
                         should_copy = True
 
                 if should_copy:
-                    ret, msg = self.copy_file(str(local_file_path))
-                    if ret != 0:
-                        errors.append(msg)
+                    result = self.copy_file(str(local_file_path))
+                    if not result.ok:
+                        errors.append(result.message)
                 else:
                     self.logger.debug(f"Skipping {local_file_path} (metadata match)")
         
         if errors:
-            return (1, "\n".join(errors))
-        return (0, "")
+            return RemoteResult.failure("\n".join(errors), code=1)
+        return RemoteResult.success()
 
-    def restore_folder(self, remote_path: str) -> tuple[int, str]:
+    def restore_folder(self, remote_path: str) -> RemoteResult:
         """
         Restore the remote path (bucket/prefix) to the base monitor path.
 
@@ -324,7 +376,7 @@ class S3Handler(RemoteHandler):
             objects = self._list_objects(bucket, prefix)
         except Exception as e:  # noqa: BLE001
             self.logger.error(f"Error listing objects for restore: {e}")
-            return (1, str(e))
+            return self._failure_from_exception(e)
 
         for obj in objects:
             key = obj['Key']
@@ -356,10 +408,10 @@ class S3Handler(RemoteHandler):
                 errors.append(str(e))
 
         if errors:
-            return (1, "\n".join(errors))
-        return (0, "")
+            return RemoteResult.failure("\n".join(errors), code=1)
+        return RemoteResult.success()
 
-    def delete_file(self, remote_path: str) -> tuple[int, str]:
+    def delete_file(self, remote_path: str) -> RemoteResult:
         """
         Delete file at remote_path.
         remote_path should be the full path returned by get_remote_path.
@@ -368,12 +420,12 @@ class S3Handler(RemoteHandler):
         try:
             self.logger.debug(f"Deleting s3://{bucket}/{key}")
             self.client.delete_object(Bucket=bucket, Key=key)
-            return (0, "")
+            return RemoteResult.success()
         except Exception as e:  # noqa: BLE001
             self.logger.error(f"Error deleting file {remote_path}: {e}")
-            return (1, str(e))
+            return self._failure_from_exception(e)
 
-    def delete_folder(self, remote_path: str) -> tuple[int, str]:
+    def delete_folder(self, remote_path: str) -> RemoteResult:
         """
         Delete objects in remote_path
         This is done in batches to reduce the number of requests.
@@ -386,7 +438,7 @@ class S3Handler(RemoteHandler):
         try:
             objects = self._list_objects(bucket, prefix)
             if not objects:
-                return (0, "")
+                return RemoteResult.success()
 
             # Delete in batches of 1000 (S3 limit)
             delete_keys: list[ObjectIdentifierTypeDef] = [{'Key': obj['Key']} for obj in objects]
@@ -398,20 +450,20 @@ class S3Handler(RemoteHandler):
                 self.logger.debug(f"Deleting batch of {len(batch)} objects from {bucket}")
                 self.client.delete_objects(Bucket=bucket, Delete={'Objects': batch})
             
-            return (0, "")
+            return RemoteResult.success()
         except Exception as e:  # noqa: BLE001
             self.logger.error(f"Error deleting folder {remote_path}: {e}")
-            return (1, str(e))
+            return self._failure_from_exception(e)
 
-    def sync_folder(self, monitor_path: str) -> tuple[int, str]:
+    def sync_folder(self, monitor_path: str) -> RemoteResult:
         """
         Sync the monitor path to the derived remote path.
         Make remote path identical to the monitor path.
         """
         # 1. Copy (Upload) all files from the monitor path
-        copy_ret, copy_msg = self.copy_folder(monitor_path)
-        if copy_ret != 0:
-            return (copy_ret, copy_msg)
+        copy_result = self.copy_folder(monitor_path)
+        if not copy_result.ok:
+            return copy_result
 
         # 2. Delete files in remote that are NOT in the monitor path
         remote_path = self.get_remote_path(monitor_path)
@@ -448,8 +500,8 @@ class S3Handler(RemoteHandler):
                     batch = to_delete[i:i+batch_size]
                     self.client.delete_objects(Bucket=bucket, Delete={'Objects': batch})
 
-            return (0, "")
+            return RemoteResult.success()
 
         except Exception as e:  # noqa: BLE001
             self.logger.error(f"Error during sync cleanup: {e}")
-            return (1, str(e))
+            return self._failure_from_exception(e)

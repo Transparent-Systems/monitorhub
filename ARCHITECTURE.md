@@ -60,14 +60,14 @@ classDiagram
     DESCRIPTION : str
     PROFILE_TYPE : str
     exclude_patterns : list[str]
-    copy_file(monitor_path: str, remote_path: str | None)* tuple[int, str]
-    copy_folder(monitor_path: str)* tuple[int, str]
-    delete_file(remote_path: str)* tuple[int, str]
-    delete_folder(remote_path: str)* tuple[int, str]
-    file_exists(remote_path: str)* tuple[int, str]
+    copy_file(monitor_path: str, remote_path: str | None)* RemoteResult
+    copy_folder(monitor_path: str)* RemoteResult
+    delete_file(remote_path: str)* RemoteResult
+    delete_folder(remote_path: str)* RemoteResult
+    file_exists(remote_path: str)* RemoteResult
     get_remote_path(monitor_path: str)* str
     normalize_path(path: str) str
-    restore_folder(remote_path: str)* tuple[int, str]
+    restore_folder(remote_path: str)* RemoteResult
   }
   class StoppableWorker {
     is_running : bool

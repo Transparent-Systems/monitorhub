@@ -26,6 +26,7 @@ from app.cli.monitor_commands import MonitorCommands
 from app.cli.prompt_service import PromptService
 from app.monitor.rclone_handler import RcloneHandler
 from app.monitor.remote_handler import RemoteHandler
+from app.monitor.remote_result import RemoteResult
 from app.monitor.s3_handler import S3Handler
 from app.utils import reference_data
 from app.utils.constants import (
@@ -70,29 +71,28 @@ class CheckPath:
         self.max_retries = max_retries
         self.retry_interval = retry_interval
 
-    def file_exists(self, remote_path: str, should_exist: bool) -> tuple[int, str]:
+    def file_exists(self, remote_path: str, should_exist: bool) -> RemoteResult:
         """
         Check if remote_path exists, polling until the expected state is reached.
-        Returns (result_code, result_string).
 
-        When `expect_exists` is True, polls until the remote path exists
-        (result_code == 0) or `max_retries` attempts are exhausted.
+        When `should_exist` is True, polls until the remote path exists
+        (a successful result) or `max_retries` attempts are exhausted.
 
-        When `expect_exists` is False, polls until the remote path no longer
-        exists (result_code != 0) or `max_retries` attempts are exhausted.
+        When `should_exist` is False, polls until the remote path no longer
+        exists (a failed result) or `max_retries` attempts are exhausted.
         """
         if self.check_delay > 0:
             time.sleep(self.check_delay)
 
-        result_code, result_string = self.remote_handler.file_exists(remote_path)
+        result = self.remote_handler.file_exists(remote_path)
         for _ in range(self.max_retries):
-            result_as_expected = (result_code == 0) if should_exist else (result_code != 0)
+            result_as_expected = result.ok if should_exist else not result.ok
             if result_as_expected:
-                return (result_code, result_string)
+                return result
             time.sleep(self.retry_interval)
-            result_code, result_string = self.remote_handler.file_exists(remote_path)
+            result = self.remote_handler.file_exists(remote_path)
 
-        return (result_code, result_string)
+        return result
 
 
 
@@ -150,8 +150,8 @@ class TestMonitorHubIntegration(unittest.TestCase):
                 canary_local.write_text(f"monitor readiness probe attempt {attempt}\n")
                 time.sleep(wait_seconds)  # allow event -> dispatch -> upload
 
-                result_code, _ = cls.remote_handler.file_exists(canary_remote)
-                if result_code == 0:
+                result = cls.remote_handler.file_exists(canary_remote)
+                if result.ok:
                     cls.logger.info(
                         f"Monitor '{cls.monitor_name}' is listening "
                         f"(canary detected on remote after {attempt} attempt(s))"
@@ -181,22 +181,22 @@ class TestMonitorHubIntegration(unittest.TestCase):
         # Create the file regardless if it exists or not on monitor path
         file_path = create_test_data(path=self.monitor_path, files=[file_name])
         remote_path = self.remote_handler.get_remote_path(monitor_path=file_path.as_posix())
-        result_code, _ = self.check_path.file_exists(remote_path=remote_path, should_exist=True)
-        self.assertEqual(result_code, 0, f"File {file_name} should exist at {remote_path}.")
+        result = self.check_path.file_exists(remote_path=remote_path, should_exist=True)
+        self.assertTrue(result.ok, f"File {file_name} should exist at {remote_path}.")
 
         # Step 2
         # Delete the file to ensure we create a new file in step 3
         file_path = delete_test_data(path=self.monitor_path, files=[file_name])
         remote_path = self.remote_handler.get_remote_path(monitor_path=file_path.as_posix())
-        result_code, _ = self.check_path.file_exists(remote_path=remote_path, should_exist=False)
-        self.assertNotEqual(result_code, 0, f"File {file_name} should not exist at {remote_path}.")
+        result = self.check_path.file_exists(remote_path=remote_path, should_exist=False)
+        self.assertFalse(result.ok, f"File {file_name} should not exist at {remote_path}.")
 
         # Step 3
         # Now create the file again
         file_path = create_test_data(path=self.monitor_path, files=[file_name])
         remote_path = self.remote_handler.get_remote_path(monitor_path=file_path.as_posix())
-        result_code, _ = self.check_path.file_exists(remote_path=remote_path, should_exist=True)
-        self.assertEqual(result_code, 0, f"File {file_name} should exist at {remote_path}.")
+        result = self.check_path.file_exists(remote_path=remote_path, should_exist=True)
+        self.assertTrue(result.ok, f"File {file_name} should exist at {remote_path}.")
 
     def test_03_delete_file_with_spaces(self):
         """Delete a file"""
@@ -211,8 +211,8 @@ class TestMonitorHubIntegration(unittest.TestCase):
         self.logger.debug(f"Deleted source file : '{file_path}'")
         remote_path = self.remote_handler.get_remote_path(monitor_path=file_path.as_posix())
         time.sleep(self.check_delay)
-        result_code, _ = self.check_path.file_exists(remote_path=remote_path, should_exist=False)
-        self.assertNotEqual(result_code, 0, f"File {file_name} should not exist at {remote_path}.")
+        result = self.check_path.file_exists(remote_path=remote_path, should_exist=False)
+        self.assertFalse(result.ok, f"File {file_name} should not exist at {remote_path}.")
 
 
     def test_04_create_subfolder_with_files(self):
@@ -229,8 +229,8 @@ class TestMonitorHubIntegration(unittest.TestCase):
         time.sleep(self.check_delay)
         file_path = create_test_data(path=self.monitor_path, files=files)
         remote_path = self.remote_handler.get_remote_path(monitor_path=file_path.as_posix())
-        result_code, _ = self.check_path.file_exists(remote_path=remote_path, should_exist=True)
-        self.assertEqual(result_code, 0, f"File {remote_path} should exist.")
+        result = self.check_path.file_exists(remote_path=remote_path, should_exist=True)
+        self.assertTrue(result.ok, f"File {remote_path} should exist.")
 
     def test_05_delete_subfolder(self):
         """Delete subfolder"""
@@ -240,8 +240,8 @@ class TestMonitorHubIntegration(unittest.TestCase):
 
         file_path = delete_test_data(path=self.monitor_path, files=["Subfolder4"])
         remote_path = self.remote_handler.get_remote_path(monitor_path=file_path.as_posix())
-        result_code, _ = self.check_path.file_exists(remote_path=remote_path, should_exist=False)
-        self.assertNotEqual(result_code, 0, f"File {remote_path} should not exist.")
+        result = self.check_path.file_exists(remote_path=remote_path, should_exist=False)
+        self.assertFalse(result.ok, f"File {remote_path} should not exist.")
         
     def test_06_rename_file(self):
         """Rename file"""
@@ -264,13 +264,13 @@ class TestMonitorHubIntegration(unittest.TestCase):
 
         # Check if old file has been deleted from destination
         remote_path = self.remote_handler.get_remote_path(monitor_path=old_file_path)
-        result_code, _ = self.check_path.file_exists(remote_path=remote_path, should_exist=False)
-        self.assertNotEqual(result_code, 0, f"Old file {remote_path} should not exist.")
+        result = self.check_path.file_exists(remote_path=remote_path, should_exist=False)
+        self.assertFalse(result.ok, f"Old file {remote_path} should not exist.")
 
         # Check if new file exists at destination
         remote_path = self.remote_handler.get_remote_path(monitor_path=new_file_path)
-        result_code, _ = self.check_path.file_exists(remote_path=remote_path, should_exist=True)
-        self.assertEqual(result_code, 0, f"New file {remote_path} should exist.")
+        result = self.check_path.file_exists(remote_path=remote_path, should_exist=True)
+        self.assertTrue(result.ok, f"New file {remote_path} should exist.")
 
     def test_07_rename_subfolder(self):
         """Rename subfolder"""
@@ -295,8 +295,8 @@ class TestMonitorHubIntegration(unittest.TestCase):
         # Check if new file exists at remote
         new_path = Path(self.monitor_path) / "Subfolder-new" / "test1.txt"
         remote_path = self.remote_handler.get_remote_path(new_path)
-        result_code, _ = self.check_path.file_exists(remote_path=remote_path, should_exist=True)
-        self.assertEqual(result_code, 0, f"New file {remote_path} should exist.")
+        result = self.check_path.file_exists(remote_path=remote_path, should_exist=True)
+        self.assertTrue(result.ok, f"New file {remote_path} should exist.")
 
     def test_08_write_big_file(self):
         """Write big file"""
@@ -310,8 +310,8 @@ class TestMonitorHubIntegration(unittest.TestCase):
         # Wait for sync
         time.sleep(self.check_delay)
         remote_path = self.remote_handler.get_remote_path(monitor_path=file_path.as_posix())
-        result_code, _ = self.check_path.file_exists(remote_path=remote_path, should_exist=True)
-        self.assertEqual(result_code, 0, f"New file {remote_path} should exist.")
+        result = self.check_path.file_exists(remote_path=remote_path, should_exist=True)
+        self.assertTrue(result.ok, f"New file {remote_path} should exist.")
 
 
 if __name__ == "__main__":

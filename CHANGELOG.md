@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+- Remote storage operations now return a typed result. The ad-hoc
+  ``(result_code, result_output)`` tuple is replaced by ``RemoteResult``
+  (``app/monitor/remote_result.py``), which carries ``ok``, ``message``,
+  ``code``, a classified ``RemoteErrorKind`` (not-found, access-denied,
+  timeout, transient, fatal) and a ``retryable`` flag. ``RemoteHandler``,
+  ``S3Handler``, ``RcloneHandler`` (including ``run_command``) and their
+  callers were updated. ``file_exists`` can now distinguish an expected
+  "the path does not exist" from a check that failed (e.g. access denied),
+  and failed copies/deletes are logged with their reason instead of being
+  discarded. Behaviour is otherwise unchanged.
+
 - Internal refactor: ``run_monitor_main()`` in ``app/monitor/run_monitor.py`` is
   decomposed into the lifecycle phases ``parse_args``, ``get_monitor_context``,
   ``run_until_shutdown`` and ``teardown``, which share a ``MonitorRunContext``

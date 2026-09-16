@@ -202,11 +202,17 @@ class ScheduledMonitorHandler(MonitorHandler):
                     return
 
                 if self.direction == MONITOR_TYPE_BACKUP:
-                    remote_handler.copy_folder(monitor_path=monitor_path)
+                    result = remote_handler.copy_folder(monitor_path=monitor_path)
                 else:
-                    remote_handler.restore_folder(remote_path=remote_path)
+                    result = remote_handler.restore_folder(remote_path=remote_path)
 
-                self.logger.debug(f"[{monitor_name}] Finished {self.direction} folder copy.")
+                if result.ok:
+                    self.logger.debug(f"[{monitor_name}] Finished {self.direction} folder copy.")
+                else:
+                    self.logger.error(
+                        f"[{monitor_name}] {self.direction} failed "
+                        f"(kind={result.kind}, code={result.code}): {result.message}"
+                    )
             elif category == "command":
                 command_handler = self.command_handlers.get(profile.get("name"))
                 if command_handler is None:

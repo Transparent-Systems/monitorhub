@@ -1,5 +1,7 @@
 from abc import ABC, abstractmethod
 
+from app.monitor.remote_result import RemoteResult
+
 
 class RemoteHandler(ABC):
     """
@@ -34,29 +36,31 @@ class RemoteHandler(ABC):
         """
 
     @abstractmethod
-    def file_exists(self, remote_path: str) -> tuple[int, str]:
+    def file_exists(self, remote_path: str) -> RemoteResult:
         """
-        Check if remote path exists
+        Check whether the remote path exists.
+
+        Returns a successful result when the path exists, a result with
+        ``kind is RemoteErrorKind.NOT_FOUND`` when it does not, and a failure
+        with another kind when the check itself could not be performed.
         """
 
     @abstractmethod
-    def copy_file(self, monitor_path: str, remote_path: str | None = None) -> tuple[int, str]:
+    def copy_file(self, monitor_path: str, remote_path: str | None = None) -> RemoteResult:
         """
         Copy monitor_path to remote_path.
-        If remote_path is None, the remote_path is derived from the monitor_path
-        Returns:
-            (result_code, result_output)
+        If remote_path is None, the remote_path is derived from the monitor_path.
         """
 
     @abstractmethod
-    def copy_folder(self, monitor_path: str) -> tuple[int, str]:
+    def copy_folder(self, monitor_path: str) -> RemoteResult:
         """
         Copy the monitor path to the derived remote path.
         The remote path can be automatically derived from the monitor path.
         """
 
     @abstractmethod
-    def restore_folder(self, remote_path: str) -> tuple[int, str]:
+    def restore_folder(self, remote_path: str) -> RemoteResult:
         """
         Restore the remote path to the base monitor path.
         The direction is reversed compared to copy_folder: the source is remote
@@ -64,15 +68,15 @@ class RemoteHandler(ABC):
         """
 
     @abstractmethod
-    def delete_file(self, remote_path: str) -> tuple[int, str]:
+    def delete_file(self, remote_path: str) -> RemoteResult:
         """
         Delete file at remote_path.
         """
 
     @abstractmethod
-    def delete_folder(self, remote_path: str) -> tuple[int, str]:
+    def delete_folder(self, remote_path: str) -> RemoteResult:
         """
-        Delete objects in remote_path
+        Delete objects in remote_path.
         """
 
     @staticmethod

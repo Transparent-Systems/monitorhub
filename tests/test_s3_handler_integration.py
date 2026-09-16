@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import ClassVar
 
 import yaml
+from app.monitor.remote_result import RemoteErrorKind
 from app.monitor.s3_handler import S3Handler
 from app.utils.sqlite_handler import SQLiteHandler
 
@@ -71,21 +72,21 @@ class TestS3HandlerIntegration(unittest.TestCase):
         # Create source file
         file_path = create_test_data(path=self.monitor_path, files=[file_name])
         # Copy file to remote to setup state for following tests
-        (result_code, result_output) = self.s3_handler.copy_file(
+        result = self.s3_handler.copy_file(
             monitor_path=file_path.as_posix()
         )
-        self.assertEqual(result_code, 0, f"ResultCode: {result_code}. Output: {result_output}")
+        self.assertTrue(result.ok, f"Result: {result}")
 
         # Check file exists
         remote_path =self.s3_handler.get_remote_path(monitor_path=file_path.as_posix())
-        (result_code, result_output) = self.s3_handler.file_exists(remote_path=remote_path)
-        self.assertEqual(result_code, 0, f"ResultCode: {result_code}. Output: {result_output}")
+        result = self.s3_handler.file_exists(remote_path=remote_path)
+        self.assertTrue(result.ok, f"Result: {result}")
 
         # Check non-existent file
         remote_path_missing = Path(self.monitor_path) / "file-does-not-exists.txt"
         remote_path =self.s3_handler.get_remote_path(monitor_path=remote_path_missing.as_posix())
-        (result_code, result_output) = self.s3_handler.file_exists(remote_path=remote_path)
-        self.assertGreater(result_code, 0, f"File does not exists: {remote_path}. ResultCode: {result_output}")
+        result = self.s3_handler.file_exists(remote_path=remote_path)
+        self.assertEqual(result.kind, RemoteErrorKind.NOT_FOUND, f"Result: {result}")
         # Checking directory exists is pointless for Object Storage as is stored as file meta data
 
     def test_02_create_file_with_spaces(self):
@@ -96,31 +97,27 @@ class TestS3HandlerIntegration(unittest.TestCase):
         # Create source file
         file_path = create_test_data(path=self.monitor_path, files=[file_name])
         # Copy file to remote
-        (result_code, result_output) = self.s3_handler.copy_file(
+        result = self.s3_handler.copy_file(
             monitor_path=file_path.as_posix()
         )
-        self.assertEqual(result_code, 0, f"ResultCode: {result_code}. Output: {result_output}")
+        self.assertTrue(result.ok, f"Result: {result}")
 
         # Check file exists
         remote_path =self.s3_handler.get_remote_path(monitor_path=file_path.as_posix())
-        (result_code, result_output) = self.s3_handler.file_exists(remote_path=remote_path)
-        self.assertEqual(result_code, 0, f"ResultCode: {result_code}. Output: {result_output}")
+        result = self.s3_handler.file_exists(remote_path=remote_path)
+        self.assertTrue(result.ok, f"Result: {result}")
 
-        if result_code != 0:
-            self.logger.error(f"Could not find file in remote: {remote_path}. ResultCode: {result_code}. Output: {result_output}")
+        if not result.ok:
+            self.logger.error(f"Could not find file in remote: {remote_path}. Result: {result}")
             return
-        
-        if result_code != 0:
-            self.logger.error(f"Could not find file in remote: {remote_path}. ResultCode: {result_code}. Output: {result_output}")
-            return
-        
+
         # Check if we can delete a file with spaces
-        (result_code, result_output) = self.s3_handler.delete_file(remote_path=remote_path)
-        self.assertEqual(result_code, 0, f"ResultCode: {result_code}. Output: {result_output}")
+        result = self.s3_handler.delete_file(remote_path=remote_path)
+        self.assertTrue(result.ok, f"Result: {result}")
 
         # Check that file does not exist anymore
-        (result_code, result_output) = self.s3_handler.file_exists(remote_path=remote_path)
-        self.assertNotEqual(result_code, 0, f"ResultCode: {result_code}. Output: {result_output}")
+        result = self.s3_handler.file_exists(remote_path=remote_path)
+        self.assertEqual(result.kind, RemoteErrorKind.NOT_FOUND, f"Result: {result}")
 
 
     def test_05_delete_file_at_remote(self):
@@ -130,13 +127,13 @@ class TestS3HandlerIntegration(unittest.TestCase):
         file_path = create_test_data(path=self.monitor_path, files=[file_name])
 
         # Copy first
-        (result_code, result_output) = self.s3_handler.copy_file(monitor_path=file_path.as_posix())
-        self.assertEqual(result_code, 0, f"ResultCode: {result_code}. Output: {result_output}")
+        result = self.s3_handler.copy_file(monitor_path=file_path.as_posix())
+        self.assertTrue(result.ok, f"Result: {result}")
 
         # Delete file
         remote_path = self.s3_handler.get_remote_path(monitor_path=file_path.as_posix())
-        (result_code, result_output) = self.s3_handler.delete_file(remote_path=remote_path)
-        self.assertEqual(result_code, 0, f"ResultCode: {result_code}. Output: {result_output}")
+        result = self.s3_handler.delete_file(remote_path=remote_path)
+        self.assertTrue(result.ok, f"Result: {result}")
 
     def test_06_create_several_files(self):
         """Create several files"""
@@ -148,14 +145,14 @@ class TestS3HandlerIntegration(unittest.TestCase):
         folder_path = file_path.parent # Subfolder1
 
         # Copy folder
-        (result_code, result_output) = self.s3_handler.copy_folder(monitor_path=folder_path.as_posix())
-        self.assertEqual(result_code, 0, f"ResultCode: {result_code}. Output: {result_output}")
+        result = self.s3_handler.copy_folder(monitor_path=folder_path.as_posix())
+        self.assertTrue(result.ok, f"Result: {result}")
 
         # Check one file
         file_path = Path(folder_path / "test1.txt")
         remote_path = self.s3_handler.get_remote_path(monitor_path=file_path.as_posix())
-        (result_code, result_output) = self.s3_handler.file_exists(remote_path=remote_path)
-        self.assertEqual(result_code, 0, f"ResultCode: {result_code}. Output: {result_output}")
+        result = self.s3_handler.file_exists(remote_path=remote_path)
+        self.assertTrue(result.ok, f"Result: {result}")
 
     def test_07_remove_folder_from_remote(self):
         """Remove folder from remote"""
@@ -166,13 +163,13 @@ class TestS3HandlerIntegration(unittest.TestCase):
         folder_path = file_path.parent
 
         # Copy folder
-        (result_code, result_output) = self.s3_handler.copy_folder(monitor_path=folder_path.as_posix())
-        self.assertEqual(result_code, 0, f"ResultCode: {result_code}. Output: {result_output}")
+        result = self.s3_handler.copy_folder(monitor_path=folder_path.as_posix())
+        self.assertTrue(result.ok, f"Result: {result}")
 
         # Delete folder
         remote_path =self.s3_handler.get_remote_path(monitor_path=folder_path.as_posix())
-        (result_code, result_output) = self.s3_handler.delete_folder(remote_path=remote_path)
-        self.assertEqual(result_code, 0, f"ResultCode: {result_code}. Output: {result_output}")
+        result = self.s3_handler.delete_folder(remote_path=remote_path)
+        self.assertTrue(result.ok, f"Result: {result}")
  
     def test_08_file_with_space(self):
         """Testing file with space"""
@@ -181,13 +178,13 @@ class TestS3HandlerIntegration(unittest.TestCase):
         file_path = create_test_data(path=self.monitor_path, files=[file_name])
 
         # Copy file
-        (result_code, result_output) = self.s3_handler.copy_file(monitor_path=file_path.as_posix())
-        self.assertEqual(result_code, 0, f"ResultCode: {result_code}. Output: {result_output}")
+        result = self.s3_handler.copy_file(monitor_path=file_path.as_posix())
+        self.assertTrue(result.ok, f"Result: {result}")
 
         # Check file exists
         remote_path = self.s3_handler.get_remote_path(monitor_path=file_path.as_posix())
-        result_code, result_output = self.s3_handler.file_exists(remote_path=remote_path)
-        self.assertEqual(result_code, 0, f"ResultCode: {result_code}. Output: {result_output}")
+        result = self.s3_handler.file_exists(remote_path=remote_path)
+        self.assertTrue(result.ok, f"Result: {result}")
 
     def test_09_restore_folder(self):
         """Restore a remote folder back to the local source path."""
@@ -202,10 +199,10 @@ class TestS3HandlerIntegration(unittest.TestCase):
         file_path = create_test_data(path=self.monitor_path, files=files)
         folder_path = file_path.parent.resolve()
 
-        (result_code, result_output) = self.s3_handler.copy_folder(
+        result = self.s3_handler.copy_folder(
             monitor_path=folder_path.as_posix()
         )
-        self.assertEqual(result_code, 0, f"ResultCode: {result_code}. Output: {result_output}")
+        self.assertTrue(result.ok, f"Result: {result}")
 
         # Simulate data loss locally.
         import shutil
@@ -213,10 +210,10 @@ class TestS3HandlerIntegration(unittest.TestCase):
 
         # Restore from remote.
         remote_path = self.s3_handler.get_remote_path(monitor_path=folder_path.as_posix())
-        (result_code, result_output) = self.s3_handler.restore_folder(
+        result = self.s3_handler.restore_folder(
             remote_path=remote_path
         )
-        self.assertEqual(result_code, 0, f"ResultCode: {result_code}. Output: {result_output}")
+        self.assertTrue(result.ok, f"Result: {result}")
 
         # Verify each restored file exists locally. The restored prefix
         # (RestoreFolder) is stripped, so files land directly under monitor_path,

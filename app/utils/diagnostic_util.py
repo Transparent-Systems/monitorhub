@@ -409,18 +409,18 @@ class DiagnosticUtil:
             remote_path_file = f"{remote_path}/{temp_remote_file_name}"
             self.prompt.print(f"remote_path_file: {remote_path_file}")
 
-            result_code, _ = remote_handler.copy_file(
+            copy_result = remote_handler.copy_file(
                 monitor_path=monitor_path_file,
                 remote_path=remote_path_file
                 )
-            process_test_result.process(test_case_name=testname, test_ok=(result_code == 0), test_output=f"Result of copy: {result_code}")
+            process_test_result.process(test_case_name=testname, test_ok=copy_result.ok, test_output=f"Result of copy: {copy_result}")
 
             # Wait 
             time.sleep(check_delay)
-            result_code, _ = remote_handler.delete_file(
+            delete_result = remote_handler.delete_file(
                 remote_path=remote_path_file
                 )
-            process_test_result.process(test_case_name=testname, test_ok=(result_code == 0), test_output=f"Result of delete: {result_code}")
+            process_test_result.process(test_case_name=testname, test_ok=delete_result.ok, test_output=f"Result of delete: {delete_result}")
 
         # Delete local temporary file
         try:
