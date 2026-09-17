@@ -272,8 +272,9 @@ class MonitorCommands:
         )
         monitor["config"] = config
 
-    def _edit_profiles(self, monitor: dict, monitor_id: int) -> None:
+    def _edit_profiles(self, monitor: dict) -> None:
         """Edit profile mappings: delete existing and add new profiles."""
+        monitor_id: int = monitor.get("id", 0)
         monitor_profiles = self.sqlite_handler.get_profiles_for_monitor(monitor_id=monitor_id)
         if monitor_profiles:
             self.prompt.print("\nCurrent profiles linked to this monitor:")
@@ -475,7 +476,7 @@ class MonitorCommands:
         self._edit_basic_fields(monitor)
         self._edit_interval(monitor)
         self._edit_exclude_patterns(monitor)
-        self._edit_profiles(monitor, monitor_id)
+        self._edit_profiles(monitor)
 
         # Update monitor
         try:
