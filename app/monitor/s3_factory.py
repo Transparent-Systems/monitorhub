@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING
 
 import boto3
 from botocore.client import Config
-from botocore.exceptions import ClientError
+from botocore.exceptions import BotoCoreError, ClientError
 
 if TYPE_CHECKING:
     from mypy_boto3_s3.client import S3Client
@@ -141,7 +141,7 @@ class S3Factory:
             else:
                 prompt.print(f"Error: {e}")
                 prompt.print("Test failed")
-        except Exception as e:  # noqa: BLE001
+        except BotoCoreError as e:
             prompt.print(f"Error: {e}")
             prompt.print("Test failed")
 

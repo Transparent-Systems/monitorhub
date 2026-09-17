@@ -220,7 +220,7 @@ class DiagnosticUtil:
                 version = subprocess.check_output(["rclone", "version"], text=True).split('\n')[0]
                 self.prompt.print(f"    ({version})")
                 return True
-            except Exception as e:  # noqa: BLE001
+            except (OSError, subprocess.SubprocessError) as e:
                 self.prompt.print("    [!] Warning: Could not execute rclone version.")
                 self.prompt.print(f"    Error: {e}")
                 return False
@@ -428,8 +428,7 @@ class DiagnosticUtil:
             temp_file_path = Path(tmp_file.name)
             if temp_file_path.exists():
                 os.unlink(temp_file_path)
-        except Exception as e:  # noqa: BLE001
-
+        except OSError as e:
             self.logger.warning(f"Failed to delete local temp file {temp_remote_file_name}: {e}")
 
         return process_test_result

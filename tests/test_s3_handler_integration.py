@@ -17,10 +17,10 @@ from pathlib import Path
 from typing import ClassVar
 
 import yaml
+
 from app.monitor.remote_result import RemoteErrorKind
 from app.monitor.s3_handler import S3Handler
 from app.utils.sqlite_handler import SQLiteHandler
-
 from tests.database_test_data import DatabaseTestData
 from tests.util.testing_util import create_test_data
 

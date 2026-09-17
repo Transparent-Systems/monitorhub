@@ -2,6 +2,25 @@
 
 ## [Unreleased]
 
+- Exception-handler hygiene (the ``BLE001`` blind-except rule is now enforced
+  by the lint configuration): the per-directory ``app/*/ruff.toml`` files were
+  folded into a single ``[tool.ruff.lint]`` table in ``pyproject.toml`` that
+  explicitly enables the blind-except (``BLE001``) and import-sorting
+  (``I001``) rules, so the quality bar no longer depends on the ruff version's
+  default rule set. Handlers that could be narrowed now catch specific types
+  (``OSError``, ``ValueError``, ``subprocess.SubprocessError``,
+  ``sqlite3.Error``, ``BotoCoreError``, ``UnicodeDecodeError``) instead of
+  ``Exception``; deliberately broad guards (the debounce/action/queue workers,
+  the S3 ``_failure_from_exception`` boundary, the monitor status poller and
+  process bookkeeping) keep ``except Exception`` with a one-line justification
+  next to their ``noqa``. ``SQLiteHandler`` mutators now log and re-raise only
+  ``sqlite3.Error`` (the ``transaction`` and migration context managers already
+  roll back on any exception). The ``try/except/self.fail`` wrapper was removed
+  from 30 tests in ``tests/test_sqlite_handler.py`` — an exception in a test
+  already fails the test with a full traceback — and 11 import blocks were
+  re-sorted for the ``I001`` rule (a consequence of removing the per-directory
+  configs).
+
 - ``DiagnosticUtil`` moved from ``app/utils/`` to ``app/cli/``: it drives an
   interactive CLI report (prompting the user, printing summary tables, running
   rclone and copy/delete probes), so it now lives with its only consumers

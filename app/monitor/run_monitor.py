@@ -213,7 +213,7 @@ class MonitorRunContext:
                     f"received 'stop' command via DB status"
                 )
                 return True
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:  # noqa: BLE001 - a poller error must not stop the monitor loop
             self.logger.warning(f"Status poller error for monitor_id={self.monitor_id}: {e}")
         return False
 

@@ -212,7 +212,7 @@ class S3Handler(RemoteHandler):
             self.logger.debug(f"Check if path exists: s3://{bucket}/{key}")
             self.client.head_object(Bucket=bucket, Key=key)
             return RemoteResult.success()
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:  # noqa: BLE001 - classified via _failure_from_exception (not-found vs other)
             self.logger.debug(f"Path does not exist: s3://{bucket}/{key}")
             result = self._failure_from_exception(e)
             if result.kind is RemoteErrorKind.NOT_FOUND:
@@ -261,7 +261,7 @@ class S3Handler(RemoteHandler):
             self.logger.debug(f"Uploading {monitor_path} to s3://{bucket}/{key}")
             self.client.upload_file(monitor_path, bucket, key, ExtraArgs=extra_args, Config=self.transfer_config)
             return RemoteResult.success()
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:  # noqa: BLE001 - any SDK/IO error is classified, not raised into the watch loop
             self.logger.error(f"Error uploading file {monitor_path}: {e}")
             return self._failure_from_exception(e)
 
@@ -287,7 +287,7 @@ class S3Handler(RemoteHandler):
         # file (rather than abort the backup), so fall back to an empty map.
         try:
             remote_objects = self._list_objects(bucket, prefix)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:  # noqa: BLE001 - listing is an optimisation; fall back to full upload
             self.logger.warning(
                 f"Could not list remote objects at s3://{bucket}/{prefix} ({e}); "
                 "uploading all files without skipping unchanged ones."
@@ -374,7 +374,7 @@ class S3Handler(RemoteHandler):
         errors = []
         try:
             objects = self._list_objects(bucket, prefix)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:  # noqa: BLE001 - a listing failure is a failed restore
             self.logger.error(f"Error listing objects for restore: {e}")
             return self._failure_from_exception(e)
 
@@ -403,7 +403,7 @@ class S3Handler(RemoteHandler):
                     str(local_path),
                     Config=self.transfer_config,
                 )
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:  # noqa: BLE001 - keep restoring sibling keys despite one bad key
                 self.logger.error(f"Error restoring s3://{bucket}/{key}: {e}")
                 errors.append(str(e))
 
@@ -421,7 +421,7 @@ class S3Handler(RemoteHandler):
             self.logger.debug(f"Deleting s3://{bucket}/{key}")
             self.client.delete_object(Bucket=bucket, Key=key)
             return RemoteResult.success()
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:  # noqa: BLE001 - a deletion outcome is classified, not raised
             self.logger.error(f"Error deleting file {remote_path}: {e}")
             return self._failure_from_exception(e)
 
@@ -451,7 +451,7 @@ class S3Handler(RemoteHandler):
                 self.client.delete_objects(Bucket=bucket, Delete={'Objects': batch})
             
             return RemoteResult.success()
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:  # noqa: BLE001 - batch deletion failure is classified, not raised
             self.logger.error(f"Error deleting folder {remote_path}: {e}")
             return self._failure_from_exception(e)
 
@@ -502,6 +502,6 @@ class S3Handler(RemoteHandler):
 
             return RemoteResult.success()
 
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:  # noqa: BLE001 - sync cleanup failure is classified, not raised
             self.logger.error(f"Error during sync cleanup: {e}")
             return self._failure_from_exception(e)

@@ -23,7 +23,6 @@ from app.cli.monitor_commands import STALE_HEARTBEAT_SECONDS, MonitorCommands
 from app.monitor.action_handler import DEFAULT_COMMAND_MAX_WORKERS
 from app.utils.constants import MONITOR_STATUS_RUNNING, TIMESTAMP_FORMAT
 from app.utils.generic_util import parse_timestamp, utc_timestamp_now
-
 from tests.database_test_data import DatabaseTestData
 from tests.mock_prompt_service import MockPromptService
 

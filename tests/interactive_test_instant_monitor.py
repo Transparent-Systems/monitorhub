@@ -37,7 +37,6 @@ from app.utils.constants import (
 )
 from app.utils.logger_setup import setup_logging
 from app.utils.sqlite_handler import SQLiteHandler
-
 from tests.util.testing_util import (
     create_big_file,
     create_test_data,

@@ -1,2 +1,0 @@
-[lint]
-extend-ignore = ["E402"]

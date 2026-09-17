@@ -15,7 +15,6 @@ from app.monitor.run_monitor import (
     parse_args,
     run_monitor_main,
 )
-
 from tests.base_test_class import BaseTestClass
 
 

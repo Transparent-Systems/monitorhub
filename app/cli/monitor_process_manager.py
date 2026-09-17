@@ -211,7 +211,7 @@ class MonitorProcessManager:
                 )
             # Track the child so we can reap it and detect its exit reliably.
             self.tracked_processes[monitor_id_val] = process
-        except Exception as e:  # noqa: BLE001
+        except (OSError, ValueError) as e:
             self.prompt.print(f"Failed to start monitor '{monitor_name}' (id={monitor_id_val}): {e}")
             return False
 

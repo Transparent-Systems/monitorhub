@@ -38,8 +38,10 @@ def test_sqlite_handler_thread_safety():
             errs.append((n, str(e)))
 
     threads = [threading.Thread(target=work, args=(i,)) for i in range(8)]
-    for t in threads: t.start()
-    for t in threads: t.join()
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
 
     print('errors:', errs if errs else 'NONE')
     final_status = h.get_monitor(monitor_id=monitor_id).get('status')

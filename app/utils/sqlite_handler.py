@@ -391,7 +391,7 @@ class SQLiteHandler:
                     "pid": pid,
                 })
                 return cur.lastrowid
-        except Exception as e:
+        except sqlite3.Error as e:
             self.logger.error(f"Error adding monitor '{name}': {e}")
             raise
 
@@ -438,7 +438,7 @@ class SQLiteHandler:
                 if cur.rowcount == 0:
                     return None
                 return monitor_id
-        except Exception as e:
+        except sqlite3.Error as e:
             self.logger.error(f"Error updating monitor id={monitor_id}: {e}")
             raise
 
@@ -572,7 +572,7 @@ class SQLiteHandler:
                     "config": json.dumps(config),
                 })
                 return cur.lastrowid
-        except Exception as e:
+        except sqlite3.Error as e:
             self.logger.error(f"Error adding profile '{name}': {e}")
             raise
 
@@ -624,7 +624,7 @@ class SQLiteHandler:
                 if cur.rowcount == 0:
                     return None
                 return profile_id
-        except Exception as e:
+        except sqlite3.Error as e:
             self.logger.error(f"Error updating profile id={profile_id}: {e}")
             raise
 

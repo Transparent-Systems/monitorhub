@@ -152,7 +152,7 @@ class RcloneHandler(RemoteHandler):
                 prompt.print(f"Error output: {result.message}")
                 prompt.print("Test failed")
             return result
-        except Exception as e:  # noqa: BLE001
+        except (OSError, subprocess.SubprocessError) as e:
             prompt.print(f"Connection failed to remote: {profile_name}")
             prompt.print(f"Error: {e}")
             return RemoteResult.failure(

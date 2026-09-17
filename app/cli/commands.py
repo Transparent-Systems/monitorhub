@@ -17,14 +17,13 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
-from version import VERSION_STRING
-
 from app.cli.database_commands import DatabaseCommands
 from app.cli.diagnostic_util import DiagnosticUtil
 from app.cli.monitor_commands import MonitorCommands
 from app.cli.profile_commands import ProfileCommands
 from app.cli.prompt_service import PromptService
 from app.utils.sqlite_handler import SQLiteHandler
+from version import VERSION_STRING
 
 
 class AppCommands:

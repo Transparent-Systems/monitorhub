@@ -3,6 +3,7 @@ import os
 from logging.handlers import RotatingFileHandler
 
 import yaml
+
 from version import VERSION_STRING
 
 

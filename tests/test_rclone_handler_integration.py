@@ -16,10 +16,10 @@ from pathlib import Path
 from typing import ClassVar
 
 import yaml
+
 from app.monitor.rclone_handler import RcloneHandler
 from app.utils import reference_data
 from app.utils.sqlite_handler import SQLiteHandler
-
 from tests.database_test_data import DatabaseTestData
 from tests.util.testing_util import create_test_data
 

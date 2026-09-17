@@ -12,14 +12,15 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from app.monitor.remote_result import RemoteErrorKind
-from app.monitor.s3_handler import S3Handler
 from botocore.exceptions import (
     ClientError,
     ConnectTimeoutError,
     EndpointConnectionError,
     ReadTimeoutError,
 )
+
+from app.monitor.remote_result import RemoteErrorKind
+from app.monitor.s3_handler import S3Handler
 
 
 class _FailingPaginator:

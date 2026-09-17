@@ -3,13 +3,12 @@
 import os
 import sqlite3
 
-from version import VERSION_STRING
-
 from app.cli.db_error_messages import integrity_error_message
 from app.cli.prompt_service import PromptService
 from app.utils.constants import MONITOR_STATUS_STOPPED, MONITOR_TYPE_INSTANT
 from app.utils.schema_versioning import DATABASE_SCHEMA_VERSION, classify
 from app.utils.sqlite_handler import SQLiteHandler
+from version import VERSION_STRING
 
 
 class DatabaseCommands:

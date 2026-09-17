@@ -25,3 +25,15 @@ pythonpath = ["."]
 addopts = "-s"
 # Optionally tell pytest to collect files named *_stress_test.py
 python_files = ["test_*.py", "*_test.py"]
+
+# Lint rulesets consolidated here (the per-directory app/*/ruff.toml files were
+# removed). "I" (isort) and "BLE" (blind-except) are explicit so the quality bar
+# does not silently depend on ruff's version-specific default rule set.
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "BLE"]
+# Carried over from the removed per-directory ruff.toml files.
+extend-ignore = ["E402", "SIM102"]
+
+[tool.ruff.lint.per-file-ignores]
+# snippets/ are throwaway developer diagnostics, not product code.
+"snippets/*.py" = ["BLE001"]
