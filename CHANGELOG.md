@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+- ``DiagnosticUtil``'s constructor no longer mutates the module logger.  When
+  no logger was injected it previously forced ``logging.DEBUG`` on the shared
+  ``logging.getLogger(__name__)`` logger and appended a fresh
+  ``StreamHandler`` on every construction, so building more than one
+  ``DiagnosticUtil`` stacked handlers on the module logger and duplicated
+  every log line.  It now uses the same injection fallback as the
+  ``StoppableWorker`` base class (``logger or logging.getLogger(__name__)``),
+  leaving level and handlers to the ``setup_logging`` configuration.
+  ``tests/test_diagnostic_util.py`` was converted from an orphaned manual
+  script into unit tests pinning that the module logger stays unmutated across
+  repeated ``DiagnosticUtil(sqlite_handler=..., logger=None)`` constructions.
+
 - Console-policy/log silencing moved out of the CLI wiring factory
   (``build_commands``) and into ``setup_logging`` behind a documented
   ``quiet_dependencies: bool = True`` parameter.  ``setup_logging`` now floors

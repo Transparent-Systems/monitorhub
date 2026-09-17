@@ -28,19 +28,8 @@ class DiagnosticUtil:
         logger: logging.Logger | None = None,
         prompt: PromptService | None = None,
     ):
-        if logger is None:
-            test_logger = logging.getLogger(__name__)
-            test_logger.setLevel(logging.DEBUG)
-            console_handler = logging.StreamHandler()
-            formatter = logging.Formatter(
-                "%(asctime)s - %(levelname)s - %(name)s - %(message)s"
-            )
-            console_handler.setFormatter(formatter)
-            test_logger.addHandler(console_handler)
-            self.logger = test_logger
-        else:
-            self.logger = logger
-        
+        self.logger = logger or logging.getLogger(__name__)
+
         self.prompt = prompt or PromptService()
         self.check_app_env_result = False
         self.check_profile_import_result = False

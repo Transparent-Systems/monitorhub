@@ -1,80 +1,64 @@
-"""
-Diagnostics runner for MonitorHub.
+"""Unit tests for :mod:`app.cli.diagnostic_util`.
 
-Runs DiagnosticUtil checks against the project database. This is a manual
-script, not a unittest module: DiagnosticUtil is only constructed when the
-file is executed directly, so test discovery stays side-effect-free.
+Covers the ``DiagnosticUtil`` constructor contract: when ``logger=None`` the
+instance must fall back to the shared module logger without mutating it (no
+handler stacking / no duplicate logging, no forced level override), and an
+explicitly injected logger must be honoured.  These tests are late regressions
+for the constructor previously creating a fresh ``StreamHandler`` and forcing
+``DEBUG`` on ``logging.getLogger(__name__)`` on every construction.
 """
 
-import argparse
 import logging
-import sys
-
-# Add project root to sys.path for imports when running this file directly
-from pathlib import Path
-
-project_root = Path(__file__).resolve().parent.parent
-if str(project_root) not in sys.path:
-    sys.path.insert(0, str(project_root))
+import unittest
+from unittest import mock
 
 from app.cli.diagnostic_util import DiagnosticUtil
-from app.utils.sqlite_handler import SQLiteHandler
+
+MODULE_LOGGER_NAME = "app.cli.diagnostic_util"
+
+
+class DiagnosticUtilConstructorTest(unittest.TestCase):
+    """The constructor must not mutate the shared module logger."""
+
+    def setUp(self):
+        self.module_logger = logging.getLogger(MODULE_LOGGER_NAME)
+        self.handlers_before = list(self.module_logger.handlers)
+        self.level_before = self.module_logger.level
+
+    def tearDown(self):
+        # Leave the module logger exactly as found, even on test failure.
+        self.module_logger.handlers[:] = self.handlers_before
+        self.module_logger.setLevel(self.level_before)
+
+    def _make(self, logger=None):
+        return DiagnosticUtil(sqlite_handler=mock.Mock(), logger=logger)
+
+    def test_logger_none_does_not_add_handlers(self):
+        self._make(logger=None)
+        self._make(logger=None)
+
+        self.assertEqual(self.module_logger.handlers, self.handlers_before)
+
+    def test_logger_none_uses_shared_module_logger(self):
+        first = self._make(logger=None)
+        second = self._make(logger=None)
+
+        self.assertIs(first.logger, self.module_logger)
+        self.assertIs(second.logger, self.module_logger)
+        self.assertIs(first.logger, second.logger)
+
+    def test_logger_none_does_not_force_debug_level(self):
+        self._make(logger=None)
+
+        self.assertEqual(self.module_logger.level, self.level_before)
+
+    def test_explicit_logger_is_used(self):
+        custom_logger = logging.getLogger("tests.custom.diagnostic_util")
+
+        instance = self._make(logger=custom_logger)
+
+        self.assertIs(instance.logger, custom_logger)
+
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="MonitorHub diagnostics runner")
-    parser.add_argument(
-        "-t",
-        "--test-cases",
-        nargs="*",
-        default=["check_monitor_config"],
-        help=(
-            "Diagnostics to run: check_app_env, check_profile_import, "
-            "check_rclone_dependency, check_app_config"
-        ),
-    )
-    parser.add_argument(
-        "-d",
-        "--db-dir",
-        default="db",
-        help="Directory containing monitorhub.db (default: db)",
-    )
-    args = parser.parse_args()
-
-    sqlite_handler = SQLiteHandler(
-        logger=logging.getLogger(__name__),
-        db_dir=args.db_dir,
-    )
-    diagnostic_util = DiagnosticUtil(
-        sqlite_handler=sqlite_handler,
-        logger=None,
-    )
-
-    if ("check_app_env" in args.test_cases):
-        if (diagnostic_util.check_app_env()):
-            print("Env check passed")
-        else:
-            print("Env check failed")
-
-    elif ("check_profile_import" in args.test_cases):
-        if diagnostic_util.check_profile_import():
-            print("Profile import passed")
-        else:
-            print("Profile import failed")
-
-    elif ("check_rclone_dependency" in args.test_cases):
-        if diagnostic_util.check_rclone_dependency():
-            print("Check for Rclone dependency passed")
-        else:
-            print("Check for Rclone dependency failed")
-
-    elif ("check_monitor_config" in args.test_cases):
-        if (diagnostic_util.check_monitor_config()):
-            print("Monitor config check passed")
-        else:
-            print("Monitor config check failed")
-    else:
-        print("No test cases selected")
-
-    # diagnostic_util.print_overview()
-
-    sys.exit(0)
+    unittest.main()
