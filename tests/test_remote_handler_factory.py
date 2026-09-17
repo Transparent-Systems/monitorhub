@@ -1,6 +1,7 @@
 import unittest
 
 from app.monitor.rclone_handler import RcloneHandler
+from app.monitor.remote_handler import RemoteHandler
 from app.monitor.remote_handler_factory import RemoteHandlerFactory
 
 
@@ -12,6 +13,17 @@ class _FakeHandler:
         self.base_remote_path = base_remote_path
         self.profile_config = profile_config
         self.logger = logger
+
+
+def _remote_handler_subclasses() -> list[type]:
+    """Return every loaded ``RemoteHandler`` subclass, direct and indirect."""
+    queue = list(RemoteHandler.__subclasses__())
+    found: list[type] = []
+    while queue:
+        cls = queue.pop()
+        found.append(cls)
+        queue.extend(cls.__subclasses__())
+    return found
 
 
 class TestRemoteHandlerFactory(unittest.TestCase):
@@ -49,6 +61,25 @@ class TestRemoteHandlerFactory(unittest.TestCase):
         )
         self.assertIsInstance(handler, RcloneHandler)
         self.assertEqual(handler.profile_name, "myftp")
+
+    def test_every_concrete_remote_handler_is_registered(self):
+        """Every class that declares a PROFILE_TYPE must be registered.
+
+        A new native handler (e.g. FTP) must do two things to work: define a
+        ``RemoteHandler`` subclass and make one ``RemoteHandlerFactory.register()``
+        call.  This guard fails the suite if the registration call is forgotten.
+        ``RcloneHandler`` is the delegated fallback, not a native registrant, and
+        stays unregistered by inheriting an empty PROFILE_TYPE.
+        """
+        for cls in _remote_handler_subclasses():
+            profile_type = getattr(cls, "PROFILE_TYPE", "")
+            if not profile_type:
+                continue
+            self.assertTrue(
+                RemoteHandlerFactory.is_registered(profile_type),
+                f"{cls.__name__} declares PROFILE_TYPE='{profile_type}' but is "
+                "not registered; add a RemoteHandlerFactory.register() call",
+            )
 
 
 if __name__ == "__main__":
