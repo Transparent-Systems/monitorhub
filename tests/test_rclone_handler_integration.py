@@ -26,7 +26,7 @@ from tests.util.testing_util import create_test_data
 
 class TestRcloneHandlerIntegration(unittest.TestCase):
     monitor: ClassVar[dict] = {}
-    profile_name: ClassVar[str] = {}
+    profile_name: ClassVar[str] = ""
     logger : logging.Logger
     
     @classmethod

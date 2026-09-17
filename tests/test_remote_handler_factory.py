@@ -51,7 +51,7 @@ class TestRemoteHandlerFactory(unittest.TestCase):
             self.assertEqual(handler.profile_config, {"x": 1})
         finally:
             # Clean up so other tests are unaffected.
-            RemoteHandlerFactory._handlers.pop("_fake", None)
+            RemoteHandlerFactory.unregister("_fake")
 
     def test_unknown_profile_type_falls_back_to_rclone(self):
         handler = RemoteHandlerFactory.get_handler(

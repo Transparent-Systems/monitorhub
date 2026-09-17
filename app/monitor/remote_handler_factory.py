@@ -32,6 +32,11 @@ class RemoteHandlerFactory:
         cls._handlers[profile_type] = handler_factory
 
     @classmethod
+    def unregister(cls, profile_type: str) -> None:
+        """Remove a previously registered handler for profile_type, if present."""
+        cls._handlers.pop(profile_type, None)
+
+    @classmethod
     def is_registered(cls, profile_type: str) -> bool:
         """Return True if a native handler is registered for profile_type."""
         return profile_type in cls._handlers
