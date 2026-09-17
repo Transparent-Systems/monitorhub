@@ -1,6 +1,9 @@
+import subprocess
+import sys
 import unittest
+from pathlib import Path
 
-from app.cli.schema_versioning import (
+from app.utils.schema_versioning import (
     DATABASE_SCHEMA_VERSION,
     SCHEMA_MIGRATIONS,
     classify,
@@ -45,6 +48,42 @@ class TestSchemaVersioning(unittest.TestCase):
             SCHEMA_MIGRATIONS,
             sorted(SCHEMA_MIGRATIONS, key=lambda entry: parse_version(entry[0])),
         )
+
+
+class TestSchemaVersioningLocation(unittest.TestCase):
+    """The schema-version data must not live in the CLI package.
+
+    ``app.utils.sqlite_handler`` depends on it, so keeping it under ``app.cli``
+    would make the utility layer import the presentation layer.
+    """
+
+    def test_module_lives_in_app_utils(self):
+        from app.utils import schema_versioning
+
+        self.assertEqual(schema_versioning.__name__, "app.utils.schema_versioning")
+        self.assertTrue(callable(getattr(schema_versioning, "classify", None)))
+
+    def test_importing_sqlite_handler_does_not_import_app_cli(self):
+        # Run in a fresh interpreter: unittest discovery may already have
+        # imported app.cli for other tests, which would mask a regression.
+        repo_root = Path(__file__).resolve().parents[1]
+        code = (
+            "import sys\n"
+            "import app.utils.sqlite_handler\n"
+            "cli = sorted(\n"
+            "    m for m in sys.modules if m == 'app.cli' or m.startswith('app.cli.')\n"
+            ")\n"
+            "print(','.join(cli))\n"
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", code],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), "", result.stdout)
 
 
 if __name__ == "__main__":

@@ -2,6 +2,23 @@
 
 ## [Unreleased]
 
+- ``DiagnosticUtil`` moved from ``app/utils/`` to ``app/cli/``: it drives an
+  interactive CLI report (prompting the user, printing summary tables, running
+  rclone and copy/delete probes), so it now lives with its only consumers
+  (``commands.py``, ``profile_commands.py``, ``monitor_commands.py``). With
+  that, ``app/utils`` no longer imports ``app.cli`` at all, and the lazy
+  ``DiagnosticUtil`` import inside ``MonitorCommands.test()`` became a normal
+  top-level import (there was no circular import to guard against).
+  ``tests/test_import_layering.py`` now pins the rule down statically: no
+  module under ``app/utils/`` or ``app/monitor/`` may import ``app.cli``.
+
+- The schema-version registry moved out of the CLI package (from
+  ``app/cli/schema_versioning.py`` to ``app/utils/schema_versioning.py``), so
+  ``app/utils/sqlite_handler.py`` no longer imports ``app.cli``. The lazy
+  ``_remote_handler_factory`` workaround in ``app/utils/reference_data.py`` was
+  removed in favour of a normal top-level import; there was no circular import
+  between that module and the monitor package to guard against.
+
 - The monitor's status poller now retries a heartbeat write once when SQLite
   reports a transient lock ("database is locked") before it warns and, as
   before, continues with the next poll. The two attempts are separated by a
@@ -115,7 +132,7 @@
 - The ``schema_version`` table is now an append-only history with a descriptive
   ``description`` column. The schema version is compared numerically, fixing a
   bug where ``9.0.0`` was treated as newer than ``10.0.0``.
-- New ``app/cli/schema_versioning.py`` module centralises version comparison,
+- New ``app/utils/schema_versioning.py`` module centralises version comparison,
   compatibility classification, and the ordered migration registry.
 
 ## [1.0.0] - 2026-09-01

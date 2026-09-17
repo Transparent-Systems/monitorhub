@@ -8,6 +8,8 @@ of that registration is the single source of truth for "implemented".
 
 from dataclasses import dataclass
 
+from app.monitor.remote_handler_factory import RemoteHandlerFactory
+
 # ---------------------------------------------------------------------------
 # Provider reference data (previously the "providers" table)
 # ---------------------------------------------------------------------------
@@ -94,13 +96,6 @@ KNOWN_RLONE_PROFILE_TYPES: tuple[tuple[str, str], ...] = (
 # Helpers (replace the old SQLiteHandler lookup-table / provider methods)
 # ---------------------------------------------------------------------------
 
-def _remote_handler_factory():
-    """Import RemoteHandlerFactory lazily to avoid circular imports."""
-    from app.monitor.remote_handler_factory import RemoteHandlerFactory
-
-    return RemoteHandlerFactory
-
-
 def get_profile_category(profile_type: str) -> str:
     """Return the category ('remote' or 'command') for a profile type.
 
@@ -114,14 +109,14 @@ def get_profile_category(profile_type: str) -> str:
 
 def is_profile_type_implemented(profile_type: str) -> bool:
     """A profile type is implemented if it has a native handler registered."""
-    factory = _remote_handler_factory()
-    return profile_type in COMMAND_PROFILE_TYPES or factory.is_registered(profile_type)
+    return profile_type in COMMAND_PROFILE_TYPES or RemoteHandlerFactory.is_registered(
+        profile_type
+    )
 
 
 def get_implemented_profile_types() -> list[str]:
     """Return the sorted list of profile type names that are implemented."""
-    factory = _remote_handler_factory()
-    types = set(factory.registered_types()) | set(COMMAND_PROFILE_TYPES)
+    types = set(RemoteHandlerFactory.registered_types()) | set(COMMAND_PROFILE_TYPES)
     return sorted(types)
 
 

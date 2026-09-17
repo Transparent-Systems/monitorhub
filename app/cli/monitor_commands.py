@@ -6,6 +6,7 @@ import sqlite3
 import time
 
 from app.cli.db_error_messages import integrity_error_message
+from app.cli.diagnostic_util import DiagnosticUtil
 from app.cli.monitor_process_manager import MonitorProcessManager
 from app.cli.prompt_service import PromptService
 from app.cli.selectors import MonitorSelector
@@ -693,8 +694,6 @@ class MonitorCommands:
 
     def test(self, monitor_id: int | None = None, monitor_name: str | None = None):
         """Test monitor(s)."""
-        from app.utils.diagnostic_util import DiagnosticUtil
-
         if monitor_id is not None and monitor_name is not None:
             self.prompt.print("Cannot specify both --monitor-id and --monitor-name.")
             return

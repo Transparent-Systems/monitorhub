@@ -1,5 +1,6 @@
 import unittest
 
+from app.monitor.remote_handler_factory import RemoteHandlerFactory
 from app.utils import reference_data
 
 
@@ -73,6 +74,16 @@ class TestReferenceDataMonitorTypes(unittest.TestCase):
     def test_monitor_statuses(self):
         names = [name for name, _desc in reference_data.MONITOR_STATUSES]
         self.assertEqual(names, ["running", "stop", "stopped", "error"])
+
+
+class TestReferenceDataFactoryWiring(unittest.TestCase):
+    """``reference_data`` uses RemoteHandlerFactory through a normal import."""
+
+    def test_factory_is_imported_directly(self):
+        # The lazy ``_remote_handler_factory`` helper was removed: there is no
+        # circular import between reference_data and the monitor package.
+        self.assertIs(reference_data.RemoteHandlerFactory, RemoteHandlerFactory)
+        self.assertFalse(hasattr(reference_data, "_remote_handler_factory"))
 
 
 if __name__ == "__main__":

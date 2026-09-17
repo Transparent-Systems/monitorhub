@@ -4,6 +4,7 @@ import logging
 import shlex
 from typing import Any
 
+from app.cli.diagnostic_util import DiagnosticUtil
 from app.cli.profile_editor import ProfileEditor
 from app.cli.prompt_service import PromptService
 from app.cli.selectors import ProfileSelector
@@ -15,7 +16,6 @@ from app.monitor.action_handler import (
 from app.monitor.rclone_handler import RcloneHandler
 from app.monitor.s3_factory import S3Factory
 from app.utils import reference_data
-from app.utils.diagnostic_util import DiagnosticUtil
 from app.utils.generic_util import find_by_id, is_interval_valid
 from app.utils.sqlite_handler import SQLiteHandler
 

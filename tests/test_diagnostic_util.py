@@ -17,7 +17,7 @@ project_root = Path(__file__).resolve().parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-from app.utils.diagnostic_util import DiagnosticUtil
+from app.cli.diagnostic_util import DiagnosticUtil
 from app.utils.sqlite_handler import SQLiteHandler
 
 if __name__ == "__main__":

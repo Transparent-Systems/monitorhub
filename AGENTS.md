@@ -34,4 +34,7 @@
 
 - Python 3.12 features are permitted (e.g. `X | None`, `match`, dataclasses).
 - Follow PEP 8; prioritize readability.
+- Keep the package layering: `app/utils` and `app/monitor` are the backend and
+  must not import `app.cli` (the presentation layer). Interactive/reporting
+  code belongs in `app/cli`. `tests/test_import_layering.py` enforces this.
 - Do not modify files in `.venv/`, `.vscode/`, `data/`, or `build/`.

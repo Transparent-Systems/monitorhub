@@ -74,3 +74,24 @@ Note on reparenting: when the launching process exits (e.g. `mhub.py monitor sta
 monitor is reparented to a subreaper (`systemd --user` or init/PID 1), which reaps it promptly on
 exit — so no zombie is observed in that case.
 
+## Package layering: the backend must not import the CLI
+
+`app/cli` is the presentation/command layer; `app/utils` and `app/monitor` are the reusable backend
+it is built on. Dependencies therefore only ever point *into* `app/cli`:
+
+- `app/cli` may import `app/utils` and `app/monitor`.
+- `app/utils` and `app/monitor` must not import `app.cli` (directly or transitively).
+
+`tests/test_import_layering.py` enforces this by AST-parsing every module under
+the guarded packages and failing on any import targeting `app.cli`; parsing (rather than importing)
+keeps the guard free of import side effects.
+
+Consequences for placement decisions:
+
+- Anything inherently interactive or presentation-shaped belongs in `app/cli`. `DiagnosticUtil` was
+  moved there because it prompts the user, prints summary tables and runs rclone/copy/delete probes.
+- A shared helper that the backend needs must move *down* into the backend layer. The schema-version
+  registry moved the other way (from `app/cli/schema_versioning.py` to `app/utils/schema_versioning.py`)
+  so that `app/utils/sqlite_handler.py` could use it without importing `app.cli`.
+
+

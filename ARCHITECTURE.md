@@ -193,15 +193,16 @@ classDiagram
     delete_profile(profile_id: int | None, profile_name: str | None) bool
     drop_schema() None
     get_current_schema_version() str
-    get_monitor(monitor_id: int | None, monitor_name: str | None) dict[str, Any]
+    get_monitor(monitor_id: int | None, monitor_name: str | None) dict[str, Any] | None
     get_monitors() list[dict[str, Any]]
     get_monitors_for_profile(profile_id: int) list[dict[str, Any]]
-    get_profile(profile_id: int | None, profile_name: str | None) dict[str, Any]
+    get_profile(profile_id: int | None, profile_name: str | None) dict[str, Any] | None
     get_profiles() list[dict[str, Any]]
     get_profiles_for_monitor(monitor_id: int) list[dict[str, Any]]
     get_schema_versions() list[dict[str, Any]]
     is_initialized() bool
-    transaction() Generator[sqlite3.Cursor, None, None]
+    read_cursor(error_message: str | None) Generator[sqlite3.Cursor, None, None]
+    transaction(error_message: str | None) Generator[sqlite3.Cursor, None, None]
     update_monitor(monitor_id: int, name: str, monitor_path: str, remote_path: str, monitor_type: str, config: dict[str, Any], status: str, pid: int) int | None
     update_monitor_config(monitor_id: int, config: dict[str, Any]) bool
     update_monitor_last_heartbeat(monitor_id: int, last_heartbeat: str) bool
@@ -213,22 +214,22 @@ classDiagram
   }
   Commands --> AppCommands : app
   Commands --> DatabaseCommands : database
+  Commands --> DiagnosticUtil : diagnostic_util
   Commands --> MonitorCommands : monitor
   Commands --> ProfileCommands : profile
   Commands --> PromptService : prompt
   DiagnosticUtil --> PromptService : prompt
-  Commands --> DiagnosticUtil : diagnostic_util
   Commands --> SQLiteHandler : sqlite_handler
+  DiagnosticUtil --o AppCommands : diagnostic_util
+  DiagnosticUtil --o ProfileCommands : diagnostic_util
   PromptService --o AppCommands : prompt
   PromptService --o DatabaseCommands : prompt
   PromptService --o MonitorCommands : prompt
   PromptService --o ProfileCommands : prompt
-  DiagnosticUtil --o AppCommands : diagnostic_util
-  DiagnosticUtil --o ProfileCommands : diagnostic_util
   SQLiteHandler --o DatabaseCommands : sqlite_handler
+  SQLiteHandler --o DiagnosticUtil : sqlite_handler
   SQLiteHandler --o MonitorCommands : sqlite_handler
   SQLiteHandler --o ProfileCommands : sqlite_handler
-  SQLiteHandler --o DiagnosticUtil : sqlite_handler
 ```
 <!-- COMMANDS_MERMAID_END -->
 

@@ -7,8 +7,12 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Self
 
-from app.cli.schema_versioning import SCHEMA_MIGRATIONS, compare_versions, parse_version
 from app.utils.constants import DB_FILENAME
+from app.utils.schema_versioning import (
+    SCHEMA_MIGRATIONS,
+    compare_versions,
+    parse_version,
+)
 
 
 class SQLiteHandler:
