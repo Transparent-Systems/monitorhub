@@ -11,6 +11,7 @@ def setup_logging(
     log_config_path: str | os.PathLike[str],
     log_level: str | None = None,
     log_file: str | None = None,
+    quiet_dependencies: bool = True,
 ) -> tuple[logging.Logger, dict]:
     """Read a YAML log configuration file and configure the root logger.
 
@@ -23,6 +24,19 @@ def setup_logging(
         log_level: Optional explicit log level that overrides both the
             ``MONITORHUB_LOG_LEVEL`` environment variable and the YAML
             ``logging.log_level`` value.
+        log_file: Optional explicit log file name that overrides the YAML
+            ``logging.file_name`` value.
+        quiet_dependencies: When True (the default), the ``boto3``,
+            ``botocore``, ``s3transfer`` and ``urllib3`` loggers are floored
+            to WARNING so their INFO/DEBUG chatter does not flood the console
+            or the log file.  Only those four top-level library names are
+            touched; child loggers (e.g. ``botocore.credentials``,
+            ``urllib3.connectionpool``) inherit the floor through the logger
+            hierarchy.  Pass False to debug those libraries.  This
+            console-policy lives here - not in the CLI wiring factory - and
+            is applied inside the clean-slate block, so the ``MonitorHub``
+            logger still honours the effective ``log_level`` (``--log-level
+            DEBUG`` works end to end).
 
     Returns:
         A tuple of (:class:`logging.Logger`, config dict).
@@ -91,6 +105,14 @@ def setup_logging(
     # Remove any pre-existing handlers (clean slate).
     for h in root_logger.handlers[:]:
         root_logger.removeHandler(h)
+
+    # Floor verbose third-party libraries to WARNING (opt-in via
+    # quiet_dependencies).  Setting the top-level name also covers every child
+    # logger (e.g. ``botocore.credentials``, ``urllib3.connectionpool``)
+    # through the logger hierarchy.
+    if quiet_dependencies:
+        for name in ("boto3", "botocore", "s3transfer", "urllib3"):
+            logging.getLogger(name).setLevel(logging.WARNING)
 
     root_logger.addHandler(file_handler)
     root_logger.addHandler(console_handler)

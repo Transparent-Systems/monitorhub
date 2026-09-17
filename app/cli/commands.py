@@ -75,22 +75,18 @@ def build_commands(
     diagnostic_util: DiagnosticUtil | None = None,
     sqlite_handler: SQLiteHandler | None = None,
 ) -> Commands:
-    """Silence noisy logs and wire together all CLI command handlers.
+    """Wire together all CLI command handlers into a :class:`Commands` bundle.
 
     ``prompt``, ``diagnostic_util``, and ``sqlite_handler`` are injectable so
     tests can substitute fakes/mocks without touching the database or the
     filesystem.
+
+    This factory has no log side effects: console-policy (silencing
+    ``boto3``/``botocore``/``s3transfer``/``urllib3``) is owned by
+    ``app.utils.logger_setup.setup_logging`` and gated by its
+    ``quiet_dependencies`` parameter, so the log level requested on the
+    command line (``--log-level``) reaches the ``MonitorHub`` logger.
     """
-    # Filter logging to avoid noise on the console
-    logger.setLevel(logging.WARNING)
-    logger.propagate = False
-
-    # Silence boto3 and other libraries
-    logging.getLogger("boto3").setLevel(logging.WARNING)
-    logging.getLogger("botocore").setLevel(logging.WARNING)
-    logging.getLogger("s3transfer").setLevel(logging.WARNING)
-    logging.getLogger("urllib3").setLevel(logging.WARNING)
-
     prompt = prompt or PromptService()
     sqlite_handler = sqlite_handler or SQLiteHandler(logger=logger, db_dir=db_dir)
     diagnostic_util = diagnostic_util or DiagnosticUtil(

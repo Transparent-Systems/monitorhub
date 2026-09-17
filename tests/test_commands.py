@@ -95,6 +95,59 @@ class TestCommands(unittest.TestCase):
 
         self.assertIn("Database is not initialised", mock_prompt.output_text)
 
+    def test_build_commands_no_log_side_effects(self):
+        """The wiring factory must not mutate logger levels or propagate flags.
+
+        Console-policy lives in ``setup_logging(quiet_dependencies=...)``, so
+        ``build_commands`` must leave the passed-in logger and the third-party
+        library loggers untouched - otherwise ``--log-level DEBUG`` would be
+        floored back to WARNING (or dropped via ``propagate=False``).
+        """
+        dependency_loggers = ("boto3", "botocore", "s3transfer", "urllib3")
+        original_levels = {
+            name: logging.getLogger(name).level for name in dependency_loggers
+        }
+        probe = logging.getLogger("tests.build_commands_log_probe")
+        probe.setLevel(logging.DEBUG)
+        probe.propagate = True
+        seen: dict = {}
+        try:
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                mock_prompt = MockPromptService(inputs=[])
+                commands = build_commands(
+                    logger=probe,
+                    db_dir=tmp_dir,
+                    prompt=mock_prompt,
+                )
+                try:
+                    # Snapshot the log state immediately after wiring, before
+                    # any restoration below.
+                    seen["probe_level"] = probe.level
+                    seen["probe_propagate"] = probe.propagate
+                    seen["dep_levels"] = {
+                        name: logging.getLogger(name).level
+                        for name in dependency_loggers
+                    }
+                finally:
+                    commands.sqlite_handler.close()
+        finally:
+            self._commands = None
+            probe.setLevel(logging.NOTSET)
+            probe.propagate = True
+            for name, level in original_levels.items():
+                logging.getLogger(name).setLevel(level)
+
+        self.assertEqual(
+            seen.get("probe_level"), logging.DEBUG, "factory floored the log level"
+        )
+        self.assertTrue(seen.get("probe_propagate"), "factory disabled propagation")
+        for name, level in original_levels.items():
+            self.assertEqual(
+                seen.get("dep_levels", {}).get(name),
+                level,
+                f"factory altered dependency logger {name}",
+            )
+
     def test_database_sample_data_duplicate_monitor_name(self):
         """A duplicate sample monitor is reported as a friendly message."""
         with tempfile.TemporaryDirectory() as tmp_dir:

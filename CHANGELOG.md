@@ -2,6 +2,25 @@
 
 ## [Unreleased]
 
+- Console-policy/log silencing moved out of the CLI wiring factory
+  (``build_commands``) and into ``setup_logging`` behind a documented
+  ``quiet_dependencies: bool = True`` parameter.  ``setup_logging`` now floors
+  ``boto3``/``botocore``/``s3transfer``/``urllib3`` to WARNING inside its
+  clean-slate block (child loggers inherit the floor through the logger
+  hierarchy, so only those four top-level names are touched); pass
+  ``quiet_dependencies=False`` to debug those libraries.  ``build_commands``
+  no longer mutates the ``MonitorHub`` logger - it previously forced level
+  WARNING and ``propagate=False``, which (because that logger has no handlers
+  of its own) silently dropped every application log record and made
+  ``--log-level DEBUG`` a no-op.  ``--log-level DEBUG`` now works end to end,
+  and the monitor subprocess (``run_monitor.py``) gains the same dependency
+  silencing.  The default ``conf/log.yaml`` level was lowered from DEBUG to
+  INFO to keep the default console calm (DEBUG stays opt-in).  New unit tests
+  in ``tests/test_logger_setup.py`` pin the opt-in/scoped silencing, the
+  clean-slate handler behaviour and the level-resolution precedence, and a
+  regression test in ``tests/test_commands.py`` pins that ``build_commands``
+  has no log side effects.
+
 - ``SQLiteHandler`` now releases its database connection deterministically. The
   implicit ``__del__`` hook — which could raise ``AttributeError`` when
   ``__init__`` failed part-way, could not be relied on during interpreter
