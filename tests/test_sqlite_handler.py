@@ -5,6 +5,7 @@ Call example:
 python3 -m tests.test_sqlite_handler
 """
 import argparse
+import gc
 import logging
 import sqlite3
 import tempfile
@@ -549,6 +550,45 @@ class TestSqliteHandlerErrorConvention(BaseTestClass):
                         )
             finally:
                 handler.close()
+
+
+class TestSqliteHandlerLifecycle(BaseTestClass):
+    """Deterministic connection lifecycle: explicit close plus a GC safety net.
+
+    Covers the behaviour that used to rely on ``__del__``: the connection must
+    be released exactly once, whether the caller closes it explicitly, the
+    handler is garbage-collected, or ``__init__`` never completed.
+    """
+
+    def test_close_is_idempotent_and_invalidates_the_connection(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            handler = SQLiteHandler(logger=self.logger, db_dir=tmp_dir)
+            handler.close()
+            handler.close()  # second call must be a harmless no-op
+            with self.assertRaises(sqlite3.ProgrammingError):
+                handler.cursor.execute("SELECT 1")
+
+    def test_connection_released_when_handler_garbage_collected(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            handler = SQLiteHandler(logger=self.logger, db_dir=tmp_dir)
+            connection = handler.connection
+            del handler
+            gc.collect()
+            with self.assertRaises(sqlite3.ProgrammingError):
+                connection.execute("SELECT 1")
+
+    def test_close_safe_when_init_never_finished(self):
+        """A partially-constructed handler (no __init__) must close quietly."""
+        handler = object.__new__(SQLiteHandler)
+        handler.close()
+
+    def test_context_manager_closes_the_handler(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            handler = SQLiteHandler(logger=self.logger, db_dir=tmp_dir)
+            with handler:
+                self.assertIsNotNone(handler.cursor)
+            with self.assertRaises(sqlite3.ProgrammingError):
+                handler.cursor.execute("SELECT 1")
 
 
 if __name__ == "__main__":

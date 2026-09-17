@@ -2,6 +2,22 @@
 
 ## [Unreleased]
 
+- ``SQLiteHandler`` now releases its database connection deterministically. The
+  implicit ``__del__`` hook — which could raise ``AttributeError`` when
+  ``__init__`` failed part-way, could not be relied on during interpreter
+  shutdown, and every ``Exception ignored in: <function SQLiteHandler.__del__>``
+  on stderr — was replaced by a ``weakref.finalize`` registered in ``__init__``.
+  The finalizer callback receives the connection object itself (not ``self``),
+  so it is safe for partially-constructed objects and at shutdown, and fires at
+  most once. ``close()`` is now idempotent and safe on a partially-constructed
+  handler; garbage collection and interpreter exit are covered by the finalizer
+  as a safety net. ``mhub.py`` now closes the ``SQLiteHandler`` built by
+  ``build_commands()`` in a ``finally`` block, so the connection is returned to
+  the OS at CLI exit instead of being left to garbage collection. Four new
+  lifecycle tests in ``tests/test_sqlite_handler.py`` pin the behaviour: close
+  idempotence, close-on-garbage-collection, the partial-init no-op, and the
+  context-manager path.
+
 - Exception-handler hygiene (the ``BLE001`` blind-except rule is now enforced
   by the lint configuration): the per-directory ``app/*/ruff.toml`` files were
   folded into a single ``[tool.ruff.lint]`` table in ``pyproject.toml`` that

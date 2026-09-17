@@ -2,6 +2,7 @@ import json
 import logging
 import sqlite3
 import threading
+import weakref
 from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
@@ -13,6 +14,16 @@ from app.utils.schema_versioning import (
     compare_versions,
     parse_version,
 )
+
+
+def _close_connection(connection: sqlite3.Connection) -> None:
+    """Close a ``sqlite3.Connection``; harmless to call more than once.
+
+    Module-level so the ``weakref.finalize`` callback has nothing to look up in
+    module globals (which may be torn down at interpreter exit): everything it
+    needs is bound as its argument.
+    """
+    connection.close()
 
 
 class SQLiteHandler:
@@ -36,6 +47,14 @@ class SQLiteHandler:
         # Enable Write-Ahead Logging (WAL) for concurrent read/write across processes
         self.connection.execute("PRAGMA journal_mode = WAL;")
         self.connection.execute("PRAGMA busy_timeout = 30000;")
+
+        # Register a garbage-collection safety net: if the handler is discarded
+        # without an explicit close(), or the interpreter exits, the connection
+        # is still returned to the OS. The finalizer receives the connection
+        # (not self), so it also cannot fail on a partially-constructed object.
+        self._finalizer = weakref.finalize(
+            self, _close_connection, self.connection
+        )
 
     @property
     def cursor(self) -> sqlite3.Cursor:
@@ -118,9 +137,35 @@ class SQLiteHandler:
             return cur.rowcount > 0
 
     def close(self) -> None:
-        with self._lock:
-            if self.connection:
-                self.connection.close()
+        """Close the database connection, returning it to the OS.
+
+        Safe to call more than once: the underlying ``sqlite3`` close is
+        idempotent. Also safe on a partially-constructed handler — when
+        ``__init__`` raised before the connection was opened, closing is a
+        no-op.
+
+        After this method returns the ``weakref.finalize`` registered in
+        ``__init__`` has fired, so garbage collection and interpreter exit
+        will not close the connection a second time.
+        """
+        lock = getattr(self, "_lock", None)
+        if lock is not None:
+            with lock:
+                self._close_once()
+        else:
+            self._close_once()
+
+    def _close_once(self) -> None:
+        """Release the connection exactly once; guarded against partial init."""
+        finalizer = getattr(self, "_finalizer", None)
+        if finalizer is not None:
+            # Fires the callback at most once; later calls are no-ops, which is
+            # what makes close() safe to call repeatedly.
+            finalizer()
+            return
+        connection = getattr(self, "connection", None)
+        if connection is not None:
+            connection.close()
 
     def __enter__(self) -> Self:
         return self
@@ -730,6 +775,3 @@ class SQLiteHandler:
             rows = cur.fetchall()
 
         return [self._row_to_monitor(row) for row in rows]
-
-    def __del__(self) -> None:
-        self.close()

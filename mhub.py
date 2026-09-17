@@ -289,6 +289,7 @@ if __name__ == "__main__":
 
     # Handle command line arguments via a data-driven dispatch table.
     if args.command is not None:
+        commands = None
         try:
             commands = build_commands(
                 logger=logger,
@@ -320,6 +321,13 @@ if __name__ == "__main__":
                 file=sys.stderr,
             )
             sys.exit(1)
+        finally:
+            # Deterministically return the database connection before the
+            # process exits (sys.exit in the except branches still passes
+            # through this block). SQLiteHandler's weakref.finalize remains a
+            # safety net for paths that never reach here (e.g. a hard crash).
+            if commands is not None:
+                commands.sqlite_handler.close()
     else:
         parser.print_help()
         sys.exit(1)
