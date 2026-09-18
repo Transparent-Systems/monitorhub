@@ -344,6 +344,16 @@ if __name__ == "__main__":
         help="Override the log level from the configuration file",
     )
     parser.add_argument(
+        "--dependency-log-level",
+        type=str,
+        default=None,
+        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+        help=(
+            "Override the log level of the third-party libraries "
+            "(boto3/botocore/s3transfer/urllib3); defaults to WARNING"
+        ),
+    )
+    parser.add_argument(
         "--check-delay",
         type=float,
         default=1.0,
@@ -366,7 +376,12 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Setup logging
-    logger, log_config = setup_logging(args.log, log_level=args.log_level, log_file=args.log_file_name)
+    logger, log_config = setup_logging(
+        args.log,
+        log_level=args.log_level,
+        log_file=args.log_file_name,
+        dependency_log_level=args.dependency_log_level,
+    )
     logger.info("Starting script")
 
     # Iterate over monitors
@@ -449,6 +464,7 @@ if __name__ == "__main__":
     monitor_commands = MonitorCommands(
         logger=logger,
         log_level=args.log_level,
+        dependency_log_level=args.dependency_log_level,
         log_config=args.log,
         sqlite_handler=sqlite_handler,
         db_dir=args.db_dir,

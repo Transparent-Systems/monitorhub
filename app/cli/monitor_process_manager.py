@@ -36,11 +36,13 @@ class MonitorProcessManager:
         log_config: str,
         log_level: str | None,
         prompt: PromptService,
+        dependency_log_level: str | None = None,
     ) -> None:
         self.logger = logger
         self.db_dir = db_dir
         self.log_config = log_config
         self.log_level = log_level
+        self.dependency_log_level = dependency_log_level
         self.prompt = prompt
         # Child monitor processes launched by this instance, keyed by monitor id.
         # Holding the Popen handles lets us reap finished children with ``poll``
@@ -179,6 +181,8 @@ class MonitorProcessManager:
             ]
             if self.log_level:
                 cmd += ["--log-level", self.log_level]
+            if self.dependency_log_level:
+                cmd += ["--dependency-log-level", self.dependency_log_level]
             child_env = os.environ.copy()
             for key in list(child_env.keys()):
                 if key.startswith("_PYI_") or key in (
@@ -196,6 +200,8 @@ class MonitorProcessManager:
             ]
             if self.log_level:
                 cmd += ["--log-level", self.log_level]
+            if self.dependency_log_level:
+                cmd += ["--dependency-log-level", self.dependency_log_level]
 
         try:
             logs_dir = Path.cwd() / "logs"

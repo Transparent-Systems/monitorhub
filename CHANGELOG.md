@@ -2,6 +2,22 @@
 
 ## [Unreleased]
 
+- ``setup_logging`` gains a ``dependency_log_level`` parameter (and the
+  ``MONITORHUB_DEPENDENCY_LOG_LEVEL`` environment variable) to debug the
+  third-party libraries it silences by default.  The default WARNING floor
+  for ``boto3``/``botocore``/``s3transfer``/``urllib3`` stays unchanged, but
+  an explicit level - e.g. the new ``--dependency-log-level DEBUG`` CLI flag
+  on ``mhub.py``, ``run_monitor.py`` and the interactive test script - now
+  takes precedence over it, so s3/boto3 log traffic can be turned up from
+  the command line without touching every other package.  The flag is
+  forwarded to monitor child processes (``build_commands`` ->
+  ``MonitorCommands`` -> ``MonitorProcessManager``), so a ``monitor start``
+  child inherits the same dependency level as its parent.  Precedence in
+  ``setup_logging``: explicit argument, then the env var, then the
+  ``quiet_dependencies`` WARNING floor.  ``--log-level`` continues to govern
+  only the app/root level.  New unit tests pin the precedence, scoping and
+  child-process forwarding.
+
 - ``DiagnosticUtil``'s constructor no longer mutates the module logger.  When
   no logger was injected it previously forced ``logging.DEBUG`` on the shared
   ``logging.getLogger(__name__)`` logger and appended a fresh

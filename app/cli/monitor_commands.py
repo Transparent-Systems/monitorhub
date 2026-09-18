@@ -45,12 +45,14 @@ class MonitorCommands:
         log_config: str,
         log_level: str | None,
         prompt: PromptService,
+        dependency_log_level: str | None = None,
     ) -> None:
         self.sqlite_handler = sqlite_handler
         self.logger = logger
         self.db_dir = db_dir
         self.log_config = log_config
         self.log_level = log_level
+        self.dependency_log_level = dependency_log_level
         self.prompt = prompt
         # Process mechanics (launch/track/kill/reap) live in a collaborator so
         # this class stays focused on commands, database state, and prompts.
@@ -59,6 +61,7 @@ class MonitorCommands:
             db_dir=db_dir,
             log_config=log_config,
             log_level=log_level,
+            dependency_log_level=dependency_log_level,
             prompt=prompt,
         )
         # Interactive list selection is delegated to a focused collaborator.

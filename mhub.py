@@ -191,6 +191,18 @@ if __name__ == "__main__":
         help="Override the log level from the configuration file",
     )
 
+    # Argument to override the log level of third-party libraries
+    parser.add_argument(
+        "--dependency-log-level",
+        type=str,
+        default=None,
+        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+        help=(
+            "Override the log level of the third-party libraries "
+            "(boto3/botocore/s3transfer/urllib3); defaults to WARNING"
+        ),
+    )
+
     # Add subcommands
     subparsers = parser.add_subparsers(dest="command", help="Commands")
 
@@ -269,7 +281,11 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Configure logging (reads YAML config, sets up root logger handlers)
-    logger, log_config = setup_logging(args.log, log_level=args.log_level)
+    logger, log_config = setup_logging(
+        args.log,
+        log_level=args.log_level,
+        dependency_log_level=args.dependency_log_level,
+    )
 
     # Resolve db_dir from argument or config file fallback
     if args.db_dir is None:
@@ -296,6 +312,7 @@ if __name__ == "__main__":
                 db_dir=db_dir,
                 log_config=args.log,
                 log_level=args.log_level,
+                dependency_log_level=args.dependency_log_level,
             )
             subcommand = getattr(args, f"{args.command}_subcommand", None)
             entry = _SUBCOMMAND_DISPATCH.get((args.command, subcommand))

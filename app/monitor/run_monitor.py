@@ -84,7 +84,11 @@ class MonitorRunContext:
         db_dir = args.db_dir
 
         # Setup logging
-        logger, log_config = setup_logging(args.log, log_level=args.log_level)
+        logger, log_config = setup_logging(
+            args.log,
+            log_level=args.log_level,
+            dependency_log_level=args.dependency_log_level,
+        )
         logger.info(f"Monitor process started with PID {os.getpid()} for monitor_id={monitor_id}")
 
         # Initialize database handler
@@ -358,6 +362,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=None,
         choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
         help="Override the log level from the configuration file",
+    )
+    parser.add_argument(
+        "--dependency-log-level",
+        type=str,
+        default=None,
+        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+        help=(
+            "Override the log level of the third-party libraries "
+            "(boto3/botocore/s3transfer/urllib3); defaults to WARNING"
+        ),
     )
     return parser.parse_args(argv)
 

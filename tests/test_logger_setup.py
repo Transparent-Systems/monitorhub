@@ -54,6 +54,7 @@ class TestSetupLogging(unittest.TestCase):
                 for name in DEPENDENCY_LOGGERS + UNRELATED_LOGGERS
             },
             "env": os.environ.get("MONITORHUB_LOG_LEVEL"),
+            "dep_env": os.environ.get("MONITORHUB_DEPENDENCY_LOG_LEVEL"),
         }
         self.addCleanup(self._restore_logging_state)
 
@@ -70,6 +71,10 @@ class TestSetupLogging(unittest.TestCase):
             os.environ.pop("MONITORHUB_LOG_LEVEL", None)
         else:
             os.environ["MONITORHUB_LOG_LEVEL"] = self._snapshot["env"]
+        if self._snapshot["dep_env"] is None:
+            os.environ.pop("MONITORHUB_DEPENDENCY_LOG_LEVEL", None)
+        else:
+            os.environ["MONITORHUB_DEPENDENCY_LOG_LEVEL"] = self._snapshot["dep_env"]
 
     # --- config / level resolution -------------------------------------------
 
@@ -182,6 +187,58 @@ class TestSetupLogging(unittest.TestCase):
             logging.getLogger("urllib3.connectionpool").getEffectiveLevel(),
             logging.WARNING,
         )
+
+    # --- dependency log level override (dependency_log_level) ---------------
+
+    def test_dependency_log_level_overrides_default_floor(self):
+        setup_logging(self.config_path, dependency_log_level="DEBUG")
+        for name in DEPENDENCY_LOGGERS:
+            self.assertEqual(
+                logging.getLogger(name).level,
+                logging.DEBUG,
+                f"{name} should be raised to DEBUG via dependency_log_level",
+            )
+        # Child loggers inherit DEBUG through the logger hierarchy.
+        self.assertEqual(
+            logging.getLogger("botocore.credentials").getEffectiveLevel(),
+            logging.DEBUG,
+        )
+
+    def test_dependency_log_level_env_var_respected(self):
+        with mock.patch.dict(
+            os.environ, {"MONITORHUB_DEPENDENCY_LOG_LEVEL": "DEBUG"}
+        ):
+            setup_logging(self.config_path)
+        for name in DEPENDENCY_LOGGERS:
+            self.assertEqual(
+                logging.getLogger(name).level,
+                logging.DEBUG,
+                f"{name} should honour MONITORHUB_DEPENDENCY_LOG_LEVEL",
+            )
+
+    def test_dependency_log_level_argument_wins_over_env_var(self):
+        with mock.patch.dict(
+            os.environ, {"MONITORHUB_DEPENDENCY_LOG_LEVEL": "ERROR"}
+        ):
+            setup_logging(self.config_path, dependency_log_level="DEBUG")
+        for name in DEPENDENCY_LOGGERS:
+            self.assertEqual(logging.getLogger(name).level, logging.DEBUG)
+
+    def test_dependency_log_level_is_scoped(self):
+        setup_logging(self.config_path, dependency_log_level="DEBUG")
+        for name in UNRELATED_LOGGERS:
+            self.assertEqual(
+                logging.getLogger(name).level,
+                logging.NOTSET,
+                f"unrelated logger {name} must not be changed",
+            )
+        # The app logger still honours the request --log-level, untouched by
+        # the dependency override.
+        self.assertEqual(logging.getLogger("MonitorHub").level, logging.NOTSET)
+
+    def test_dependency_log_level_invalid_raises_value_error(self):
+        with self.assertRaises(ValueError):
+            setup_logging(self.config_path, dependency_log_level="VERBOSE")
 
 
 if __name__ == "__main__":

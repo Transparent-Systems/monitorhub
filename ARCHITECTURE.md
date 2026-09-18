@@ -143,6 +143,7 @@ classDiagram
     db_dir : str
     log_config : str
     log_level : str | None
+    dependency_log_level : str | None
     logger : Logger
     processes : MonitorProcessManager
     prompt

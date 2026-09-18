@@ -232,6 +232,28 @@ class TestRunMonitorPhases(BaseTestClass):
         self.assertEqual(args.db_dir, "data")
         self.assertEqual(args.log, "conf/log.yaml")
         self.assertIsNone(args.log_level)
+        self.assertIsNone(args.dependency_log_level)
+
+    def test_parse_args_dependency_log_level(self):
+        args = parse_args(
+            [
+                "--monitor-id",
+                "7",
+                "--log-level",
+                "DEBUG",
+                "--dependency-log-level",
+                "DEBUG",
+            ]
+        )
+
+        self.assertEqual(args.log_level, "DEBUG")
+        self.assertEqual(args.dependency_log_level, "DEBUG")
+
+    def test_parse_args_rejects_invalid_dependency_log_level(self):
+        with self.assertRaises(SystemExit) as cm, contextlib.redirect_stderr(io.StringIO()):
+            parse_args(["--monitor-id", "7", "--dependency-log-level", "VERBOSE"])
+
+        self.assertEqual(cm.exception.code, 2)
 
     def test_parse_args_requires_monitor_id(self):
         with self.assertRaises(SystemExit) as cm, contextlib.redirect_stderr(io.StringIO()):

@@ -54,6 +54,7 @@ class TestCommands(unittest.TestCase):
         self,
         inputs: list[str],
         diagnostic_util: mock.Mock | None = None,
+        dependency_log_level: str | None = None,
     ) -> tuple[Commands, MockPromptService]:
         """Build a wired ``Commands`` bundle around a scripted mock prompt."""
         mock_prompt = MockPromptService(inputs=inputs)
@@ -62,6 +63,7 @@ class TestCommands(unittest.TestCase):
             db_dir=self.db_dir,
             prompt=mock_prompt,
             diagnostic_util=diagnostic_util,
+            dependency_log_level=dependency_log_level,
         )
         self._commands = commands
         return commands, mock_prompt
@@ -683,6 +685,32 @@ class TestCommands(unittest.TestCase):
             )
         popen.assert_called_once()
         self.assertIs(commands.monitor.processes.tracked_processes[99], fake_process)
+
+    def test_launch_forwards_dependency_log_level_to_child(self):
+        """--dependency-log-level is forwarded to the monitor child process."""
+        commands, _ = self._make_commands([], dependency_log_level="DEBUG")
+        fake_process = mock.Mock()
+        with mock.patch(
+            "app.cli.monitor_process_manager.subprocess.Popen", return_value=fake_process
+        ) as popen:
+            self.assertTrue(
+                commands.monitor.processes.launch({"id": 99, "name": "tracked"})
+            )
+        cmd = popen.call_args[0][0]
+        self.assertIn("--dependency-log-level", cmd)
+        self.assertEqual(cmd[cmd.index("--dependency-log-level") + 1], "DEBUG")
+
+    def test_launch_omits_dependency_log_level_when_unset(self):
+        """Without --dependency-log-level the child command stays unchanged."""
+        commands, _ = self._make_commands([])
+        fake_process = mock.Mock()
+        with mock.patch(
+            "app.cli.monitor_process_manager.subprocess.Popen", return_value=fake_process
+        ) as popen:
+            self.assertTrue(
+                commands.monitor.processes.launch({"id": 99, "name": "tracked"})
+            )
+        self.assertNotIn("--dependency-log-level", popen.call_args[0][0])
 
     def test_monitor_stop_graceful_with_tracked_exited_child(self):
         """A tracked child that already exited must stop gracefully, not escalate.

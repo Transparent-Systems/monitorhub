@@ -71,6 +71,7 @@ def build_commands(
     db_dir: str,
     log_config: str = "conf/log.yaml",
     log_level: str | None = None,
+    dependency_log_level: str | None = None,
     prompt: PromptService | None = None,
     diagnostic_util: DiagnosticUtil | None = None,
     sqlite_handler: SQLiteHandler | None = None,
@@ -84,8 +85,10 @@ def build_commands(
     This factory has no log side effects: console-policy (silencing
     ``boto3``/``botocore``/``s3transfer``/``urllib3``) is owned by
     ``app.utils.logger_setup.setup_logging`` and gated by its
-    ``quiet_dependencies`` parameter, so the log level requested on the
-    command line (``--log-level``) reaches the ``MonitorHub`` logger.
+    ``quiet_dependencies``/``dependency_log_level`` parameters, so the log
+    levels requested on the command line (``--log-level``,
+    ``--dependency-log-level``) reach the ``MonitorHub`` logger and are
+    forwarded to monitor child processes.
     """
     prompt = prompt or PromptService()
     sqlite_handler = sqlite_handler or SQLiteHandler(logger=logger, db_dir=db_dir)
@@ -104,6 +107,7 @@ def build_commands(
         log_config,
         log_level,
         prompt,
+        dependency_log_level,
     )
     app = AppCommands(prompt, diagnostic_util)
 
