@@ -1,14 +1,14 @@
+"""Performance smoke test for the remote handlers (s3 / rclone).
+
+Run from the project root with:
+    python -m tests.simple_performance_test
+"""
 
 import logging
 import os
 import sys
 import time
 from pathlib import Path
-
-# Add project root to sys.path to allow imports from app package
-project_root = Path(__file__).resolve().parents[1]  # One level up to reach the project root
-if str(project_root) not in sys.path:
-    sys.path.insert(0, str(project_root))
 
 from app.monitor.rclone_handler import RcloneHandler
 from app.monitor.remote_handler import RemoteHandler

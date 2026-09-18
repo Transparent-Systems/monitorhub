@@ -7,6 +7,9 @@ It uses the unittest framework to execute tests sequentially.
 
 Pre-requisites:
     Ensure there is at least one properly working remote profile configured in the test database
+
+Run from the project root with:
+    python -m tests.interactive_test_instant_monitor --help
 """
 
 import argparse
@@ -16,11 +19,6 @@ import sys
 import time
 import unittest
 from pathlib import Path
-
-# Add project root to sys.path to allow imports from app package
-project_root = Path(__file__).resolve().parents[1]  # One level up to reach the project root
-if str(project_root) not in sys.path:
-    sys.path.insert(0, str(project_root))
 
 from app.cli.monitor_commands import MonitorCommands
 from app.cli.prompt_service import PromptService

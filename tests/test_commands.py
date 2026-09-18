@@ -16,6 +16,7 @@ import sys
 import tempfile
 import time
 import unittest
+from pathlib import Path
 from unittest import mock
 
 from app.cli.commands import Commands, build_commands
@@ -711,6 +712,32 @@ class TestCommands(unittest.TestCase):
                 commands.monitor.processes.launch({"id": 99, "name": "tracked"})
             )
         self.assertNotIn("--dependency-log-level", popen.call_args[0][0])
+
+    def test_launch_provides_pythonpath_to_child(self):
+        """The by-path child cannot resolve `app.*` from its own directory.
+
+        run_monitor.py used to carry a ``sys.path`` preamble for this; the
+        repository root is now forwarded to the child via ``PYTHONPATH``
+        instead, so the script itself stays clean.
+        """
+        commands, _ = self._make_commands([])
+        repo_root = Path(__file__).resolve().parents[1]
+        fake_process = mock.Mock()
+        with mock.patch(
+            "app.cli.monitor_process_manager.subprocess.Popen", return_value=fake_process
+        ) as popen:
+            self.assertTrue(
+                commands.monitor.processes.launch({"id": 99, "name": "tracked"})
+            )
+        cmd = popen.call_args[0][0]
+        env = popen.call_args[1]["env"]
+        self.assertEqual(
+            cmd[1], str(repo_root / "app" / "monitor" / "run_monitor.py")
+        )
+        self.assertTrue(os.path.isabs(env["PYTHONPATH"].split(os.pathsep)[0]))
+        self.assertTrue(
+            (Path(env["PYTHONPATH"].split(os.pathsep)[0]) / "app").is_dir()
+        )
 
     def test_monitor_stop_graceful_with_tracked_exited_child(self):
         """A tracked child that already exited must stop gracefully, not escalate.

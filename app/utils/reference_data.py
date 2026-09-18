@@ -4,6 +4,17 @@ All data here is owned by the code, not the database.  Adding a new
 native remote handler (e.g. FTP) requires only a code change — the
 handler registers itself with RemoteHandlerFactory and the existence
 of that registration is the single source of truth for "implemented".
+
+Import convention
+-----------------
+Import the module as a whole and access members through the module name::
+
+    from app.utils import reference_data
+    reference_data.get_profile_category("s3")
+
+rather than ``from app.utils.reference_data import ...``.  Almost the
+whole codebase uses the module form, and it keeps these names from
+colliding with constants imported from ``app.utils.constants``.
 """
 
 from dataclasses import dataclass

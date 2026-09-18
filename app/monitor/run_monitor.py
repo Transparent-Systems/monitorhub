@@ -7,7 +7,7 @@ Date: 2026-08-12
     Launched as a child process by mhub.py (monitor start).
     Updates the database with status and PID on start/stop.
 Usage:
-    python app/monitor/run_monitor.py --monitor-id <ID> --db-dir <PATH> --log <PATH>
+    python -m app.monitor.run_monitor --monitor-id <ID> --db-dir <PATH> --log <PATH>
 """
 
 import argparse
@@ -18,15 +18,7 @@ import sqlite3
 import sys
 import threading
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
-
-# Ensure the project root is on sys.path so `app.*` imports resolve
-# whether the script is run as `python app/monitor/run_monitor.py` or via
-# `python -m app.monitor.run_monitor`.
-project_root = Path(__file__).resolve().parents[2]  # Two levels up to reach the project root
-if str(project_root) not in sys.path:
-    sys.path.insert(0, str(project_root))
 
 from app.monitor.monitor_handler import MonitorHandler
 from app.monitor.monitor_handler_factory import MonitorHandlerFactory
@@ -338,7 +330,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         description="Run a single MonitorHub monitor as a standalone process."
     )
     parser.add_argument(
-        "-m", "--monitor-id",
+        "-i", "--monitor-id",
         type=int,
         required=True,
         help="ID of the monitor in the database",
@@ -381,8 +373,9 @@ def run_monitor_main(argv=None) -> int:
     Run a single monitor as a standalone entry point.
 
     Accepts an optional argv list (defaulting to sys.argv[1:]) so the same
-    logic can be reused both when invoked as ``python app/monitor/run_monitor.py``
-    and when dispatched in-process from the frozen PyInstaller binary.
+    logic can be reused both when invoked as ``python -m app.monitor.run_monitor``
+    (or by ``MonitorProcessManager``, which supplies ``PYTHONPATH`` to the
+    child) and when dispatched in-process from the frozen PyInstaller binary.
     """
     args = parse_args(argv)
 

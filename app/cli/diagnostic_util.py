@@ -13,7 +13,7 @@ from typing import Any
 from app.cli.process_test_result import ProcessTestResult
 from app.cli.prompt_service import PromptService
 from app.monitor.remote_handler_factory import RemoteHandlerFactory
-from app.utils.reference_data import PROFILE_CATEGORY_COMMAND, get_profile_category
+from app.utils import reference_data
 from app.utils.sqlite_handler import SQLiteHandler
 
 
@@ -366,8 +366,8 @@ class DiagnosticUtil:
         for profile in profiles:
             profile_type = profile.get("profile_type", "")
             # Get profile category from profile_type
-            profile_category = get_profile_category(profile_type)
-            if profile_category == PROFILE_CATEGORY_COMMAND:
+            profile_category = reference_data.get_profile_category(profile_type)
+            if profile_category == reference_data.PROFILE_CATEGORY_COMMAND:
                 profile_name = profile.get('name', '')
                 self.prompt.print(f"Skipping command profile: {profile_name}")
                 self.prompt.print("Test command profile with command: mhub profile test")

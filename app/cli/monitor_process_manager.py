@@ -166,8 +166,13 @@ class MonitorProcessManager:
         monitor_id_val: int = monitor.get("id", 0)
         monitor_name = monitor.get("name", "N/A")
 
-        project_root = Path(os.path.join(os.path.dirname(__file__), "../")).resolve()
-        run_monitor_script = project_root / "monitor" / "run_monitor.py"
+        # The repository root is the directory containing the `app` package.
+        # Everything below derives from it: the monitor script path, the
+        # virtualenv interpreter, and the PYTHONPATH the child needs to resolve
+        # `app.*` imports (Python puts only the script's own directory on
+        # sys.path for a by-path launch).
+        project_root = Path(__file__).resolve().parents[2]
+        run_monitor_script = project_root / "app" / "monitor" / "run_monitor.py"
         python = self.resolve_python_interpreter(project_root)
 
         child_env = None
@@ -202,6 +207,17 @@ class MonitorProcessManager:
                 cmd += ["--log-level", self.log_level]
             if self.dependency_log_level:
                 cmd += ["--dependency-log-level", self.dependency_log_level]
+            # The child is launched by script path, so Python puts the script's
+            # own directory (app/monitor) on sys.path — never the project root.
+            # Point PYTHONPATH at the project root (preserving any pre-existing
+            # value) so the child can resolve `app.*` imports without needing a
+            # sys.path hack of its own.
+            existing_pythonpath = os.environ.get("PYTHONPATH")
+            child_env = os.environ.copy()
+            if existing_pythonpath:
+                child_env["PYTHONPATH"] = f"{project_root}{os.pathsep}{existing_pythonpath}"
+            else:
+                child_env["PYTHONPATH"] = str(project_root)
 
         try:
             logs_dir = Path.cwd() / "logs"

@@ -1,11 +1,10 @@
-import sys
-import unittest
-from pathlib import Path
+"""Unit tests for app.utils.path_filter.
 
-# Add project root to sys.path to allow imports from app package
-project_root = Path(__file__).resolve().parents[1]  # One level up to reach the project root
-if str(project_root) not in sys.path:
-    sys.path.insert(0, str(project_root))
+Run from the project root with:
+    python -m unittest tests.test_check_path -v
+"""
+
+import unittest
 
 from app.utils.path_filter import is_excluded
 
