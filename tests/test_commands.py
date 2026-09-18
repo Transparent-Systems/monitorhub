@@ -713,12 +713,13 @@ class TestCommands(unittest.TestCase):
             )
         self.assertNotIn("--dependency-log-level", popen.call_args[0][0])
 
-    def test_launch_provides_pythonpath_to_child(self):
-        """The by-path child cannot resolve `app.*` from its own directory.
+    def test_launch_runs_child_as_module_from_project_root(self):
+        """The child runs as `python -m app.monitor.run_monitor` from the root.
 
-        run_monitor.py used to carry a ``sys.path`` preamble for this; the
-        repository root is now forwarded to the child via ``PYTHONPATH``
-        instead, so the script itself stays clean.
+        run_monitor.py used to carry a ``sys.path`` preamble so a by-path
+        launch could resolve `app.*`; launch() instead runs it as a module
+        with the project root as its working directory, so Python provides
+        sys.path itself — no preamble, no PYTHONPATH.
         """
         commands, _ = self._make_commands([])
         repo_root = Path(__file__).resolve().parents[1]
@@ -730,14 +731,10 @@ class TestCommands(unittest.TestCase):
                 commands.monitor.processes.launch({"id": 99, "name": "tracked"})
             )
         cmd = popen.call_args[0][0]
-        env = popen.call_args[1]["env"]
-        self.assertEqual(
-            cmd[1], str(repo_root / "app" / "monitor" / "run_monitor.py")
-        )
-        self.assertTrue(os.path.isabs(env["PYTHONPATH"].split(os.pathsep)[0]))
-        self.assertTrue(
-            (Path(env["PYTHONPATH"].split(os.pathsep)[0]) / "app").is_dir()
-        )
+        kwargs = popen.call_args[1]
+        self.assertEqual(cmd[1:3], ["-m", "app.monitor.run_monitor"])
+        self.assertEqual(kwargs.get("cwd"), repo_root)
+        self.assertIsNone(kwargs.get("env"))  # plain env inheritance
 
     def test_monitor_stop_graceful_with_tracked_exited_child(self):
         """A tracked child that already exited must stop gracefully, not escalate.

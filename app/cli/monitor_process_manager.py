@@ -167,15 +167,14 @@ class MonitorProcessManager:
         monitor_name = monitor.get("name", "N/A")
 
         # The repository root is the directory containing the `app` package.
-        # Everything below derives from it: the monitor script path, the
-        # virtualenv interpreter, and the PYTHONPATH the child needs to resolve
-        # `app.*` imports (Python puts only the script's own directory on
-        # sys.path for a by-path launch).
+        # The monitor child is run with `-m` from this root, so Python puts the
+        # project root on sys.path itself — no script-path preamble or
+        # PYTHONPATH tricks are needed for `app.*` imports.
         project_root = Path(__file__).resolve().parents[2]
-        run_monitor_script = project_root / "app" / "monitor" / "run_monitor.py"
         python = self.resolve_python_interpreter(project_root)
 
         child_env = None
+        launch_cwd = None
         if getattr(sys, "frozen", False):
             cmd = [
                 sys.executable,
@@ -198,7 +197,8 @@ class MonitorProcessManager:
         else:
             cmd = [
                 python,
-                str(run_monitor_script),
+                "-m",
+                "app.monitor.run_monitor",
                 "--monitor-id", str(monitor_id_val),
                 "--db-dir", str(self.db_dir),
                 "--log", self.log_config,
@@ -207,17 +207,10 @@ class MonitorProcessManager:
                 cmd += ["--log-level", self.log_level]
             if self.dependency_log_level:
                 cmd += ["--dependency-log-level", self.dependency_log_level]
-            # The child is launched by script path, so Python puts the script's
-            # own directory (app/monitor) on sys.path — never the project root.
-            # Point PYTHONPATH at the project root (preserving any pre-existing
-            # value) so the child can resolve `app.*` imports without needing a
-            # sys.path hack of its own.
-            existing_pythonpath = os.environ.get("PYTHONPATH")
-            child_env = os.environ.copy()
-            if existing_pythonpath:
-                child_env["PYTHONPATH"] = f"{project_root}{os.pathsep}{existing_pythonpath}"
-            else:
-                child_env["PYTHONPATH"] = str(project_root)
+            # Anchoring the child's cwd at the project root makes the child's
+            # sys.path (via `-m`) and any root-relative paths deterministic,
+            # regardless of where mhub.py itself was invoked from.
+            launch_cwd = project_root
 
         try:
             logs_dir = Path.cwd() / "logs"
@@ -230,6 +223,7 @@ class MonitorProcessManager:
                     stderr=error_log_fh,
                     start_new_session=True,
                     env=child_env,
+                    cwd=launch_cwd,
                 )
             # Track the child so we can reap it and detect its exit reliably.
             self.tracked_processes[monitor_id_val] = process

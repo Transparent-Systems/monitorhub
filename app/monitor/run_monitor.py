@@ -374,8 +374,9 @@ def run_monitor_main(argv=None) -> int:
 
     Accepts an optional argv list (defaulting to sys.argv[1:]) so the same
     logic can be reused both when invoked as ``python -m app.monitor.run_monitor``
-    (or by ``MonitorProcessManager``, which supplies ``PYTHONPATH`` to the
-    child) and when dispatched in-process from the frozen PyInstaller binary.
+    (or launched by ``MonitorProcessManager`` as a module with the project
+    root as its working directory) and when dispatched in-process from the
+    frozen PyInstaller binary.
     """
     args = parse_args(argv)
 
