@@ -30,6 +30,20 @@
 - After modifying code, run the relevant unit tests via `make test-unit` or
   the targeted make target, and confirm they pass before declaring done.
 
+## Git commits
+
+- After completing a coherent unit of work (a feature, bugfix, refactor, or doc
+  update) and confirming the relevant tests pass, create a commit.
+- Commit messages: imperative mood, one line, matching the existing log style
+  (e.g. "Add X", "Fix Y", "Remove Z"); add a body only when extra context helps.
+- Do NOT commit when:
+  - the working tree is clean,
+  - tests failed or were not run,
+  - the changes are experimental, incomplete, or mid-task,
+  - the tree contains unrelated or stale WIP that belongs to a different task
+    or session.
+- Never commit credentials, secrets, or ignored files (e.g. `testdata/.env`).
+
 ## Project conventions
 
 - Python 3.12 features are permitted (e.g. `X | None`, `match`, dataclasses).
