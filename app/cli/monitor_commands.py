@@ -684,9 +684,8 @@ class MonitorCommands:
             self.prompt.print(f"Status: {monitor.get('status', 'N/A')}")
             config = monitor.get("config", {})
             for key in config:
-                self.prompt.print(f"   {key}: {config.get(key, 'N/A')}")
-            self.prompt.print("=" * 3)
-            self.prompt.print("\tProfile list:")
+                self.prompt.print(f"\t{key}: {config.get(key, 'N/A')}")
+            self.prompt.print("Profile list:")
             # List profiles: profile_id : profile_name
             monitor_id_str = monitor.get('id', '0')
             monitor_id = int(monitor_id_str)
