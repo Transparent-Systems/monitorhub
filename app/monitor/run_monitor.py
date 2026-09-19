@@ -22,6 +22,11 @@ from typing import Any
 
 from app.monitor.monitor_handler import MonitorHandler
 from app.monitor.monitor_handler_factory import MonitorHandlerFactory
+from app.utils.constants import (
+    MONITOR_STATUS_RUNNING,
+    MONITOR_STATUS_STOP,
+    MONITOR_STATUS_STOPPED,
+)
 from app.utils.generic_util import is_process_alive, utc_timestamp_now
 from app.utils.logger_setup import setup_logging
 from app.utils.sqlite_handler import SQLiteHandler
@@ -116,7 +121,7 @@ class MonitorRunContext:
 
         # Update status to "running" and store PID
         pid = os.getpid()
-        sqlite_handler.update_monitor_status(monitor_id=monitor_id, status="running")
+        sqlite_handler.update_monitor_status(monitor_id=monitor_id, status=MONITOR_STATUS_RUNNING)
         sqlite_handler.update_monitor_pid(monitor_id=monitor_id, pid=pid)
 
         last_run = utc_timestamp_now()
@@ -143,7 +148,7 @@ class MonitorRunContext:
             logger.error(
                 f"Failed to start monitor '{monitor.get('name')}' (id={monitor_id}): {e}"
             )
-            sqlite_handler.update_monitor_status(monitor_id=monitor_id, status="stopped")
+            sqlite_handler.update_monitor_status(monitor_id=monitor_id, status=MONITOR_STATUS_STOPPED)
             sqlite_handler.update_monitor_pid(monitor_id=monitor_id, pid=0)
             sqlite_handler.close()
             return None
@@ -203,7 +208,7 @@ class MonitorRunContext:
             self._write_heartbeat()
 
             current = self.sqlite_handler.get_monitor(monitor_id=self.monitor_id)
-            if current and current.get("status") == "stop":
+            if current and current.get("status") == MONITOR_STATUS_STOP:
                 self.logger.info(
                     f"Monitor '{self.monitor.get('name')}' (id={self.monitor_id}) "
                     f"received 'stop' command via DB status"
@@ -241,7 +246,7 @@ class MonitorRunContext:
 
         if not self.monitor_handler.start(on_complete=request_shutdown):
             logger.error(f"Failed to start monitor '{monitor.get('name')}' (id={monitor_id}). Exiting.")
-            sqlite_handler.update_monitor_status(monitor_id=monitor_id, status="stopped")
+            sqlite_handler.update_monitor_status(monitor_id=monitor_id, status=MONITOR_STATUS_STOPPED)
             sqlite_handler.update_monitor_pid(monitor_id=monitor_id, pid=0)
             sqlite_handler.close()
             return None
@@ -295,7 +300,7 @@ class MonitorRunContext:
             poller_thread.join(timeout=POLLER_JOIN_TIMEOUT_SECONDS)
 
         try:
-            self.sqlite_handler.update_monitor_status(monitor_id=monitor_id, status="stopped")
+            self.sqlite_handler.update_monitor_status(monitor_id=monitor_id, status=MONITOR_STATUS_STOPPED)
             self.sqlite_handler.update_monitor_pid(monitor_id=monitor_id, pid=0)
             logger.info(
                 f"Monitor '{monitor.get('name')}' (id={monitor_id}) status set to 'stopped'"
