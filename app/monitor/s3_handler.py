@@ -24,12 +24,6 @@ import os
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-try:
-    import boto3
-except ImportError:
-    print("boto3 not found. Please install it using 'pip install boto3'")
-    boto3 = None
-
 from boto3.s3.transfer import TransferConfig
 from botocore.exceptions import (
     ClientError,

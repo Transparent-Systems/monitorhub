@@ -41,9 +41,7 @@ class S3Factory:
             if error_code in ['SlowDown', 'Throttling', 'RequestLimitExceeded']:
                 self.logger.warning(f"(!) THROTTLED: IDrive/S3 requested a backoff. Code: {error_code}")
             else:
-                # Filter out error_code 404 : file not found
-                if error_code != '404':
-                    self.logger.debug(f"Retrying S3 request due to: {error_code}")
+                self.logger.debug(f"Retrying S3 request due to: {error_code}")
 
     def get_s3_client(self, profile_config: dict) -> "S3Client":
         """

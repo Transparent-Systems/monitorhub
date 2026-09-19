@@ -81,8 +81,8 @@ class ProfileSelector:
         when there are no profiles or the user cancels.
         """
         # Get all profiles
-        profiles: list[dict[str, Any]] = self.sqlite_handler.get_profiles()
-        if profiles is None or len(profiles) == 0:
+        profiles = self.sqlite_handler.get_profiles()
+        if not profiles:
             self.prompt.print(f"No profiles found in {self.sqlite_handler.db_path}")
             return {}
 
