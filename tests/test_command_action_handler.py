@@ -25,6 +25,12 @@ class TestCommandActionHandler(unittest.TestCase):
         with self.assertRaises(ValueError):
             CommandActionHandler(command="   ")
 
+    def test_timeout_accepts_float_seconds(self):
+        """A float timeout is a number of seconds, not an unknown type."""
+        self.assertEqual(CommandActionHandler(command="echo hi", timeout=60.0).timeout_seconds, 60)
+        self.assertEqual(CommandActionHandler(command="echo hi", timeout=0.5).timeout_seconds, 0.5)
+        self.assertEqual(CommandActionHandler(command="echo hi").timeout_seconds, 60)
+
     def test_build_values(self):
         handler = CommandActionHandler(command="echo hi", monitor_name="MyMonitor", profile_name="MyProfile")
         values = handler._build_values(
@@ -360,6 +366,46 @@ class TestActionHandlerFactory(unittest.TestCase):
         handler = ActionHandlerFactory.get_handler(monitor=monitor, profile=profile)
         assert isinstance(handler, CommandActionHandler)
         self.assertEqual(handler.max_workers, 250)
+
+    def test_factory_default_command_timeout_is_not_zero(self):
+        """A command profile without command_timeout must get a sane timeout.
+
+        Regression: the factory defaulted to the float 60.0, which
+        convert_to_seconds() collapsed to 0; subprocess.run(timeout=0) then
+        killed every command immediately.
+        """
+        monitor = {"name": "test-mon", "monitor_path": "/tmp/mon"}
+        profile = {
+            "name": "cmd-prof",
+            "profile_type": "event_command",
+            "config": {"command": "echo hi"},
+        }
+        handler = ActionHandlerFactory.get_handler(monitor=monitor, profile=profile)
+        assert isinstance(handler, CommandActionHandler)
+        self.assertEqual(handler.command, "echo hi")
+        self.assertEqual(handler.timeout_seconds, 60)
+
+    def test_factory_accepts_all_command_timeout_types(self):
+        """command_timeout may be an int, a float, or a unit string."""
+        monitor = {"name": "test-mon", "monitor_path": "/tmp/mon"}
+        cases = [
+            (60, 60),
+            (60.0, 60),
+            (0.5, 0.5),
+            ("60s", 60),
+            ("60", 60),
+            ("0.5s", 0.5),
+        ]
+        for raw, expected in cases:
+            with self.subTest(command_timeout=raw):
+                profile = {
+                    "name": "cmd-prof",
+                    "profile_type": "event_command",
+                    "config": {"command": "echo hi", "command_timeout": raw},
+                }
+                handler = ActionHandlerFactory.get_handler(monitor=monitor, profile=profile)
+                assert isinstance(handler, CommandActionHandler)
+                self.assertEqual(handler.timeout_seconds, expected)
 
     def test_factory_creates_remote_action_handler_for_rclone(self):
         monitor = {"name": "test-mon", "monitor_path": "/tmp/mon", "remote_path": "remote:dest"}

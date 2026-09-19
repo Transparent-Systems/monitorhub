@@ -62,6 +62,27 @@ class TestGenericUtilFunctions(unittest.TestCase):
         self.assertEqual(convert_to_seconds("1d"), 86400)
         self.assertEqual(convert_to_seconds("unknown"), 0)
 
+    def test_convert_to_seconds_float_and_fractional(self):
+        """Float inputs and fractional strings stay seconds instead of collapsing to 0."""
+        # Regression: convert_to_seconds(60.0) previously returned 0, which
+        # made ActionHandlerFactory's default command timeout kill every
+        # command instantly via subprocess.run(timeout=0).
+        self.assertEqual(convert_to_seconds(60.0), 60)
+        self.assertEqual(convert_to_seconds(0.5), 0.5)
+        self.assertEqual(convert_to_seconds("0.5s"), 0.5)
+        self.assertEqual(convert_to_seconds("1.5m"), 90)
+        self.assertEqual(convert_to_seconds("1.5h"), 5400)
+        self.assertEqual(convert_to_seconds("12.5"), 12.5)
+
+    def test_convert_to_seconds_rejects_invalid_values(self):
+        self.assertEqual(convert_to_seconds(-5), 0)
+        self.assertEqual(convert_to_seconds(-5.0), 0)
+        self.assertEqual(convert_to_seconds(True), 0)
+        self.assertEqual(convert_to_seconds("  "), 0)
+        self.assertEqual(convert_to_seconds("10x"), 0)
+        self.assertEqual(convert_to_seconds("s"), 0)
+        self.assertEqual(convert_to_seconds("0.5x"), 0)
+
     def test_find_by_id(self):
         items = [{"id": 1, "name": "first"}, {"id": 2, "name": "second"}]
         self.assertEqual(find_by_id(items, 1), items[0])

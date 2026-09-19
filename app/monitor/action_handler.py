@@ -335,8 +335,6 @@ class CommandActionHandler(ActionHandler):
     shell injection. Set shell=True (opt-in) to enable pipes/redirects.
     """
 
-    _PLACEHOLDER_NAMES = ("monitor_name", "profile_name", "event_name", "src_path")
-
     def __init__(
         self,
         command: str,
@@ -345,7 +343,7 @@ class CommandActionHandler(ActionHandler):
         events: list[str] | None = None,
         cooldown: str = "0s",
         shell: bool = False,
-        timeout:  str = "60s",
+        timeout: str | int | float = "60s",
         logger: logging.Logger | None = None,
         max_workers: int | str | None = None,
     ):
@@ -627,7 +625,10 @@ class ActionHandlerFactory:
         events = cfg.get("command_events", "")
         cooldown = cfg.get("command_cooldown", "0s")
         shell = cfg.get("command_shell", False)
-        timeout = cfg.get("command_timeout", 60.0)
+        # String default matches CommandActionHandler's declared contract. A
+        # float default (60.0) collapsed to 0 in convert_to_seconds, making
+        # subprocess.run(timeout=0) kill every command instantly.
+        timeout = cfg.get("command_timeout", "60s")
         max_workers = cfg.get("command_max_workers", DEFAULT_COMMAND_MAX_WORKERS)
 
         return CommandActionHandler(

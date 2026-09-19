@@ -37,43 +37,52 @@ def is_interval_valid(interval: str | None) -> bool:
     return bool(re.fullmatch(r"\d+[smhd]?", interval.strip().lower()))
 
 
-def convert_to_seconds(time_str: str | int | None) -> int:
+def convert_to_seconds(time_str: str | int | float | None) -> int | float:
     """
-    Converts a time string (e.g., "1m", "5s", "1h", "2d") or an integer / integer
-    string (e.g., 60, "60") to seconds.
+    Converts a time value to seconds.
 
-    Args:
-        time_str (str | int | None): The time value or string to convert.
+    Accepts:
+    * a number of seconds (``int`` or ``float``, e.g. ``60`` or ``0.5``);
+    * a string with an optional unit suffix (e.g. ``"60"``, ``"0.5s"``,
+      ``"5m"``, ``"2h"``, ``"1d"``); strings without a unit are seconds.
 
-    Returns:
-        int: The time in seconds.
+    Whole-number results are returned as ``int`` and fractional results as
+    ``float``. ``None``, empty/whitespace strings, unparseable text, boolean
+    values and negative inputs convert to ``0``. Fractional strings (such as
+    ``"0.5s"``) and float inputs (such as ``60.0``) are handled without
+    crashing or silently collapsing to ``0``.
     """
-    if time_str is None:
+    if time_str is None or isinstance(time_str, bool):
         return 0
 
-    if isinstance(time_str, int):
-        return time_str
+    if isinstance(time_str, (int, float)):
+        seconds = float(time_str)
+        if seconds < 0:
+            return 0
+        return int(seconds) if seconds.is_integer() else seconds
 
     if not isinstance(time_str, str) or not time_str:
         return 0
 
-    # Convert to lowercase
-    time_str = time_str.strip().lower()
+    text = time_str.strip().lower()
+    if not text:
+        return 0
 
-    # If time_str is an integer string, return that value
-    if time_str.isdigit():
-        return int(time_str)
+    multiplier = 1
+    for unit, factor in (("d", 86400), ("h", 3600), ("m", 60), ("s", 1)):
+        if text.endswith(unit):
+            multiplier = factor
+            text = text[: -len(unit)] if len(unit) else text
+            break
 
-    if time_str.endswith("s"):
-        return int(time_str[:-1])
-    if time_str.endswith("m"):
-        return int(time_str[:-1]) * 60
-    if time_str.endswith("h"):
-        return int(time_str[:-1]) * 3600
-    if time_str.endswith("d"):
-        return int(time_str[:-1]) * 86400
+    try:
+        seconds = float(text) * multiplier
+    except ValueError:
+        return 0
 
-    return 0
+    if seconds < 0:
+        return 0
+    return int(seconds) if seconds.is_integer() else seconds
 
 
 def find_by_id(items: list[dict], item_id: int) -> dict | None:
