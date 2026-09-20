@@ -20,6 +20,7 @@ colliding with constants imported from ``app.utils.constants``.
 from dataclasses import dataclass
 
 from app.monitor.remote_handler_factory import RemoteHandlerFactory
+from app.utils import constants
 
 # ---------------------------------------------------------------------------
 # Provider reference data (previously the "providers" table)
@@ -59,17 +60,19 @@ def get_providers() -> tuple[Provider, ...]:
 # ---------------------------------------------------------------------------
 
 # (name, description) tuples — used for UI display in monitor commands.
+# The name element references the canonical value in ``app.utils.constants``,
+# so display keys can never drift from the status/type writer vocabulary.
 MONITOR_TYPES: tuple[tuple[str, str], ...] = (
-    ("instant", "Instant upload of changed file to remote"),
-    ("backup",  "Backup to remote"),
-    ("restore", "Restore from remote"),
+    (constants.MONITOR_TYPE_INSTANT, "Instant upload of changed file to remote"),
+    (constants.MONITOR_TYPE_BACKUP,  "Backup to remote"),
+    (constants.MONITOR_TYPE_RESTORE, "Restore from remote"),
 )
 
 MONITOR_STATUSES: tuple[tuple[str, str], ...] = (
-    ("running", "Monitor is running"),
-    ("stop",    "Monitor is about to stop"),
-    ("stopped", "Monitor has stopped running"),
-    ("error",   "Monitor has an error state"),
+    (constants.MONITOR_STATUS_RUNNING, "Monitor is running"),
+    (constants.MONITOR_STATUS_STOP,    "Monitor is about to stop"),
+    (constants.MONITOR_STATUS_STOPPED, "Monitor has stopped running"),
+    (constants.MONITOR_STATUS_ERROR,   "Monitor has an error state"),
 )
 
 

@@ -2,6 +2,15 @@ import unittest
 
 from app.monitor.remote_handler_factory import RemoteHandlerFactory
 from app.utils import reference_data
+from app.utils.constants import (
+    MONITOR_STATUS_ERROR,
+    MONITOR_STATUS_RUNNING,
+    MONITOR_STATUS_STOP,
+    MONITOR_STATUS_STOPPED,
+    MONITOR_TYPE_BACKUP,
+    MONITOR_TYPE_INSTANT,
+    MONITOR_TYPE_RESTORE,
+)
 
 
 class TestReferenceDataProviders(unittest.TestCase):
@@ -71,9 +80,22 @@ class TestReferenceDataMonitorTypes(unittest.TestCase):
         names = [name for name, _desc in reference_data.MONITOR_TYPES]
         self.assertEqual(names, ["instant", "backup", "restore"])
 
+    def test_monitor_types_align_with_constants(self):
+        names = [name for name, _desc in reference_data.MONITOR_TYPES]
+        self.assertIn(MONITOR_TYPE_INSTANT, names)
+        self.assertIn(MONITOR_TYPE_BACKUP, names)
+        self.assertIn(MONITOR_TYPE_RESTORE, names)
+
     def test_monitor_statuses(self):
         names = [name for name, _desc in reference_data.MONITOR_STATUSES]
         self.assertEqual(names, ["running", "stop", "stopped", "error"])
+
+    def test_monitor_statuses_align_with_constants(self):
+        names = [name for name, _desc in reference_data.MONITOR_STATUSES]
+        self.assertIn(MONITOR_STATUS_RUNNING, names)
+        self.assertIn(MONITOR_STATUS_STOP, names)
+        self.assertIn(MONITOR_STATUS_STOPPED, names)
+        self.assertIn(MONITOR_STATUS_ERROR, names)
 
 
 class TestReferenceDataFactoryWiring(unittest.TestCase):
