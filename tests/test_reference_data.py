@@ -1,4 +1,7 @@
+import subprocess
+import sys
 import unittest
+from pathlib import Path
 
 from app.monitor.remote_handler_factory import RemoteHandlerFactory
 from app.utils import reference_data
@@ -99,13 +102,49 @@ class TestReferenceDataMonitorTypes(unittest.TestCase):
 
 
 class TestReferenceDataFactoryWiring(unittest.TestCase):
-    """``reference_data`` uses RemoteHandlerFactory through a normal import."""
+    """The declared native remote types must stay in sync with the factory.
 
-    def test_factory_is_imported_directly(self):
-        # The lazy ``_remote_handler_factory`` helper was removed: there is no
-        # circular import between reference_data and the monitor package.
-        self.assertIs(reference_data.RemoteHandlerFactory, RemoteHandlerFactory)
-        self.assertFalse(hasattr(reference_data, "_remote_handler_factory"))
+    ``reference_data.NATIVE_REMOTE_PROFILE_TYPES`` is the code-defined truth for
+    which profile types are implemented; the ``RemoteHandlerFactory.register()``
+    calls wire concrete handlers for dispatch. Both must agree, otherwise the
+    "implemented" answers drift from what the factory can actually dispatch.
+    """
+
+    def test_import_does_not_load_boto3(self):
+        # Importing reference_data must be cheap: the profile-type vocabulary is
+        # plain code here and must not pull in the monitor stack (boto3 via
+        # S3Handler). Run in a fresh interpreter because unittest discovery order
+        # may already have boto3 in sys.modules by the time this test runs.
+        repo_root = Path(__file__).resolve().parents[1]
+        script = (
+            "import sys\n"
+            "import app.utils.reference_data\n"
+            "raise SystemExit(0 if 'boto3' not in sys.modules else 1)\n"
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", script],
+            cwd=str(repo_root),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(
+            0,
+            result.returncode,
+            msg="importing app.utils.reference_data loaded boto3:\n"
+            f"{result.stdout}{result.stderr}",
+        )
+
+    def test_native_remote_profile_types_match_factory_registry(self):
+        declared = set(reference_data.NATIVE_REMOTE_PROFILE_TYPES)
+        registered = set(RemoteHandlerFactory.registered_types())
+        self.assertEqual(
+            declared,
+            registered,
+            "reference_data.NATIVE_REMOTE_PROFILE_TYPES must match "
+            "RemoteHandlerFactory registrations. When adding a native handler, "
+            "update both the register() call and the reference data.",
+        )
 
 
 if __name__ == "__main__":

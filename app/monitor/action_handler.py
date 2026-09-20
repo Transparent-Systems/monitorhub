@@ -13,15 +13,12 @@ from app.monitor.remote_handler_factory import RemoteHandlerFactory
 from app.monitor.remote_result import RemoteResult
 from app.monitor.worker import StoppableWorker
 from app.utils import reference_data
+from app.utils.constants import (
+    DEFAULT_COMMAND_MAX_WORKERS,
+    MAX_COMMAND_MAX_WORKERS,
+    MIN_COMMAND_MAX_WORKERS,
+)
 from app.utils.generic_util import convert_to_seconds
-
-# Bounds for the number of concurrent command processes spawned by a
-# CommandActionHandler. The pool bounds *concurrency* (and therefore the number
-# of simultaneous child processes); it never drops events - excess commands are
-# queued FIFO and executed as workers free up.
-DEFAULT_COMMAND_MAX_WORKERS = 100
-MIN_COMMAND_MAX_WORKERS = 1
-MAX_COMMAND_MAX_WORKERS = 1000
 
 
 def clamp_command_max_workers(

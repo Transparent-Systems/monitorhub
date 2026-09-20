@@ -12,7 +12,6 @@ from typing import Any
 
 from app.cli.process_test_result import ProcessTestResult
 from app.cli.prompt_service import PromptService
-from app.monitor.remote_handler_factory import RemoteHandlerFactory
 from app.utils import reference_data
 from app.utils.sqlite_handler import SQLiteHandler
 
@@ -329,6 +328,12 @@ class DiagnosticUtil:
         - Copy temporary file to remote path
         - Delete temporary file from remote path
         """
+
+        # Lazy import: RemoteHandlerFactory pulls in boto3 (via S3Handler), which
+        # is only needed to construct handlers when a monitor config is actually
+        # exercised (``mhub config test``). Keeping it out of the module top
+        # stops plain CLI imports from paying the boto3 import cost.
+        from app.monitor.remote_handler_factory import RemoteHandlerFactory
 
         monitor_id = monitor.get("id", 0)
         monitor_path = monitor.get("monitor_path", "")

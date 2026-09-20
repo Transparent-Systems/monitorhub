@@ -65,9 +65,12 @@ class TestRemoteHandlerFactory(unittest.TestCase):
     def test_every_concrete_remote_handler_is_registered(self):
         """Every class that declares a PROFILE_TYPE must be registered.
 
-        A new native handler (e.g. FTP) must do two things to work: define a
-        ``RemoteHandler`` subclass and make one ``RemoteHandlerFactory.register()``
-        call.  This guard fails the suite if the registration call is forgotten.
+        A new native handler (e.g. FTP) must do three things to work: define a
+        ``RemoteHandler`` subclass, make one ``RemoteHandlerFactory.register()``
+        call, and add the profile type to
+        ``reference_data.NATIVE_REMOTE_PROFILE_TYPES``.  This guard fails the
+        suite if the registration call is forgotten; another guard in
+        ``test_reference_data.py`` keeps the declared vocabulary in sync.
         ``RcloneHandler`` is the delegated fallback, not a native registrant, and
         stays unregistered by inheriting an empty PROFILE_TYPE.
         """

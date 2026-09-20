@@ -8,14 +8,13 @@ from app.cli.diagnostic_util import DiagnosticUtil
 from app.cli.profile_editor import ProfileEditor
 from app.cli.prompt_service import PromptService
 from app.cli.selectors import ProfileSelector
-from app.monitor.action_handler import (
+from app.monitor.rclone_handler import RcloneHandler
+from app.utils import reference_data
+from app.utils.constants import (
     DEFAULT_COMMAND_MAX_WORKERS,
     MAX_COMMAND_MAX_WORKERS,
     MIN_COMMAND_MAX_WORKERS,
 )
-from app.monitor.rclone_handler import RcloneHandler
-from app.monitor.s3_factory import S3Factory
-from app.utils import reference_data
 from app.utils.generic_util import find_by_id, is_interval_valid
 from app.utils.sqlite_handler import SQLiteHandler
 
@@ -100,6 +99,10 @@ class ProfileCommands:
             # handler. All other remote profile types use rclone_handler.
             # More native handlers can be added here in the future.
             if profile_type == "s3":
+                # Lazy import: S3Factory pulls in boto3, so it is only loaded
+                # when a native s3 profile is actually being tested.
+                from app.monitor.s3_factory import S3Factory
+
                 S3Factory.test_connection(profile_config=config, logger=self.logger, prompt=self.prompt)
             else:
                 profile_name = profile.get("name")

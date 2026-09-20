@@ -1,9 +1,14 @@
 """Static reference data that was previously stored in database lookup tables.
 
-All data here is owned by the code, not the database.  Adding a new
-native remote handler (e.g. FTP) requires only a code change — the
-handler registers itself with RemoteHandlerFactory and the existence
-of that registration is the single source of truth for "implemented".
+All data here is owned by the code, not the database.  The profile-type
+vocabulary — which types are "implemented" and how they are categorized —
+lives here as plain code, mirroring the lookup tables it replaced.  The
+native remote types (:data:`NATIVE_REMOTE_PROFILE_TYPES`) sit alongside the
+command types (:data:`COMMAND_PROFILE_TYPES`); a test in this suite keeps the
+remote list in sync with ``RemoteHandlerFactory``'s registrations.  Adding a
+new native remote handler (e.g. FTP) is a three-step code change: a
+``RemoteHandler`` subclass, one ``RemoteHandlerFactory.register()`` call, and
+one entry in ``NATIVE_REMOTE_PROFILE_TYPES`` here.
 
 Import convention
 -----------------
@@ -19,7 +24,6 @@ colliding with constants imported from ``app.utils.constants``.
 
 from dataclasses import dataclass
 
-from app.monitor.remote_handler_factory import RemoteHandlerFactory
 from app.utils import constants
 
 # ---------------------------------------------------------------------------
@@ -94,6 +98,13 @@ PROFILE_CATEGORIES: tuple[tuple[str, str], ...] = (
 # These profile types are handled by CommandActionHandler, not RemoteHandler.
 COMMAND_PROFILE_TYPES = ("event_command",)
 
+# Profile types handled by a native ``RemoteHandler`` subclass (registered with
+# ``RemoteHandlerFactory``) rather than delegated to the rclone binary.  This is
+# the code-defined "implemented" vocabulary: it must match the register() calls
+# in ``app/monitor/remote_handler_factory.py``, and ``test_reference_data.py``
+# enforces that the two stay in sync.
+NATIVE_REMOTE_PROFILE_TYPES: tuple[str, ...] = ("s3",)
+
 # Documentation-only — handled by rclone, not a native handler.
 # Listed here so the vocabulary is visible; no runtime behaviour depends on them.
 KNOWN_RLONE_PROFILE_TYPES: tuple[tuple[str, str], ...] = (
@@ -122,16 +133,14 @@ def get_profile_category(profile_type: str) -> str:
 
 
 def is_profile_type_implemented(profile_type: str) -> bool:
-    """A profile type is implemented if it has a native handler registered."""
-    return profile_type in COMMAND_PROFILE_TYPES or RemoteHandlerFactory.is_registered(
-        profile_type
-    )
+    """A profile type is implemented if it is a command type or a native
+    remote type (anything else would have to be delegated to rclone)."""
+    return profile_type in COMMAND_PROFILE_TYPES or profile_type in NATIVE_REMOTE_PROFILE_TYPES
 
 
 def get_implemented_profile_types() -> list[str]:
     """Return the sorted list of profile type names that are implemented."""
-    types = set(RemoteHandlerFactory.registered_types()) | set(COMMAND_PROFILE_TYPES)
-    return sorted(types)
+    return sorted(set(COMMAND_PROFILE_TYPES) | set(NATIVE_REMOTE_PROFILE_TYPES))
 
 
 def filter_implemented_profiles(profiles: list[dict]) -> list[dict]:

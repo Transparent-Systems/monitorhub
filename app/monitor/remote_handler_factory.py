@@ -17,9 +17,12 @@ class RemoteHandlerFactory:
     extensible: adding a new remote profile type only requires a new
     ``RemoteHandler`` subclass plus one ``register()`` call.
 
-    The set of registered types is the single source of truth for which profile
-    types are implemented natively (as opposed to delegated to rclone). See
-    ``a/reference_data.py``.
+    Registration is for dispatch only: ``get_handler`` uses it to pick the right
+    handler class for a native profile type.  The vocabulary of which profile
+    types are implemented (native vs. delegated to rclone) is code-defined
+    reference data and lives in ``app.utils.reference_data``
+    (``NATIVE_REMOTE_PROFILE_TYPES``); a test in ``tests/test_reference_data.py``
+    keeps the registry and that vocabulary in sync.
     """
 
     _handlers: ClassVar[dict[str, Callable[..., RemoteHandler]]] = {}
@@ -109,5 +112,6 @@ class RemoteHandlerFactory:
 
 
 # Register the built-in native handlers. Adding a new native handler (e.g. FTP)
-# means adding a RemoteHandler subclass plus one register() call here.
+# means three steps: a RemoteHandler subclass, one register() call here, and an
+# entry in reference_data.NATIVE_REMOTE_PROFILE_TYPES.
 RemoteHandlerFactory.register(S3Handler.PROFILE_TYPE, S3Handler)
