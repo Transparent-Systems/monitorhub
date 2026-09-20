@@ -22,6 +22,13 @@ from botocore.exceptions import (
 from app.monitor.remote_result import RemoteErrorKind
 from app.monitor.s3_handler import S3Handler
 
+# The failure paths under test log warning/error records on the handler logger.
+# Quiet that logger by default so the test run is not polluted by expected
+# output; ``assertLogs`` still captures the records for the assertions below.
+LOGGER = logging.getLogger(__name__)
+LOGGER.setLevel(logging.CRITICAL)
+LOGGER.propagate = False
+
 
 class _FailingPaginator:
     """Paginator whose ``paginate`` always raises, simulating a list failure."""
@@ -63,7 +70,7 @@ def _make_handler(fake_client, base_monitor_path: str, base_remote_path: str = "
             base_monitor_path=base_monitor_path,
             base_remote_path=base_remote_path,
             profile_config={},
-            logger=logging.getLogger(__name__),
+            logger=LOGGER,
         )
 
 
@@ -77,29 +84,38 @@ class TestS3HandlerListingFailure(unittest.TestCase):
 
     def test_delete_folder_reports_failure_when_listing_fails(self):
         handler = _make_handler(_FakeS3Client(), base_monitor_path="/tmp")
-        result = handler.delete_folder("bucket/prefix")
+        with self.assertLogs(LOGGER, level="ERROR") as captured:
+            result = handler.delete_folder("bucket/prefix")
         self.assertFalse(result.ok)
         self.assertEqual(result.code, 1)
         self.assertEqual(result.kind, RemoteErrorKind.ACCESS_DENIED)
         self.assertIn("denied", result.message)
+        self.assertEqual(len(captured.output), 1)
+        self.assertIn("Error deleting folder bucket/prefix:", captured.output[0])
 
     def test_restore_folder_reports_failure_when_listing_fails(self):
         with tempfile.TemporaryDirectory() as tmp:
             handler = _make_handler(_FakeS3Client(), base_monitor_path=tmp)
-            result = handler.restore_folder("bucket/prefix")
+            with self.assertLogs(LOGGER, level="ERROR") as captured:
+                result = handler.restore_folder("bucket/prefix")
             self.assertFalse(result.ok)
             self.assertEqual(result.code, 1)
             self.assertEqual(result.kind, RemoteErrorKind.ACCESS_DENIED)
             self.assertIn("denied", result.message)
+            self.assertEqual(len(captured.output), 1)
+            self.assertIn("Error listing objects for restore:", captured.output[0])
 
     def test_copy_folder_still_uploads_when_listing_fails(self):
         with tempfile.TemporaryDirectory() as tmp:
             (Path(tmp) / "a.txt").write_text("hello", encoding="utf-8")
             fake = _FakeS3Client()
             handler = _make_handler(fake, base_monitor_path=tmp)
-            result = handler.copy_folder(tmp)
+            with self.assertLogs(LOGGER, level="WARNING") as captured:
+                result = handler.copy_folder(tmp)
             self.assertTrue(result.ok)
             self.assertEqual(len(fake.uploaded), 1)
+            self.assertEqual(len(captured.output), 1)
+            self.assertIn("Could not list remote objects at s3://bucket/prefix/", captured.output[0])
 
 
 class TestS3ErrorClassification(unittest.TestCase):
