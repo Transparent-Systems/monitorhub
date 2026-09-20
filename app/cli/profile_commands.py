@@ -310,7 +310,7 @@ class ProfileCommands:
 
         # Show all profiles
         profiles = self.sqlite_handler.get_profiles()
-        if profiles is None or len(profiles) == 0:
+        if not profiles:
             self.logger.info(f"No profiles found in {self.sqlite_handler.db_path}")
             return
 

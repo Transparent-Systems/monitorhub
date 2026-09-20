@@ -230,7 +230,7 @@ class DiagnosticUtil:
         # If there is no profile that depends on rclone, then we set result to True (no failure)
         self.check_rclone_dependency_result = True
         profiles = self.sqlite_handler.get_profiles()
-        if profiles is None:
+        if not profiles:
             self.logger.error("No profiles in database")
             return True
 
@@ -287,14 +287,6 @@ class DiagnosticUtil:
                 self.logger.error("Monitor ID is missing or invalid for monitor: %s", current_monitor_id)
                 continue
             
-            # Get profiles for this monitor using sqlite_handler
-            profiles = self.sqlite_handler.get_profiles_for_monitor(
-                monitor_id=current_monitor_id
-            )
-            if profiles is None:
-                self.logger.error("Failed to get profiles for monitor_id: %s", monitor_id)
-                continue
-
             # Get testing_delay
             config = monitor.get("config", {})
             if config and "testing_delay" in config:

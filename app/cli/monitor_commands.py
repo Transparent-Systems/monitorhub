@@ -508,7 +508,7 @@ class MonitorCommands:
     def new(self):
         """Create new monitor."""
         profiles = self.sqlite_handler.get_profiles()
-        if profiles is None or len(profiles) == 0:
+        if not profiles:
             self.logger.warning(f"No profiles found in {self.sqlite_handler.db_path}")
             self.logger.warning("Please add profiles first")
             return
