@@ -271,7 +271,7 @@ class DiagnosticUtil:
 
         # Get all monitors using SQLiteHandler
         monitors = self.sqlite_handler.get_monitors()
-        if monitors is None:
+        if not monitors:
             self.logger.error("Failed to get monitors from database")
             return False
 
