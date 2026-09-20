@@ -2,7 +2,7 @@
 
 These tests need no credentials or network access: they inject a fake S3
 client so we can assert that a failed listing is reported as a failure
-(rather than a silent success) for delete/restore/sync, while a backup
+(rather than a silent success) for delete/restore, while a backup
 (copy_folder) still uploads every local file.
 """
 
@@ -91,14 +91,6 @@ class TestS3HandlerListingFailure(unittest.TestCase):
             self.assertEqual(result.code, 1)
             self.assertEqual(result.kind, RemoteErrorKind.ACCESS_DENIED)
             self.assertIn("denied", result.message)
-
-    def test_sync_folder_reports_failure_when_listing_fails(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            (Path(tmp) / "a.txt").write_text("hello", encoding="utf-8")
-            handler = _make_handler(_FakeS3Client(), base_monitor_path=tmp)
-            result = handler.sync_folder(tmp)
-            self.assertFalse(result.ok)
-            self.assertEqual(result.code, 1)
 
     def test_copy_folder_still_uploads_when_listing_fails(self):
         with tempfile.TemporaryDirectory() as tmp:

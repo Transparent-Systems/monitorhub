@@ -297,15 +297,6 @@ class RcloneHandler(RemoteHandler):
         remote_path = self.base_remote_path / relative_path
         return remote_path.as_posix()
 
-    def get_rclone_version(self) -> RemoteResult:
-        return self.run_command(["--version"])
-
-    def list_remotes(self) -> RemoteResult:
-        """
-        List remotes configured
-        """
-        return self.run_command(["listremotes"])
-
     def file_exists(self, remote_path: str) -> RemoteResult:
         """
         Check whether the remote path exists.

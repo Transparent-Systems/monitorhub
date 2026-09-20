@@ -65,19 +65,6 @@ class TestRcloneHandlerIntegration(unittest.TestCase):
         # Ensure monitor directory exists
         Path(cls.monitor_path).mkdir(parents=True, exist_ok=True)
 
-    def test_01_get_version(self):
-        """Get Version"""
-        self.logger.debug(f"==> Monitor {self.monitor_name} -> {self._testMethodName}")
-        result = self.rclone_handler.get_rclone_version()
-        self.assertTrue(result.ok, f"Get version failed: {result}")
-        self.assertIn("rclone", result.message.lower(), "Output should contain 'rclone'")
-
-    def test_02_list_remotes(self):
-        """List Remotes"""
-        self.logger.debug(f"==> Monitor {self.monitor_name} -> {self._testMethodName}")
-        result = self.rclone_handler.list_remotes()
-        self.assertTrue(result.ok, f"List remotes failed. Output: {result.message}")
-
     def test_03_copy_file_to_remote_and_check_exist(self):
         """Testing file exists"""
         self.logger.debug(f"==> Monitor: {self.monitor_name} -> {self._testMethodName}")

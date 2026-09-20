@@ -246,10 +246,10 @@ class S3Handler(RemoteHandler):
                 md5 = self._calculate_md5(monitor_path)
                 if etag == md5:
                     return RemoteResult.success()
-        except ClientError as e:
-            error_code = e.response.get('Error', {}).get('Code')
-            if error_code == '404':
-                pass
+        except ClientError:
+            # 404 (object absent remotely) or another head failure means we cannot
+            # skip the upload; fall through to the upload attempt below.
+            pass
                
         try:
             self.logger.debug(f"Uploading {monitor_path} to s3://{bucket}/{key}")
@@ -447,55 +447,4 @@ class S3Handler(RemoteHandler):
             return RemoteResult.success()
         except Exception as e:  # noqa: BLE001 - batch deletion failure is classified, not raised
             self.logger.error(f"Error deleting folder {remote_path}: {e}")
-            return self._failure_from_exception(e)
-
-    def sync_folder(self, monitor_path: str) -> RemoteResult:
-        """
-        Sync the monitor path to the derived remote path.
-        Make remote path identical to the monitor path.
-        """
-        # 1. Copy (Upload) all files from the monitor path
-        copy_result = self.copy_folder(monitor_path)
-        if not copy_result.ok:
-            return copy_result
-
-        # 2. Delete files in remote that are NOT in the monitor path
-        remote_path = self.get_remote_path(monitor_path)
-        bucket, prefix = self._get_bucket_and_key(remote_path)
-        if prefix and not prefix.endswith('/'):
-            prefix += '/'
-
-        try:
-            remote_objects = self._list_objects(bucket, prefix)
-            
-            # Build set of expected keys from the monitor path
-            expected_keys = set()
-            monitor_path_obj = Path(monitor_path)
-            for root, _dirs, files in os.walk(monitor_path):
-                for file in files:
-                    local_file = Path(root) / file
-                    # Calculate relative path from the monitor root
-                    rel_path = local_file.relative_to(monitor_path_obj)
-                    # Key is prefix + rel_path (normalized to forward slashes)
-                    key = f"{prefix}{rel_path.as_posix()}"
-                    expected_keys.add(key)
-
-            # Identify objects to delete
-            to_delete: list[ObjectIdentifierTypeDef] = []
-            for obj in remote_objects:
-                if obj['Key'] not in expected_keys:
-                    to_delete.append({'Key': obj['Key']})
-            
-            if to_delete:
-                self.logger.info(f"Sync: Deleting {len(to_delete)} extraneous files from remote.")
-                # Delete in batches
-                batch_size = 1000
-                for i in range(0, len(to_delete), batch_size):
-                    batch = to_delete[i:i+batch_size]
-                    self.client.delete_objects(Bucket=bucket, Delete={'Objects': batch})
-
-            return RemoteResult.success()
-
-        except Exception as e:  # noqa: BLE001 - sync cleanup failure is classified, not raised
-            self.logger.error(f"Error during sync cleanup: {e}")
             return self._failure_from_exception(e)
