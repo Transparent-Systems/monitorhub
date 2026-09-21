@@ -5,10 +5,10 @@ from unittest.mock import patch
 
 from app.monitor.action_handler import (
     ActionContext,
-    ActionHandlerFactory,
     CommandActionHandler,
     RemoteActionHandler,
 )
+from app.monitor.handler_factory import HandlerFactory
 
 
 def make_context(event_type="created", src_path="/tmp/file.txt", dest_path="", is_directory=False):
@@ -301,7 +301,7 @@ class TestCommandActionHandler(unittest.TestCase):
                 warn_mock.assert_not_called()
 
 
-class TestActionHandlerFactory(unittest.TestCase):
+class TestHandlerFactory(unittest.TestCase):
     def test_factory_creates_command_action_handler(self):
         monitor = {"name": "test-mon", "monitor_path": "/tmp/mon"}
         profile = {
@@ -313,7 +313,7 @@ class TestActionHandlerFactory(unittest.TestCase):
                 "command_cooldown": "5m",
             },
         }
-        handler = ActionHandlerFactory.get_handler(monitor=monitor, profile=profile)
+        handler = HandlerFactory.get_handler(monitor=monitor, profile=profile)
         self.assertIsInstance(handler, CommandActionHandler)
         assert isinstance(handler, CommandActionHandler)
         self.assertEqual(handler.command, "echo {src_path}")
@@ -331,27 +331,22 @@ class TestActionHandlerFactory(unittest.TestCase):
                 "command_cooldown": "10s",
             },
         }
-        handler = ActionHandlerFactory.get_handler(monitor=monitor, profile=profile)
+        handler = HandlerFactory.get_handler(monitor=monitor, profile=profile)
         self.assertIsInstance(handler, CommandActionHandler)
         assert isinstance(handler, CommandActionHandler)
         self.assertEqual(handler.command, "sh process.sh {src_path}")
         self.assertEqual(handler.events, ["closed"])
         self.assertEqual(handler.cooldown_seconds, 10)
 
-    def test_factory_creates_command_action_handler_with_explicit_category(self):
+    def test_factory_returns_none_for_command_profile_without_command(self):
         monitor = {"name": "test-mon", "monitor_path": "/tmp/mon"}
         profile = {
-            "name": "custom-cmd-prof",
-            "profile_type": "custom_type",
-            "category": "command",
-            "config": {
-                "command": "notify.sh {event_name}",
-            },
+            "name": "cmd-prof",
+            "profile_type": "event_command",
+            "config": {},
         }
-        handler = ActionHandlerFactory.get_handler(monitor=monitor, profile=profile)
-        self.assertIsInstance(handler, CommandActionHandler)
-        assert isinstance(handler, CommandActionHandler)
-        self.assertEqual(handler.command, "notify.sh {event_name}")
+        handler = HandlerFactory.get_handler(monitor=monitor, profile=profile)
+        self.assertIsNone(handler)
 
     def test_factory_reads_command_max_workers(self):
         monitor = {"name": "test-mon", "monitor_path": "/tmp/mon"}
@@ -363,7 +358,7 @@ class TestActionHandlerFactory(unittest.TestCase):
                 "command_max_workers": 250,
             },
         }
-        handler = ActionHandlerFactory.get_handler(monitor=monitor, profile=profile)
+        handler = HandlerFactory.get_handler(monitor=monitor, profile=profile)
         assert isinstance(handler, CommandActionHandler)
         self.assertEqual(handler.max_workers, 250)
 
@@ -380,7 +375,7 @@ class TestActionHandlerFactory(unittest.TestCase):
             "profile_type": "event_command",
             "config": {"command": "echo hi"},
         }
-        handler = ActionHandlerFactory.get_handler(monitor=monitor, profile=profile)
+        handler = HandlerFactory.get_handler(monitor=monitor, profile=profile)
         assert isinstance(handler, CommandActionHandler)
         self.assertEqual(handler.command, "echo hi")
         self.assertEqual(handler.timeout_seconds, 60)
@@ -403,7 +398,7 @@ class TestActionHandlerFactory(unittest.TestCase):
                     "profile_type": "event_command",
                     "config": {"command": "echo hi", "command_timeout": raw},
                 }
-                handler = ActionHandlerFactory.get_handler(monitor=monitor, profile=profile)
+                handler = HandlerFactory.get_handler(monitor=monitor, profile=profile)
                 assert isinstance(handler, CommandActionHandler)
                 self.assertEqual(handler.timeout_seconds, expected)
 
@@ -414,14 +409,14 @@ class TestActionHandlerFactory(unittest.TestCase):
             "profile_type": "s3",
             "config": {},
         }
-        handler = ActionHandlerFactory.get_handler(monitor=monitor, profile=profile)
+        handler = HandlerFactory.get_handler(monitor=monitor, profile=profile)
         self.assertIsInstance(handler, RemoteActionHandler)
 
     def test_factory_returns_none_for_missing_profile(self):
         monitor = {"name": "test-mon", "monitor_path": "/tmp/mon", "remote_path": "remote:dest"}
-        handler = ActionHandlerFactory.get_handler(monitor=monitor, profile=None)
+        handler = HandlerFactory.get_handler(monitor=monitor, profile=None)
         self.assertIsNone(handler)
-        handler_empty = ActionHandlerFactory.get_handler(monitor=monitor, profile={})
+        handler_empty = HandlerFactory.get_handler(monitor=monitor, profile={})
         self.assertIsNone(handler_empty)
 
 

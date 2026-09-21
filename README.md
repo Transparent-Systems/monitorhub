@@ -157,7 +157,7 @@ Over time we will add native handlers for common cloud storage providers and oth
 ### Rclone
 
 Rclone is the swiss knife of copying file to and from cloud storage. 
-Any remote profile not implemented in this application will be hndled by a call to Rclone.
+Any remote profile type without a native handler is delegated to a call to Rclone.
 
 
 ## Acknowledgments

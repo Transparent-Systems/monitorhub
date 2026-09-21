@@ -1,14 +1,12 @@
 """Static reference data that was previously stored in database lookup tables.
 
-All data here is owned by the code, not the database.  The profile-type
-vocabulary — which types are "implemented" and how they are categorized —
-lives here as plain code, mirroring the lookup tables it replaced.  The
-native remote types (:data:`NATIVE_REMOTE_PROFILE_TYPES`) sit alongside the
-command types (:data:`COMMAND_PROFILE_TYPES`); a test in this suite keeps the
-remote list in sync with ``RemoteHandlerFactory``'s registrations.  Adding a
-new native remote handler (e.g. FTP) is a three-step code change: a
-``RemoteHandler`` subclass, one ``RemoteHandlerFactory.register()`` call, and
-one entry in ``NATIVE_REMOTE_PROFILE_TYPES`` here.
+All data here is owned by the code, not the database.  It holds the
+profile-type *category* vocabulary -- how a profile type is categorized
+(``remote`` or ``command``) and how that category is presented in the CLI
+prompts.  Which concrete handler a profile type maps to is decided by
+``app.monitor.handler_factory`` (the ``REMOTE_HANDLERS`` table plus the rclone
+fallback); this module stays free of the handler classes because importing them
+would pull in boto3, which the CLI must avoid on startup.
 
 Import convention
 -----------------
@@ -98,16 +96,20 @@ PROFILE_CATEGORIES: tuple[tuple[str, str], ...] = (
 # These profile types are handled by CommandActionHandler, not RemoteHandler.
 COMMAND_PROFILE_TYPES = ("event_command",)
 
-# Profile types handled by a native ``RemoteHandler`` subclass (registered with
-# ``RemoteHandlerFactory``) rather than delegated to the rclone binary.  This is
-# the code-defined "implemented" vocabulary: it must match the register() calls
-# in ``app/monitor/remote_handler_factory.py``, and ``test_reference_data.py``
-# enforces that the two stay in sync.
-NATIVE_REMOTE_PROFILE_TYPES: tuple[str, ...] = ("s3",)
+# Display hints stored in the config of profiles imported from rclone.  They
+# explain that the stored credentials are informational only and that the
+# profile must stay in rclone.conf to keep working.  Rclone-managed profile
+# types are not editable from MonitorHub; see ProfileEditor._edit_remote.
+RCLONE_PROFILE_COMMENT = (
+    "Credentials stored here are for informational purposes only."
+)
+RCLONE_PROFILE_IMPORTANT = (
+    "Profile must be in rclone config in order to work ! "
+)
 
 # Documentation-only — handled by rclone, not a native handler.
 # Listed here so the vocabulary is visible; no runtime behaviour depends on them.
-KNOWN_RLONE_PROFILE_TYPES: tuple[tuple[str, str], ...] = (
+KNOWN_RCLONE_PROFILE_TYPES: tuple[tuple[str, str], ...] = (
     ("ftp",   "FTP Server"),
     ("sftp",  "SFTP Server"),
     ("drive", "Google Drive"),
@@ -130,20 +132,3 @@ def get_profile_category(profile_type: str) -> str:
     if profile_type in COMMAND_PROFILE_TYPES:
         return PROFILE_CATEGORY_COMMAND
     return PROFILE_CATEGORY_REMOTE
-
-
-def is_profile_type_implemented(profile_type: str) -> bool:
-    """A profile type is implemented if it is a command type or a native
-    remote type (anything else would have to be delegated to rclone)."""
-    return profile_type in COMMAND_PROFILE_TYPES or profile_type in NATIVE_REMOTE_PROFILE_TYPES
-
-
-def get_implemented_profile_types() -> list[str]:
-    """Return the sorted list of profile type names that are implemented."""
-    return sorted(set(COMMAND_PROFILE_TYPES) | set(NATIVE_REMOTE_PROFILE_TYPES))
-
-
-def filter_implemented_profiles(profiles: list[dict]) -> list[dict]:
-    """Return only the profiles whose profile_type is implemented."""
-    implemented = set(get_implemented_profile_types())
-    return [p for p in profiles if p.get("profile_type") in implemented]

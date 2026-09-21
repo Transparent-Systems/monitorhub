@@ -12,12 +12,9 @@ The `direction` parameter selects between them, so the same class handles both.
 
 import time
 
-from app.monitor.action_handler import (
-    ActionContext,
-    ActionHandlerFactory,
-)
+from app.monitor.action_handler import ActionContext
+from app.monitor.handler_factory import HandlerFactory, get_remote_handler
 from app.monitor.monitor_handler import MonitorHandler
-from app.monitor.remote_handler_factory import RemoteHandlerFactory
 from app.monitor.worker import PeriodicWorker, StoppableWorker
 from app.utils import reference_data
 from app.utils.constants import MONITOR_TYPE_BACKUP, MONITOR_TYPE_RESTORE
@@ -154,7 +151,7 @@ class ScheduledMonitorHandler(MonitorHandler):
             )
             if category != reference_data.PROFILE_CATEGORY_COMMAND:
                 continue
-            handler = ActionHandlerFactory.get_handler(
+            handler = HandlerFactory.get_handler(
                 monitor=self.monitor,
                 profile=profile,
                 logger=self.logger,
@@ -187,7 +184,7 @@ class ScheduledMonitorHandler(MonitorHandler):
             )
 
             if category == "remote":
-                remote_handler = RemoteHandlerFactory.get_handler(
+                remote_handler = get_remote_handler(
                     logger=self.logger,
                     monitor_path=monitor_path,
                     remote_path=remote_path,
@@ -217,7 +214,7 @@ class ScheduledMonitorHandler(MonitorHandler):
                 command_handler = self.command_handlers.get(profile.get("name"))
                 if command_handler is None:
                     self.logger.error(
-                        f"Profile {profile.get('name')} could not be instantiated by ActionHandlerFactory"
+                        f"Profile {profile.get('name')} could not be instantiated by HandlerFactory"
                     )
                     continue
                 # Fire the handler directly; CommandActionHandler runs the

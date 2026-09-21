@@ -3,7 +3,7 @@ import sys
 import unittest
 from pathlib import Path
 
-from app.monitor.remote_handler_factory import RemoteHandlerFactory
+from app.monitor import handler_factory
 from app.utils import reference_data
 from app.utils.constants import (
     MONITOR_STATUS_ERROR,
@@ -42,30 +42,6 @@ class TestReferenceDataProfileTypes(unittest.TestCase):
         self.assertEqual(reference_data.get_profile_category("ftp"), "remote")
         self.assertEqual(reference_data.get_profile_category("event_command"), "command")
 
-    def test_is_profile_type_implemented(self):
-        self.assertTrue(reference_data.is_profile_type_implemented("s3"))
-        self.assertTrue(reference_data.is_profile_type_implemented("event_command"))
-        self.assertFalse(reference_data.is_profile_type_implemented("ftp"))
-        self.assertFalse(reference_data.is_profile_type_implemented("drive"))
-
-    def test_get_implemented_profile_types(self):
-        implemented = reference_data.get_implemented_profile_types()
-        self.assertIn("s3", implemented)
-        for command_type in reference_data.COMMAND_PROFILE_TYPES:
-            self.assertIn(command_type, implemented)
-        self.assertNotIn("ftp", implemented)
-        self.assertNotIn("drive", implemented)
-
-    def test_filter_implemented_profiles(self):
-        profiles = [
-            {"name": "a", "profile_type": "s3"},
-            {"name": "b", "profile_type": "ftp"},
-            {"name": "c", "profile_type": "event_command"},
-        ]
-        filtered = reference_data.filter_implemented_profiles(profiles)
-        names = {p["name"] for p in filtered}
-        self.assertEqual(names, {"a", "c"})
-
 
 class TestReferenceDataProfileCategories(unittest.TestCase):
     def test_profile_categories(self):
@@ -102,12 +78,12 @@ class TestReferenceDataMonitorTypes(unittest.TestCase):
 
 
 class TestReferenceDataFactoryWiring(unittest.TestCase):
-    """The declared native remote types must stay in sync with the factory.
+    """The category table and the handler mapping must stay consistent.
 
-    ``reference_data.NATIVE_REMOTE_PROFILE_TYPES`` is the code-defined truth for
-    which profile types are implemented; the ``RemoteHandlerFactory.register()``
-    calls wire concrete handlers for dispatch. Both must agree, otherwise the
-    "implemented" answers drift from what the factory can actually dispatch.
+    ``reference_data`` owns the profile-type *category* vocabulary that drives
+    the CLI prompts; ``app.monitor.handler_factory`` owns the profile_type ->
+    handler mapping. They live apart because reference_data must stay free of
+    boto3, so these guards keep the two from drifting.
     """
 
     def test_import_does_not_load_boto3(self):
@@ -135,15 +111,26 @@ class TestReferenceDataFactoryWiring(unittest.TestCase):
             f"{result.stdout}{result.stderr}",
         )
 
-    def test_native_remote_profile_types_match_factory_registry(self):
-        declared = set(reference_data.NATIVE_REMOTE_PROFILE_TYPES)
-        registered = set(RemoteHandlerFactory.registered_types())
+    def test_command_profile_types_are_categorized_command(self):
+        for profile_type in reference_data.COMMAND_PROFILE_TYPES:
+            self.assertEqual(
+                reference_data.get_profile_category(profile_type), "command"
+            )
+
+    def test_remote_handlers_are_categorized_remote(self):
+        for profile_type in handler_factory.REMOTE_HANDLERS:
+            self.assertEqual(
+                reference_data.get_profile_category(profile_type), "remote"
+            )
+
+    def test_command_and_remote_tables_are_disjoint(self):
+        overlap = set(reference_data.COMMAND_PROFILE_TYPES) & set(
+            handler_factory.REMOTE_HANDLERS
+        )
         self.assertEqual(
-            declared,
-            registered,
-            "reference_data.NATIVE_REMOTE_PROFILE_TYPES must match "
-            "RemoteHandlerFactory registrations. When adding a native handler, "
-            "update both the register() call and the reference data.",
+            overlap,
+            set(),
+            "a profile type cannot be both a command type and a native remote type",
         )
 
 

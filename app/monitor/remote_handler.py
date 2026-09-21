@@ -13,9 +13,9 @@ class RemoteHandler(ABC):
 
     Subclasses declare their supported profile type via the ``PROFILE_TYPE``,
     ``CATEGORY`` and ``DESCRIPTION`` class attributes. These values are the
-    code-level equivalent of the old ``profile_types`` database lookup table,
-    and ``PROFILE_TYPE`` is what a subclass registers with
-    ``RemoteHandlerFactory``.
+    code-level equivalent of the old ``profile_types`` database lookup table.
+    ``PROFILE_TYPE`` is the mapping key that ties the subclass to a profile
+    type in :data:`app.monitor.handler_factory.REMOTE_HANDLERS`.
     """
 
     # Subclasses override these to declare their supported profile type.

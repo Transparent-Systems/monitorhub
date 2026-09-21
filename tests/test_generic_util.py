@@ -65,7 +65,7 @@ class TestGenericUtilFunctions(unittest.TestCase):
     def test_convert_to_seconds_float_and_fractional(self):
         """Float inputs and fractional strings stay seconds instead of collapsing to 0."""
         # Regression: convert_to_seconds(60.0) previously returned 0, which
-        # made ActionHandlerFactory's default command timeout kill every
+        # made HandlerFactory's default command timeout kill every
         # command instantly via subprocess.run(timeout=0).
         self.assertEqual(convert_to_seconds(60.0), 60)
         self.assertEqual(convert_to_seconds(0.5), 0.5)

@@ -38,6 +38,9 @@ class DiagramSpec:
     source_path: str
     start_marker: str
     end_marker: str
+    # Additional modules to include in the same diagram (e.g. a factory that
+    # lives in its own module but belongs to the same class hierarchy).
+    extra_source_paths: tuple[str, ...] = ()
 
 
 # Defaults mirror the previous bash scripts.
@@ -46,6 +49,7 @@ DIAGRAMS: dict[str, DiagramSpec] = {
         source_path="app/monitor/action_handler.py",
         start_marker="<!-- ACTIONHANDLER_MERMAID_START -->",
         end_marker="<!-- ACTIONHANDLER_MERMAID_END -->",
+        extra_source_paths=("app/monitor/handler_factory.py",),
     ),
     "commands": DiagramSpec(
         source_path="app/cli/commands.py",
@@ -75,10 +79,11 @@ def find_pyreverse() -> str:
     )
 
 
-def generate_diagram(source_path: Path) -> str:
-    """Run pyreverse on source_path and return the generated Mermaid diagram."""
-    if not source_path.is_file():
-        raise DiagramUpdateError(f"Source path does not exist: {source_path}")
+def generate_diagram(source_paths: list[Path]) -> str:
+    """Run pyreverse on source_paths and return the generated Mermaid diagram."""
+    for source_path in source_paths:
+        if not source_path.is_file():
+            raise DiagramUpdateError(f"Source path does not exist: {source_path}")
 
     pyreverse = find_pyreverse()
 
@@ -88,7 +93,16 @@ def generate_diagram(source_path: Path) -> str:
     env = {**os.environ, "PYTHONPATH": str(REPO_ROOT)}
     with tempfile.TemporaryDirectory() as tmp_dir:
         result = subprocess.run(
-            [pyreverse, "-o", "mmd", "-a", "1", "-s", "1", str(source_path)],
+            [
+                pyreverse,
+                "-o",
+                "mmd",
+                "-a",
+                "1",
+                "-s",
+                "1",
+                *(str(path) for path in source_paths),
+            ],
             cwd=tmp_dir,
             env=env,
             capture_output=True,
@@ -99,7 +113,7 @@ def generate_diagram(source_path: Path) -> str:
         if result.returncode != 0 or not classes_mmd.is_file():
             output = f"{result.stdout}{result.stderr}".strip()
             raise DiagramUpdateError(
-                f"pyreverse failed for {source_path} "
+                f"pyreverse failed for {source_paths} "
                 f"(exit {result.returncode}):\n{output}"
             )
         return classes_mmd.read_text(encoding="utf-8").rstrip("\n")
@@ -141,11 +155,16 @@ def update_diagram(spec: DiagramSpec, source_path: str, target_file: str) -> boo
 
     :return: True when the file changed, False when it was already up to date.
     """
-    source = (REPO_ROOT / source_path).resolve()
+    source_paths = [
+        (REPO_ROOT / path).resolve()
+        for path in (source_path, *spec.extra_source_paths)
+    ]
     target = (REPO_ROOT / target_file).resolve()
 
-    print(f"Scanning '{source}' with pyreverse...")
-    block = build_block(spec, generate_diagram(source))
+    print(
+        f"Scanning {', '.join(str(path) for path in source_paths)} with pyreverse..."
+    )
+    block = build_block(spec, generate_diagram(source_paths))
 
     with open(target, encoding="utf-8", newline="") as handle:
         content = handle.read()

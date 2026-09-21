@@ -2,6 +2,21 @@
 
 ## [Unreleased]
 
+- Replaced the "implemented profile type" vocabulary with a single
+  profile-type -> handler mapping.  ``RemoteHandlerFactory`` is gone: the
+  remote mapping is now a declarative ``REMOTE_HANDLERS`` table in the new
+  ``app.monitor.handler_factory`` module, and ``HandlerFactory.get_handler``
+  is the one high-level factory.  Dispatch is purely by profile type --
+  ``s3`` -> ``S3Handler``, ``event_command`` -> ``CommandActionHandler``, and
+  any type absent from the table -> ``RcloneHandler`` -- so the
+  ``is_profile_type_implemented`` / ``get_implemented_profile_types`` /
+  ``filter_implemented_profiles`` helpers and ``NATIVE_REMOTE_PROFILE_TYPES``
+  are removed.  The profile-type -> category table stays in
+  ``reference_data`` because it drives the CLI prompts and editor dispatch.
+  ``profile edit`` now lists every profile but only the ``s3`` remote type has
+  a wizard; other remote types are refused with the rclone-config hint, which
+  rclone imports now store on the profile (``comment`` and ``important``).
+  The generated ActionHandler diagram now includes ``HandlerFactory``.
 - ``setup_logging`` gains a ``dependency_log_level`` parameter (and the
   ``MONITORHUB_DEPENDENCY_LOG_LEVEL`` environment variable) to debug the
   third-party libraries it silences by default.  The default WARNING floor

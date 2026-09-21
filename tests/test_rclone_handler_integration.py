@@ -17,8 +17,8 @@ from typing import ClassVar
 
 import yaml
 
+from app.monitor.handler_factory import REMOTE_HANDLERS
 from app.monitor.rclone_handler import RcloneHandler
-from app.utils import reference_data
 from app.utils.sqlite_handler import SQLiteHandler
 from tests.database_test_data import DatabaseTestData
 from tests.util.testing_util import create_test_data
@@ -265,7 +265,7 @@ if __name__ == "__main__":
         
         for profile in profiles:
             profile_type = profile.get("profile_type", "")
-            if not reference_data.is_profile_type_implemented(profile_type=profile_type):
+            if profile_type not in REMOTE_HANDLERS:
                 found_rclone_profile = True
                 break
 

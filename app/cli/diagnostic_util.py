@@ -144,9 +144,11 @@ class DiagnosticUtil:
                 else:
                     profile_config[key] = rclone_profile[key]
 
-            # Add import comment to profile config
+            # Add display hints: credentials are informational only and the
+            # profile must remain in rclone.conf to keep working.
             config = profile_config
-            config["comment"] = "Profile imported"
+            config["comment"] = reference_data.RCLONE_PROFILE_COMMENT
+            config["important"] = reference_data.RCLONE_PROFILE_IMPORTANT
             # Add profile to database
             if self.sqlite_handler.add_profile(
                 name=profile_name,
@@ -329,11 +331,11 @@ class DiagnosticUtil:
         - Delete temporary file from remote path
         """
 
-        # Lazy import: RemoteHandlerFactory pulls in boto3 (via S3Handler), which
+        # Lazy import: handler_factory pulls in boto3 (via S3Handler), which
         # is only needed to construct handlers when a monitor config is actually
         # exercised (``mhub config test``). Keeping it out of the module top
         # stops plain CLI imports from paying the boto3 import cost.
-        from app.monitor.remote_handler_factory import RemoteHandlerFactory
+        from app.monitor.handler_factory import get_remote_handler
 
         monitor_id = monitor.get("id", 0)
         monitor_path = monitor.get("monitor_path", "")
@@ -376,7 +378,7 @@ class DiagnosticUtil:
             self.prompt.print(testname)
             #####################################
 
-            remote_handler = RemoteHandlerFactory.get_handler(
+            remote_handler = get_remote_handler(
                 logger=self.logger,
                 monitor_path=monitor_path,
                 remote_path=remote_path,

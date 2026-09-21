@@ -22,12 +22,9 @@ classDiagram
   class ActionHandler {
     handle_action(context: ActionContext)*
   }
-  class ActionHandlerFactory {
-    get_handler(monitor: dict, profile: dict | None, logger: logging.Logger | None, debounce_delay: float, category: str | None) ActionHandler | None
-  }
   class CommandActionHandler {
     command : str
-    cooldown_seconds : int, str
+    cooldown_seconds : float, int
     events : NoneType
     logger
     max_workers : int
@@ -35,7 +32,7 @@ classDiagram
     pending_commands : int
     profile_name : str
     shell : bool
-    timeout_seconds : int, str
+    timeout_seconds : float, int
     handle_action(context: ActionContext)
     stop(wait: bool, cancel_futures: bool) None
   }
@@ -47,6 +44,9 @@ classDiagram
     add_event(file_path: str)
     cancel_event(file_path: str)
     run()
+  }
+  class HandlerFactory {
+    get_handler(monitor: dict, profile: dict | None, logger: logging.Logger | None, debounce_delay: float) ActionHandler | None
   }
   class RemoteActionHandler {
     debounce_manager

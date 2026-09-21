@@ -22,6 +22,7 @@ from pathlib import Path
 
 from app.cli.monitor_commands import MonitorCommands
 from app.cli.prompt_service import PromptService
+from app.monitor.handler_factory import REMOTE_HANDLERS
 from app.monitor.rclone_handler import RcloneHandler
 from app.monitor.remote_handler import RemoteHandler
 from app.monitor.remote_result import RemoteResult
@@ -477,10 +478,10 @@ if __name__ == "__main__":
 
     # Iterate all profiles of this monitor
     for profile in test_monitor_profiles:
-        # If profile_type is implemented than we instantiate a monitorhub handler (currently an s3 handler)
-        # Else we instantiate an Rclone handler
+        # If the profile type maps to a native handler we instantiate a
+        # MonitorHub handler (currently an s3 handler); otherwise an Rclone handler.
         profile_type = profile.get("profile_type")
-        if reference_data.is_profile_type_implemented(profile_type=profile_type):
+        if profile_type in REMOTE_HANDLERS:
             s3_handler = S3Handler(
                 logger=logger,
                 base_monitor_path=monitor.get("monitor_path", ""),

@@ -26,8 +26,8 @@ from watchdog.observers import Observer
 from app.monitor.action_handler import (
     ActionContext,
     ActionDispatcher,
-    ActionHandlerFactory,
 )
+from app.monitor.handler_factory import HandlerFactory
 from app.monitor.monitor_handler import MonitorHandler
 from app.utils.constants import MONITOR_TYPE_INSTANT
 from app.utils.generic_util import BoundedLRUDict
@@ -254,12 +254,12 @@ class InstantMonitorHandler(MonitorHandler):
             )
             return False
 
-        # Instantiate ActionHandlers for each linked profile via ActionHandlerFactory.
+        # Instantiate ActionHandlers for each linked profile via HandlerFactory.
         # Factory either returns a remote profile action handler or a command profile action handler
         # The remote profile categories are mutually exclusive
         action_handlers = []
         for profile in self.profiles:
-            handler = ActionHandlerFactory.get_handler(
+            handler = HandlerFactory.get_handler(
                 monitor=self.monitor,
                 profile=profile,
                 logger=self.logger,
@@ -268,7 +268,7 @@ class InstantMonitorHandler(MonitorHandler):
                 action_handlers.append(handler)
             else:
                 self.logger.error(
-                    f"Profile {profile.get('name')} could not be instantiated by ActionHandlerFactory"
+                    f"Profile {profile.get('name')} could not be instantiated by HandlerFactory"
                 )
                 continue
 

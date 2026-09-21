@@ -53,38 +53,32 @@ class ProfileEditor:
                 self.prompt.print(f"Profile with name='{profile_name}' not found.")
                 return
 
-        if profile is not None:
-            profile_type: str = str(profile.get("profile_type"))
-            if not reference_data.is_profile_type_implemented(profile_type):
-                self.prompt.print(f"Profile type '{profile_type}' is not implemented and cannot be edited.")
-                return
-        else:
-            implemented_profiles = reference_data.filter_implemented_profiles(self.sqlite_handler.get_profiles())
-            # If there are no implemented_profiles then we are done
-            if not implemented_profiles:
-                self.prompt.print(f"No implemented profiles found in {self.sqlite_handler.db_path}")
+        if profile is None:
+            profiles = self.sqlite_handler.get_profiles()
+            if not profiles:
+                self.prompt.print(f"No profiles found in {self.sqlite_handler.db_path}")
                 return
 
-            def render_implemented_profiles() -> None:
+            def render_profiles() -> None:
                 self.prompt.print("List of profiles")
                 self.prompt.print("=" * 50)
-                for implemented_profile in implemented_profiles:
+                for candidate in profiles:
                     self.prompt.print(
-                        f"Id: {implemented_profile.get('id', 'N/A')}, Profile name: {implemented_profile.get('name', 'N/A')}"
+                        f"Id: {candidate.get('id', 'N/A')}, Profile name: {candidate.get('name', 'N/A')}"
                     )
                 self.prompt.print("=" * 50)
 
-            def valid_implemented_profile_id(value: str) -> str | None:
+            def valid_profile_id(value: str) -> str | None:
                 if not value.isdigit():
                     return f"Invalid profile id: {value}. Please try again."
-                if find_by_id(implemented_profiles, int(value)) is None:
+                if find_by_id(profiles, int(value)) is None:
                     return f"Invalid profile id: {int(value)}. Please try again."
                 return None
 
             input_profile_id = self.prompt.prompt_choice(
                 "Enter profile id: ",
-                valid=valid_implemented_profile_id,
-                render=render_implemented_profiles,
+                valid=valid_profile_id,
+                render=render_profiles,
                 allow_cancel=True,
                 echo_label="profile id",
             )
@@ -93,7 +87,10 @@ class ProfileEditor:
                 return
 
             selected_profile_id = int(input_profile_id)
-            profile = find_by_id(implemented_profiles, selected_profile_id)
+            profile = find_by_id(profiles, selected_profile_id)
+            if profile is None:
+                self.prompt.print(f"Profile with id={selected_profile_id} not found.")
+                return
 
         # Get profile name
         input_profile_name = profile.get("name", "N/A")
@@ -134,8 +131,26 @@ class ProfileEditor:
 
     def _edit_remote(self, profile: dict[str, Any], profile_name: str):
         """
-        Handles profile edit for profiles with category "remote". See lookup table profile_types.
+        Handles profile edit for profiles with category "remote".
+
+        Only the s3 profile type currently has an edit wizard. Rclone-managed
+        remote types (ftp, sftp, drive, ...) are configured in rclone.conf and
+        are not editable here; add a dedicated ``_edit_<type>`` method for a
+        native remote type when its wizard is written.
         """
+        profile_type = profile.get("profile_type", "")
+        if profile_type != "s3":
+            profile_config = profile.get("config") or {}
+            self.prompt.print(
+                f"Profile type '{profile_type}' cannot be edited from MonitorHub."
+            )
+            important = profile_config.get("important", "")
+            self.prompt.print(
+                important
+                or "Rclone-managed profiles must be edited with 'rclone config'."
+            )
+            return
+
         # Lookup current provider from code-defined reference data
         profile_config = profile.get("config", {})
         current_provider_name = profile_config.get("provider_name", "")
@@ -144,9 +159,8 @@ class ProfileEditor:
             self.prompt.print(f"Provider not found for profile: {profile_name}")
             return
 
-        # At this point we have a valid profile_type and provider_name
-        # Currently we have only a remote profile for S3 implemented
-        # When other profile types are implemented we need to change the logic here
+        # At this point the profile type is s3 and we have a provider_name.
+        # A future native remote type adds its own _edit_<type> method above.
         # Show current access key
         current_profile_access_key = profile_config.get("access_key_id", "N/A")
         self.prompt.print(f"Press Enter to keep current S3 access key: : {current_profile_access_key}")
