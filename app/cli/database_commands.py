@@ -28,7 +28,6 @@ class DatabaseCommands:
         if not db_path:
             self.prompt.print("SQLite database path is not set.")
             return
-        self.prompt.print(f"Location of SQLite database: {db_path}")
 
         # Existence is checked on the file itself (not via is_initialized()):
         # opening a lazy connection here would create the missing file as a

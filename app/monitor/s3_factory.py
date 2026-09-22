@@ -17,8 +17,6 @@ class S3Factory:
         :param self: this instance
         :param logger: logger
         :type logger: logging.Logger
-        :param app_name: The name of the application.
-        :type app_name: str
         """
         self.logger = logger or logging.getLogger(__name__)
 
