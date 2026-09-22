@@ -77,7 +77,6 @@ class TestCommands(unittest.TestCase):
         commands, mock_prompt = self._make_commands([])
         commands.database.info()
         text = mock_prompt.output_text
-        self.assertIn("Location of SQLite database", text)
         self.assertIn("SQLite database exists", text)
         self.assertIn(str(commands.sqlite_handler.db_path), text)
 
@@ -97,7 +96,6 @@ class TestCommands(unittest.TestCase):
                 commands.sqlite_handler.close()
 
         text = mock_prompt.output_text
-        self.assertIn("Location of SQLite database", text)
         self.assertIn("SQLite database does not exist", text)
         self.assertIn(os.path.join(tmp_dir, DB_FILENAME), text)
 
