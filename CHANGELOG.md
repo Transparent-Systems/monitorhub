@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+- Minor CLI cleanups: the interactive profile selector now redraws the profile
+  list after an invalid entry (matching the monitor selector, which already
+  did), and a local string variable in the command-event editor no longer
+  shadows the ``prompt`` service it is built from.
+
 - ``RcloneHandler.get_remote_path`` now falls back to the path's file name when
   the given path is not relative to ``base_monitor_path`` instead of raising
   ``ValueError``, matching ``S3Handler.get_remote_path``.  ``profile test`` also

@@ -291,15 +291,15 @@ class ProfileEditor:
             return None
 
         current_display = ",".join(current_events) if current_events else "all"
-        prompt = f"\nAvailable events: {valid_events}"
-        prompt += f"\nCurrent events to trigger on: {current_display}"
+        events_prompt = f"\nAvailable events: {valid_events}"
+        events_prompt += f"\nCurrent events to trigger on: {current_display}"
         if current_display != "all":
-            prompt += "\nTo select all events enter: all"
-        prompt += "\nTo select some events enter a list like: deleted,modified"
-        prompt += "\nTo keep the current event list press Enter only"
-        prompt += "\nEnter event list: "
+            events_prompt += "\nTo select all events enter: all"
+        events_prompt += "\nTo select some events enter a list like: deleted,modified"
+        events_prompt += "\nTo keep the current event list press Enter only"
+        events_prompt += "\nEnter event list: "
         input_events = self.prompt.prompt_required(
-            prompt=prompt,
+            prompt=events_prompt,
             allow_cancel=True,
             validator=valid_events_input,
         )

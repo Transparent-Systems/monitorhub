@@ -86,13 +86,14 @@ class ProfileSelector:
             self.prompt.print(f"No profiles found in {self.sqlite_handler.db_path}")
             return {}
 
-        self.prompt.print("List of profiles")
-        self.prompt.print("=" * 50)
-        for profile in profiles:
-            profile_id = profile.get("id", "N/A")
-            profile_name = profile.get("name", "N/A")
-            self.prompt.print(f"Id: {profile_id}, Profile name: {profile_name}")
-        self.prompt.print("=" * 50)
+        def render() -> None:
+            self.prompt.print("List of profiles")
+            self.prompt.print("=" * 50)
+            for profile in profiles:
+                profile_id = profile.get("id", "N/A")
+                profile_name = profile.get("name", "N/A")
+                self.prompt.print(f"Id: {profile_id}, Profile name: {profile_name}")
+            self.prompt.print("=" * 50)
 
         def valid_profile_id(value: str) -> str | None:
             if not value.isdigit():
@@ -104,6 +105,7 @@ class ProfileSelector:
         profile_id_entered = self.prompt.prompt_choice(
             "Enter profile id: ",
             valid=valid_profile_id,
+            render=render,
             allow_cancel=True,
             echo_label="profile id",
         )
