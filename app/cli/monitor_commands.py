@@ -514,6 +514,11 @@ class MonitorCommands:
                 monitor_type=monitor.get("monitor_type", "N/A"),
                 config=monitor.get("config", {}),
                 status=monitor.get("status", MONITOR_STATUS_STOPPED),
+                # Preserve the stored pid: update_monitor defaults pid to 0, so
+                # omitting it here would clear a running monitor's pid while
+                # leaving status='running', making 'monitor start' treat it as
+                # stale and launch a duplicate process.
+                pid=int(monitor.get("pid") or 0),
             )
         except sqlite3.IntegrityError as error:
             self.prompt.print(

@@ -305,6 +305,36 @@ class TestCommands(unittest.TestCase):
         monitor = commands.sqlite_handler.get_monitor(monitor_id=target["id"])
         self.assertEqual(monitor["name"], "renamed-by-name")
 
+    def test_monitor_edit_preserves_stored_pid(self):
+        """Editing a running monitor must not clear its stored pid.
+
+        Regression: ``update_monitor`` defaults ``pid`` to 0, and edit did not
+        pass the current pid, so editing a running monitor left status='running'
+        with pid=0. ``monitor start`` then treats it as stale and launches a
+        duplicate process.
+        """
+        monitor = self.database_test_data.sqlite_handler.get_monitor(
+            monitor_name="Backup Monitor 1"
+        )
+        self.assertIsNotNone(monitor)
+        commands, _ = self._make_commands([])
+        commands.sqlite_handler.update_monitor_status(
+            monitor_id=monitor["id"], status=MONITOR_STATUS_RUNNING
+        )
+        commands.sqlite_handler.update_monitor_pid(
+            monitor_id=monitor["id"], pid=4242
+        )
+
+        # Press Enter through every edit prompt (keep current values). A backup
+        # monitor prompts for name, paths, type, interval, excludes, and the
+        # linked-profile delete loop.
+        commands, _ = self._make_commands(["", "", "", "", "", "", ""])
+        commands.monitor.edit(monitor_id=monitor["id"])
+
+        after = commands.sqlite_handler.get_monitor(monitor_id=monitor["id"])
+        self.assertEqual(after["pid"], 4242, "edit cleared the stored pid")
+        self.assertEqual(after["status"], MONITOR_STATUS_RUNNING)
+
     def test_monitor_edit_both_id_and_name(self):
         monitors = self.database_test_data.sqlite_handler.get_monitors()
         target = monitors[0]
