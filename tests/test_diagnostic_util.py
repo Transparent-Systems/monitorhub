@@ -60,5 +60,68 @@ class DiagnosticUtilConstructorTest(unittest.TestCase):
         self.assertIs(instance.logger, custom_logger)
 
 
+class DiagnosticUtilRcloneDependencyTest(unittest.TestCase):
+    """``check_rclone_dependency`` must route by ``profile_type``.
+
+    Regression: it previously read a ``config["handler"]`` key that nothing in
+    the application writes any more, so every profile was skipped and the check
+    silently reported success even when an rclone-backed profile existed.
+    """
+
+    def _make(self, profiles):
+        sqlite_handler = mock.Mock()
+        sqlite_handler.get_profiles.return_value = profiles
+        return DiagnosticUtil(sqlite_handler=sqlite_handler, logger=mock.Mock())
+
+    def test_rclone_profile_triggers_dependency_check(self):
+        util = self._make([{"name": "ftp-test", "profile_type": "ftp", "config": {}}])
+        with mock.patch.object(
+            util, "_check_rclone_exists", return_value=True
+        ) as check:
+            self.assertTrue(util.check_rclone_dependency())
+        check.assert_called_once()
+
+    def test_missing_rclone_reports_failure(self):
+        util = self._make([{"name": "ftp-test", "profile_type": "ftp", "config": {}}])
+        with mock.patch.object(util, "_check_rclone_exists", return_value=False):
+            self.assertFalse(util.check_rclone_dependency())
+        self.assertFalse(util.check_rclone_dependency_result)
+
+    def test_native_and_command_profiles_do_not_need_rclone(self):
+        util = self._make(
+            [
+                {"name": "s3-test", "profile_type": "s3", "config": {}},
+                {"name": "cmd", "profile_type": "event_command", "config": {}},
+            ]
+        )
+        with mock.patch.object(
+            util, "_check_rclone_exists", return_value=False
+        ) as check:
+            self.assertTrue(util.check_rclone_dependency())
+        check.assert_not_called()
+
+    def test_legacy_handler_key_is_ignored(self):
+        # A stale config["handler"] must not force an rclone check for a native
+        # profile type: routing is driven by profile_type.
+        util = self._make(
+            [
+                {
+                    "name": "s3-test",
+                    "profile_type": "s3",
+                    "config": {"handler": "rclone"},
+                }
+            ]
+        )
+        with mock.patch.object(
+            util, "_check_rclone_exists", return_value=False
+        ) as check:
+            self.assertTrue(util.check_rclone_dependency())
+        check.assert_not_called()
+
+    def test_no_profiles_returns_true(self):
+        util = self._make([])
+        self.assertTrue(util.check_rclone_dependency())
+
+
 if __name__ == "__main__":
     unittest.main()

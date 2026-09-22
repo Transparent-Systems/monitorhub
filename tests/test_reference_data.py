@@ -133,6 +133,32 @@ class TestReferenceDataFactoryWiring(unittest.TestCase):
             "a profile type cannot be both a command type and a native remote type",
         )
 
+    def test_native_profile_types_match_native_handlers(self):
+        self.assertEqual(
+            set(reference_data.NATIVE_PROFILE_TYPES),
+            set(handler_factory.REMOTE_HANDLERS),
+            "NATIVE_PROFILE_TYPES must mirror the native handler mapping so the "
+            "rclone dependency check cannot drift from handler routing",
+        )
+
+
+class TestReferenceDataRcloneProfileTypes(unittest.TestCase):
+    def test_command_types_do_not_need_rclone(self):
+        for profile_type in reference_data.COMMAND_PROFILE_TYPES:
+            self.assertFalse(reference_data.is_rclone_profile_type(profile_type))
+
+    def test_native_types_do_not_need_rclone(self):
+        for profile_type in reference_data.NATIVE_PROFILE_TYPES:
+            self.assertFalse(reference_data.is_rclone_profile_type(profile_type))
+
+    def test_other_remote_types_need_rclone(self):
+        self.assertTrue(reference_data.is_rclone_profile_type("ftp"))
+        self.assertTrue(reference_data.is_rclone_profile_type("sftp"))
+        self.assertTrue(reference_data.is_rclone_profile_type("drive"))
+
+    def test_empty_profile_type_does_not_need_rclone(self):
+        self.assertFalse(reference_data.is_rclone_profile_type(""))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -96,6 +96,13 @@ PROFILE_CATEGORIES: tuple[tuple[str, str], ...] = (
 # These profile types are handled by CommandActionHandler, not RemoteHandler.
 COMMAND_PROFILE_TYPES = ("event_command",)
 
+# Remote profile types that have a native Python handler and therefore do not
+# need rclone. Mirrors the keys of
+# ``app.monitor.handler_factory.REMOTE_HANDLERS``; that module is deliberately
+# not imported here because it pulls in boto3. tests/test_reference_data.py
+# asserts the two stay in sync.
+NATIVE_PROFILE_TYPES: tuple[str, ...] = ("s3",)
+
 # Display hints stored in the config of profiles imported from rclone.  They
 # explain that the stored credentials are informational only and that the
 # profile must stay in rclone.conf to keep working.  Rclone-managed profile
@@ -132,3 +139,15 @@ def get_profile_category(profile_type: str) -> str:
     if profile_type in COMMAND_PROFILE_TYPES:
         return PROFILE_CATEGORY_COMMAND
     return PROFILE_CATEGORY_REMOTE
+
+
+def is_rclone_profile_type(profile_type: str) -> bool:
+    """Return True when a profile type is backed by the rclone CLI.
+
+    Command profile types and profile types with a native handler do not need
+    rclone; every other remote profile type is delegated to rclone by
+    ``app.monitor.handler_factory``.
+    """
+    if not profile_type or profile_type in COMMAND_PROFILE_TYPES:
+        return False
+    return profile_type not in NATIVE_PROFILE_TYPES

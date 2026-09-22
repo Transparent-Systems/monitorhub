@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+- ``DiagnosticUtil.check_rclone_dependency`` now decides whether rclone is
+  required from each profile's ``profile_type`` rather than a
+  ``config["handler"]`` key that nothing in the application writes any more.
+  Previously every profile was skipped, so ``config test`` silently passed even
+  when an rclone-backed profile (e.g. ``ftp``, ``sftp``, ``drive``) existed and
+  rclone was not installed.  The routing rule lives in the new
+  ``reference_data.is_rclone_profile_type`` helper (command types and native
+  ``s3`` profiles never need rclone); ``NATIVE_PROFILE_TYPES`` mirrors the
+  native handler mapping and a new ``test_reference_data`` guard keeps the two
+  from drifting.  Tests cover native/command profiles, rclone-backed profiles,
+  a missing rclone, and a stale ``config["handler"]`` key.
+
 - ``mhub database info`` now reports whether the database file actually exists
   instead of only printing its configured location. A missing database is
   reported as ``SQLite database does not exist: <path>`` with a hint to run

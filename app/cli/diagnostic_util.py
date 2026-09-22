@@ -219,9 +219,13 @@ class DiagnosticUtil:
             return False
 
     def check_rclone_dependency(self) -> bool:
-        """
-        Check if there is a profile that depends on rclone
-        If there is a Rclone dependency, then we check if Rclone is installed.
+        """Check whether any profile depends on rclone, and if so whether it is installed.
+
+        Dependency is derived from the profile's ``profile_type`` (the same
+        routing rule used by ``handler_factory``): command profiles and profile
+        types with a native handler do not need rclone; every other remote
+        profile type is delegated to the rclone CLI. Returns True when no
+        rclone-backed profile exists or rclone is available, False otherwise.
         """
 
         # All profiles should be in monitorhub database now, because:
@@ -235,28 +239,23 @@ class DiagnosticUtil:
             self.logger.error("No profiles in database")
             return True
 
-        # Iterate over profiles, check if a profile has rclone handler, then check if reclone is installed once only
-        # The handler is a key in config dictionary
         for profile in profiles:
-            profile_name = profile.get("name")
-            if profile_name is None:
+            profile_type = profile.get("profile_type", "")
+            if not reference_data.is_rclone_profile_type(profile_type):
                 continue
-            config = profile.get("config", {})
-            handler = config.get("handler")
-            if handler is None:
-                continue
-            if handler == "monitorhub":
-                continue
-            if handler == "rclone":
-                # Check to see if rclone is installed, if not then we have a dependency problem
-                if self._check_rclone_exists():
-                    self.check_rclone_dependency_result = True
-                    # We need to check rclone dependency once only
-                    return True
 
-                self.check_rclone_dependency_result = False
-                self.logger.error("Rclone is not installed but is required by a profile.")
-                return False
+            # Check to see if rclone is installed, if not then we have a dependency problem
+            if self._check_rclone_exists():
+                self.check_rclone_dependency_result = True
+                # We need to check rclone dependency once only
+                return True
+
+            self.check_rclone_dependency_result = False
+            self.logger.error(
+                f"Rclone is not installed but is required by profile "
+                f"'{profile.get('name')}' (type={profile_type})."
+            )
+            return False
 
         return True
 
