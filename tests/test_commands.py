@@ -26,7 +26,7 @@ from app.cli.monitor_commands import (
     validate_monitor_type_number,
 )
 from app.monitor.action_handler import DEFAULT_COMMAND_MAX_WORKERS
-from app.utils.constants import MONITOR_STATUS_RUNNING, TIMESTAMP_FORMAT
+from app.utils.constants import DB_FILENAME, MONITOR_STATUS_RUNNING, TIMESTAMP_FORMAT
 from app.utils.generic_util import parse_timestamp, utc_timestamp_now
 from tests.database_test_data import DatabaseTestData
 from tests.mock_prompt_service import MockPromptService
@@ -595,6 +595,37 @@ class TestCommands(unittest.TestCase):
         commands, mock_prompt = self._make_commands([])
         commands.app.version()
         self.assertIn("MonitorHub version:", mock_prompt.output_text)
+
+    def test_read_only_commands_do_not_create_the_database(self):
+        """Regression: wiring ``version``/``database info`` must not create the DB.
+
+        ``build_commands`` used to construct an eager ``SQLiteHandler``, which
+        opened (and therefore created) ``monitorhub.db`` before ``database
+        init`` had ever run. These commands only read the version string or the
+        database path, so the file must stay absent.
+        """
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_file = Path(tmp_dir) / DB_FILENAME
+            for action in ("version", "database_info", "database_version"):
+                mock_prompt = MockPromptService(inputs=[])
+                commands = build_commands(
+                    logger=self.logger,
+                    db_dir=tmp_dir,
+                    prompt=mock_prompt,
+                )
+                try:
+                    if action == "version":
+                        commands.app.version()
+                    elif action == "database_info":
+                        commands.database.info()
+                    else:
+                        commands.database.version()
+                    self.assertFalse(
+                        db_file.exists(),
+                        f"{action} created the database file",
+                    )
+                finally:
+                    commands.sqlite_handler.close()
 
     def test_config_test(self):
         diagnostic_util = mock.Mock()

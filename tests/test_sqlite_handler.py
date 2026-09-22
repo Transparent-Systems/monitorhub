@@ -590,6 +590,45 @@ class TestSqliteHandlerLifecycle(BaseTestClass):
             with self.assertRaises(sqlite3.ProgrammingError):
                 handler.cursor.execute("SELECT 1")
 
+    def test_construction_is_lazy_and_creates_no_database_file(self):
+        """Building a handler must not touch the filesystem.
+
+        ``mhub version`` and ``mhub database info`` wire a handler without
+        using the database; they must not silently create ``monitorhub.db``
+        before ``database init`` has run.
+        """
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            handler = SQLiteHandler(logger=self.logger, db_dir=tmp_dir)
+            try:
+                self.assertFalse(handler.db_path.exists())
+                # is_initialized() on a missing file reports False without
+                # opening (and therefore creating) it.
+                self.assertFalse(handler.is_initialized())
+                self.assertFalse(handler.db_path.exists())
+            finally:
+                handler.close()
+            # Closing an unused handler is a no-op that creates nothing.
+            self.assertFalse(handler.db_path.exists())
+
+    def test_connection_opens_the_database_file_on_first_use(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            handler = SQLiteHandler(logger=self.logger, db_dir=tmp_dir)
+            try:
+                self.assertFalse(handler.db_path.exists())
+                handler.connection.execute("SELECT 1")
+                self.assertTrue(handler.db_path.exists())
+            finally:
+                handler.close()
+
+    def test_closed_unopened_handler_raises_instead_of_reconnecting(self):
+        """A closed handler that never opened must not resurrect a connection."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            handler = SQLiteHandler(logger=self.logger, db_dir=tmp_dir)
+            handler.close()
+            with self.assertRaises(sqlite3.ProgrammingError):
+                _ = handler.connection
+            self.assertFalse(handler.db_path.exists())
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(

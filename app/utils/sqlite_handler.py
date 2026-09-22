@@ -32,29 +32,74 @@ class SQLiteHandler:
         self.db_path = Path(db_dir) / DB_FILENAME
         self._lock = threading.RLock()
 
+        # The connection is opened lazily, on first use (see the ``connection``
+        # property). Constructing a handler must not touch the filesystem, so
+        # that read-only commands such as ``mhub version`` and
+        # ``mhub database info`` do not silently create the database file
+        # before ``database init`` has ever been run.
+        self._connection: sqlite3.Connection | None = None
+        self._finalizer: weakref.finalize | None = None
+        # Set by close(); a closed handler must not lazily reconnect.
+        self._closed = False
+
+    @property
+    def connection(self) -> sqlite3.Connection:
+        """
+        Return the SQLite connection, opening it on first access.
+
+        Deferring this keeps construction side-effect free: the database file
+        (and its parent directory) are only created when a command actually
+        reads from or writes to the database.
+
+        Once :meth:`close` has been called the handler stays closed: the
+        already-open connection is returned (so operating on it raises
+        ``sqlite3.ProgrammingError``, as before), and an unopened handler
+        raises instead of reconnecting.
+        """
+        connection = self._connection
+        if connection is not None:
+            return connection
+
+        if getattr(self, "_closed", False):
+            raise sqlite3.ProgrammingError(
+                "Cannot operate on a closed database."
+            )
+
+        with self._lock:
+            # Re-check under the lock: another thread may have opened the
+            # connection while this one was waiting for it.
+            connection = self._connection
+            if connection is None:
+                connection = self._open_connection()
+                self._connection = connection
+                # Register a garbage-collection safety net: if the handler is
+                # discarded without an explicit close(), or the interpreter
+                # exits, the connection is still returned to the OS. The
+                # finalizer receives the connection (not self), so it also
+                # cannot fail on a partially-constructed object.
+                self._finalizer = weakref.finalize(
+                    self, _close_connection, connection
+                )
+        return connection
+
+    def _open_connection(self) -> sqlite3.Connection:
+        """Create the database file if needed and open the connection."""
         # Ensure parent directory exists
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Open standard connection with busy timeout for multi-process safety
-        self.connection: sqlite3.Connection = sqlite3.connect(
+        connection = sqlite3.connect(
             self.db_path,
             timeout=30.0,
             check_same_thread=False,
         )
-        self.connection.row_factory = sqlite3.Row
+        connection.row_factory = sqlite3.Row
         # Enable Foreign Key support in SQLite
-        self.connection.execute("PRAGMA foreign_keys = ON;")
+        connection.execute("PRAGMA foreign_keys = ON;")
         # Enable Write-Ahead Logging (WAL) for concurrent read/write across processes
-        self.connection.execute("PRAGMA journal_mode = WAL;")
-        self.connection.execute("PRAGMA busy_timeout = 30000;")
-
-        # Register a garbage-collection safety net: if the handler is discarded
-        # without an explicit close(), or the interpreter exits, the connection
-        # is still returned to the OS. The finalizer receives the connection
-        # (not self), so it also cannot fail on a partially-constructed object.
-        self._finalizer = weakref.finalize(
-            self, _close_connection, self.connection
-        )
+        connection.execute("PRAGMA journal_mode = WAL;")
+        connection.execute("PRAGMA busy_timeout = 30000;")
+        return connection
 
     @property
     def cursor(self) -> sqlite3.Cursor:
@@ -140,13 +185,13 @@ class SQLiteHandler:
         """Close the database connection, returning it to the OS.
 
         Safe to call more than once: the underlying ``sqlite3`` close is
-        idempotent. Also safe on a partially-constructed handler — when
-        ``__init__`` raised before the connection was opened, closing is a
-        no-op.
+        idempotent. Also safe on a partially-constructed handler, and on a
+        handler whose connection was never opened (the lazy connection means
+        closing an unused handler is a no-op that creates no database file).
 
-        After this method returns the ``weakref.finalize`` registered in
-        ``__init__`` has fired, so garbage collection and interpreter exit
-        will not close the connection a second time.
+        After this method returns the ``weakref.finalize`` registered when the
+        connection was opened has fired, so garbage collection and interpreter
+        exit will not close the connection a second time.
         """
         lock = getattr(self, "_lock", None)
         if lock is not None:
@@ -157,13 +202,18 @@ class SQLiteHandler:
 
     def _close_once(self) -> None:
         """Release the connection exactly once; guarded against partial init."""
+        # Mark the handler closed first, so the lazy ``connection`` property
+        # cannot reconnect it even if it had never been opened.
+        self._closed = True
         finalizer = getattr(self, "_finalizer", None)
         if finalizer is not None:
             # Fires the callback at most once; later calls are no-ops, which is
             # what makes close() safe to call repeatedly.
             finalizer()
             return
-        connection = getattr(self, "connection", None)
+        # Read the private field directly: the ``connection`` property would
+        # open a connection (and create the database file) as a side effect.
+        connection = getattr(self, "_connection", None)
         if connection is not None:
             connection.close()
 
@@ -178,8 +228,13 @@ class SQLiteHandler:
         Return True once the application schema has been created.
 
         The database is considered initialised when the 'monitors' table
-        exists in sqlite_master.
+        exists in sqlite_master. A missing database file is reported as
+        uninitialised without opening (and therefore creating) it, so
+        ``mhub database version`` does not create the file either.
         """
+        if not self.db_path.exists():
+            return False
+
         with self.read_cursor(
             "Error checking whether the database is initialised"
         ) as cur:

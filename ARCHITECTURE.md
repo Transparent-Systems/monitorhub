@@ -130,7 +130,7 @@ classDiagram
     check_app_env_result : bool
     check_profile_import_result : bool
     check_rclone_dependency_result : bool
-    logger : NoneType, RootLogger
+    logger
     prompt
     sqlite_handler
     check_app_env() bool
@@ -141,9 +141,9 @@ classDiagram
   }
   class MonitorCommands {
     db_dir : str
+    dependency_log_level : str | None
     log_config : str
     log_level : str | None
-    dependency_log_level : str | None
     logger : Logger
     processes : MonitorProcessManager
     prompt
@@ -179,7 +179,7 @@ classDiagram
     prompt_yes_no(prompt: str) bool
   }
   class SQLiteHandler {
-    connection
+    connection : sqlite3.Connection
     cursor : sqlite3.Cursor
     db_path
     logger : Logger

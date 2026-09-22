@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+- ``SQLiteHandler`` now opens its connection lazily, on first use, instead of
+  in ``__init__``. Constructing a handler no longer touches the filesystem, so
+  read-only commands such as ``mhub version``, ``mhub database info`` and
+  ``mhub database version`` no longer silently create ``data/monitorhub.db``
+  before ``database init`` has ever run. The ``connection`` attribute became a
+  property that connects (and creates the file) on first access; ``close()``
+  remains idempotent and now marks the handler closed so a never-opened handler
+  cannot be resurrected, while an already-open connection is still returned
+  after close as before. ``is_initialized()`` reports a missing database file as
+  uninitialised without opening it. New lifecycle tests pin the laziness,
+  first-use open, and closed-handler behaviour, and a new ``test_commands``
+  case asserts the read-only commands leave the database file absent. The
+  generated Commands diagram was regenerated.
+
 - ``monitor edit`` now validates the monitor-type selection like every other
   prompt.  ``MonitorCommands._edit_basic_fields`` previously called
   ``int(...)`` on the raw ``input()`` result, so a typo (``abc``) raised an
