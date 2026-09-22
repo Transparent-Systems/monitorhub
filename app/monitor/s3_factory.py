@@ -81,7 +81,13 @@ class S3Factory:
 
         # On AWS we can omit the endpoint_url and use the region only
 
-        if provider_name and provider_name.lower().strip() == "aws":
+        # Built-in providers are named "Amazon AWS S3"; rclone-imported AWS
+        # profiles carry the bare rclone key "AWS". Match both, plus any other
+        # name containing "amazon", so native-AWS profiles take the region path.
+        provider_key = (provider_name or "").strip().lower()
+        is_aws = provider_key == "aws" or "amazon" in provider_key
+
+        if is_aws:
             self.logger.debug("Provider is AWS")
             client = boto3.client(
                 service_name='s3',
@@ -92,7 +98,7 @@ class S3Factory:
                 )
         else:
             # For Cloudflare R2, ensure region is set to 'auto' if missing
-            if provider_name and 'cloudflare' in provider_name.lower() and not region:
+            if 'cloudflare' in provider_key and not region:
                 region = 'auto'
 
             client = boto3.client(

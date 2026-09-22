@@ -128,11 +128,21 @@ def setup_logging(
 
     # Resolve the effective level: explicit argument wins, then the
     # MONITORHUB_LOG_LEVEL environment variable, then the YAML value.
-    effective_level = (
+    # Coerce to str first: a non-string YAML value (e.g. an unquoted number)
+    # would otherwise raise AttributeError on .upper().
+    raw_level = (
         log_level
         or os.environ.get("MONITORHUB_LOG_LEVEL")
         or log_config.get("log_level", "INFO")
-    ).upper()
+    )
+    if isinstance(raw_level, int) and not isinstance(raw_level, bool):
+        # logging accepts a numeric level directly (e.g. 20 == INFO); coercing
+        # it to a string would make setLevel reject "20".
+        effective_level: int | str = raw_level
+    else:
+        # Coerce to str first: a non-string YAML value (e.g. an unquoted float)
+        # would otherwise raise AttributeError on .upper().
+        effective_level = str(raw_level).upper()
     root_logger.setLevel(effective_level)
 
     # Remove any pre-existing handlers (clean slate).

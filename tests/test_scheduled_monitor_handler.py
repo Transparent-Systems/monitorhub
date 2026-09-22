@@ -36,6 +36,23 @@ class TestScheduledMonitorHandler(unittest.TestCase):
                 direction="invalid_direction",
             )
 
+    def test_monitor_type_follows_direction(self):
+        """MONITOR_TYPE must report the actual direction, not always backup."""
+        backup = ScheduledMonitorHandler(
+            monitor=self.mock_monitor,
+            profiles=self.mock_profiles,
+            log_config=self.mock_log_config,
+            direction=MONITOR_TYPE_BACKUP,
+        )
+        restore = ScheduledMonitorHandler(
+            monitor=self.mock_monitor,
+            profiles=self.mock_profiles,
+            log_config=self.mock_log_config,
+            direction=MONITOR_TYPE_RESTORE,
+        )
+        self.assertEqual(backup.MONITOR_TYPE, MONITOR_TYPE_BACKUP)
+        self.assertEqual(restore.MONITOR_TYPE, MONITOR_TYPE_RESTORE)
+
     def test_start_creates_periodic_worker_when_interval_positive(self):
         handler = ScheduledMonitorHandler(
             monitor=self.mock_monitor,

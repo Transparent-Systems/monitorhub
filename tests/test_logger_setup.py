@@ -97,6 +97,14 @@ class TestSetupLogging(unittest.TestCase):
             setup_logging(self.config_path, log_level="DEBUG")
         self.assertEqual(logging.getLogger().level, logging.DEBUG)
 
+    def test_yaml_numeric_level_is_accepted(self):
+        """A numeric YAML log_level must not raise on .upper()."""
+        config_path = _write_config(self.tmp_dir, log_level="20")
+        with mock.patch.dict(os.environ):
+            os.environ.pop("MONITORHUB_LOG_LEVEL", None)
+            setup_logging(config_path)
+        self.assertEqual(logging.getLogger().level, logging.INFO)
+
     def test_env_var_overrides_yaml(self):
         with mock.patch.dict(os.environ, {"MONITORHUB_LOG_LEVEL": "ERROR"}):
             setup_logging(self.config_path)

@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+- AWS provider detection in ``S3Factory.get_s3_client`` now matches the
+  built-in ``"Amazon AWS S3"`` provider name (and any name containing
+  ``amazon``) in addition to the bare rclone key ``"AWS"``, so CLI-created AWS
+  profiles take the region-only path instead of a derived endpoint URL.
+  ``ScheduledMonitorHandler.MONITOR_TYPE`` now reports the actual
+  ``direction`` (backup or restore) rather than always backup, and
+  ``setup_logging`` accepts a numeric YAML ``log_level`` without raising on
+  ``.upper()``.
+
 - Minor CLI cleanups: the interactive profile selector now redraws the profile
   list after an invalid entry (matching the monitor selector, which already
   did), and a local string variable in the command-event editor no longer

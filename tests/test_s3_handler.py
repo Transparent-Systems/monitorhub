@@ -20,6 +20,7 @@ from botocore.exceptions import (
 )
 
 from app.monitor.remote_result import RemoteErrorKind
+from app.monitor.s3_factory import S3Factory
 from app.monitor.s3_handler import S3Handler
 
 # The failure paths under test log warning/error records on the handler logger.
@@ -174,6 +175,54 @@ class TestS3ErrorClassification(unittest.TestCase):
 
         self.assertEqual(result.kind, RemoteErrorKind.ACCESS_DENIED)
         self.assertFalse(result.retryable)
+
+
+class TestS3FactoryProviderDetection(unittest.TestCase):
+    """The AWS branch must match the built-in "Amazon AWS S3" provider name.
+
+    Regression: the check compared the provider name to the bare string
+    ``"aws"``, so a profile created through the CLI (provider "Amazon AWS S3")
+    never took the region-only path.
+    """
+
+    def _client_kwargs(self, profile_config: dict) -> dict:
+        with mock.patch("app.monitor.s3_factory.boto3.client") as client:
+            S3Factory(logger=LOGGER).get_s3_client(profile_config)
+        return client.call_args.kwargs
+
+    def test_amazon_provider_omits_endpoint_url(self):
+        kwargs = self._client_kwargs(
+            {
+                "provider_name": "Amazon AWS S3",
+                "access_key_id": "key",
+                "access_key_secret": "secret",
+                "region": "us-east-1",
+            }
+        )
+        self.assertNotIn("endpoint_url", kwargs)
+        self.assertEqual(kwargs["region_name"], "us-east-1")
+
+    def test_bare_aws_rclone_key_omits_endpoint_url(self):
+        kwargs = self._client_kwargs(
+            {
+                "provider_name": "AWS",
+                "access_key_id": "key",
+                "access_key_secret": "secret",
+                "region": "eu-west-1",
+            }
+        )
+        self.assertNotIn("endpoint_url", kwargs)
+
+    def test_non_amazon_provider_uses_endpoint_url(self):
+        kwargs = self._client_kwargs(
+            {
+                "provider_name": "IDrive",
+                "access_key_id": "key",
+                "access_key_secret": "secret",
+                "endpoint": "example.invalid",
+            }
+        )
+        self.assertIn("endpoint_url", kwargs)
 
 
 if __name__ == "__main__":

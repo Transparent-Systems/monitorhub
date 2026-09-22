@@ -56,6 +56,9 @@ class ScheduledMonitorHandler(MonitorHandler):
                 f"expected {MONITOR_TYPE_BACKUP!r} or {MONITOR_TYPE_RESTORE!r}"
             )
         self.direction = direction
+        # Report the actual direction (backup or restore) instead of always the
+        # class-level default, so diagnostics that read MONITOR_TYPE are correct.
+        self.MONITOR_TYPE = direction
         self.exclude_patterns = (monitor.get("config") or {}).get(
             "exclude_patterns", []
         )
