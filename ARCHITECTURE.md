@@ -201,6 +201,7 @@ classDiagram
     get_profiles() list[dict[str, Any]]
     get_profiles_for_monitor(monitor_id: int) list[dict[str, Any]]
     get_schema_versions() list[dict[str, Any]]
+    is_closed() bool
     is_initialized() bool
     read_cursor(error_message: str | None) Generator[sqlite3.Cursor, None, None]
     transaction(error_message: str | None) Generator[sqlite3.Cursor, None, None]

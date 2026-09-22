@@ -629,6 +629,19 @@ class TestSqliteHandlerLifecycle(BaseTestClass):
                 _ = handler.connection
             self.assertFalse(handler.db_path.exists())
 
+    def test_is_closed_reflects_the_lazy_lifecycle(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            handler = SQLiteHandler(logger=self.logger, db_dir=tmp_dir)
+            # Freshly built but never used: openable, therefore not closed.
+            self.assertFalse(handler.is_closed())
+            # Opening the connection does not close it.
+            handler.connection.execute("SELECT 1")
+            self.assertFalse(handler.is_closed())
+            handler.close()
+            self.assertTrue(handler.is_closed())
+            handler.close()  # idempotent
+            self.assertTrue(handler.is_closed())
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(

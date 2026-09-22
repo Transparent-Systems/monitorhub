@@ -166,7 +166,7 @@ class DatabaseTestData:
         self.logger.info("Removing test data")
         # Check if database connection is open before attempting to clean up
         try:
-            if self.sqlite_handler.connection is None:
+            if self.sqlite_handler.is_closed():
                 self.logger.warning("SQLite connection is already closed. Skipping cleanup.")
                 return
             

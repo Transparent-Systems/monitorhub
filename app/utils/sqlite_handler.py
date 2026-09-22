@@ -223,6 +223,20 @@ class SQLiteHandler:
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
         self.close()
 
+    def is_closed(self) -> bool:
+        """Return True once :meth:`close` has been called on this handler.
+
+        This is the handler's lifecycle state, not its schema state: a freshly
+        constructed, not-yet-used handler is *not* closed (it will open its
+        connection lazily on first use), whereas a closed handler will never
+        reconnect. Distinguished from :meth:`is_initialized`, which reports
+        whether the application schema exists in the database.
+
+        Uses ``getattr`` so a partially-constructed handler (``__init__`` never
+        ran) reports ``False`` instead of raising.
+        """
+        return getattr(self, "_closed", False)
+
     def is_initialized(self) -> bool:
         """
         Return True once the application schema has been created.

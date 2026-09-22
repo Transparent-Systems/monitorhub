@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+- Added an explicit ``SQLiteHandler.is_closed()`` state accessor (True once
+  ``close()`` has been called, regardless of whether the lazy connection was
+  ever opened). ``DatabaseTestData.remove_test_data()`` now uses it instead of
+  probing ``sqlite_handler.connection is None``, a condition that could never
+  be true because ``close()`` leaves the (closed) connection object in place.
+  The guard now actually detects a closed handler and skips cleanup as its
+  comment always claimed.
+
 - ``SQLiteHandler`` now opens its connection lazily, on first use, instead of
   in ``__init__``. Constructing a handler no longer touches the filesystem, so
   read-only commands such as ``mhub version``, ``mhub database info`` and
