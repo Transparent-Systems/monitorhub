@@ -132,10 +132,11 @@ classDiagram
     check_rclone_dependency_result : bool
     logger
     prompt
+    selector : ProfileImportSelector
     sqlite_handler
     check_app_env() bool
     check_monitor_config(monitor_id: int | None) bool
-    check_profile_import()
+    check_profile_import(select: bool, rclone_config_path: Path | None)
     check_rclone_dependency() bool
     print_overview()
   }

@@ -115,3 +115,70 @@ class ProfileSelector:
 
         selected = find_by_id(profiles, int(profile_id_entered))
         return selected if selected is not None else {}
+
+
+class ProfileImportSelector:
+    """Prompt the user to pick rclone profiles to import from a displayed list.
+
+    Unlike :class:`ProfileSelector`, the candidates are rclone config section
+    names that are not in the database yet: they have no profile id, so they are
+    addressed by their 1-based position in the list. The user can select none
+    (press Enter), all (enter ``0``), or individual entries one after another.
+    """
+
+    def __init__(self, prompt: PromptService) -> None:
+        self.prompt = prompt
+
+    def select_interactive(
+        self,
+        profile_names: list[str],
+        prompt: str = (
+            "Enter profile number to import. Enter 0 to select all. "
+            "To stop press Enter: "
+        ),
+    ) -> list[str]:
+        """Show the importable profiles and return the names the user chose.
+
+        Returns an empty list when there is nothing to import or the user
+        cancels (presses Enter before choosing anything).
+        """
+        remaining = list(profile_names)
+        if not remaining:
+            return []
+
+        selected: list[str] = []
+
+        def render() -> None:
+            self.prompt.print("\nProfiles to import from Rclone:")
+            self.prompt.print("0.  Select all profiles")
+            for index, name in enumerate(remaining, start=1):
+                self.prompt.print(f"{index}. {name}")
+
+        def valid(value: str) -> str | None:
+            if not value.isdigit():
+                return f"Invalid profile number: {value}. Please try again."
+            if int(value) not in range(1, len(remaining) + 1):
+                return f"Invalid profile number: {int(value)}. Please try again."
+            return None
+
+        while remaining:
+            choice = self.prompt.prompt_choice(
+                prompt,
+                valid=valid,
+                render=render,
+                allow_all=True,
+                allow_cancel=True,
+            )
+            if choice is None:
+                break
+            if choice == "0":
+                selected.extend(remaining)
+                remaining.clear()
+                break
+
+            selected.append(remaining.pop(int(choice) - 1))
+            if not remaining:
+                self.prompt.print("All profiles selected.")
+                break
+
+        return selected

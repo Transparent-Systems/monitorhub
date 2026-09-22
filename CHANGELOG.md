@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+- ``mhub profile import`` now lets the user choose which rclone profiles to
+  import instead of importing all or nothing.  The numbered list accepts ``0``
+  to select all, a profile number to add individual entries one at a time, and
+  Enter to stop; selecting nothing cancels the import.  The selection lives in
+  the new ``ProfileImportSelector``, while ``config test`` keeps its existing
+  Y/n confirmation.  ``DiagnosticUtil.check_profile_import`` was split into
+  focused helpers and accepts an injectable ``rclone_config_path`` for testing.
+
 - AWS provider detection in ``S3Factory.get_s3_client`` now matches the
   built-in ``"Amazon AWS S3"`` provider name (and any name containing
   ``amazon``) in addition to the bare rclone key ``"AWS"``, so CLI-created AWS

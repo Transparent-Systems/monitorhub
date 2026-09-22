@@ -435,6 +435,10 @@ class ProfileCommands:
 
     def import_profiles(self):
         """
-        Import profiles from rclone
+        Import profiles from rclone.
+
+        The user selects which profiles to import: press Enter to select none,
+        enter 0 to select all, or enter a profile number to add single entries
+        one at a time until pressing Enter stops the selection.
         """
-        self.diagnostic_util.check_profile_import()
+        self.diagnostic_util.check_profile_import(select=True)

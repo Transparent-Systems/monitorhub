@@ -9,10 +9,13 @@ for the constructor previously creating a fresh ``StreamHandler`` and forcing
 """
 
 import logging
+import tempfile
 import unittest
+from pathlib import Path
 from unittest import mock
 
 from app.cli.diagnostic_util import DiagnosticUtil
+from tests.mock_prompt_service import MockPromptService
 
 MODULE_LOGGER_NAME = "app.cli.diagnostic_util"
 
@@ -121,6 +124,141 @@ class DiagnosticUtilRcloneDependencyTest(unittest.TestCase):
     def test_no_profiles_returns_true(self):
         util = self._make([])
         self.assertTrue(util.check_rclone_dependency())
+
+
+class DiagnosticUtilProfileImportTest(unittest.TestCase):
+    """``check_profile_import`` selection and legacy confirmation modes.
+
+    ``select=True`` (used by ``profile import``) lets the user choose none,
+    all, or individual rclone profiles; the default ``select=False`` (used by
+    ``config test``) keeps the original all-or-nothing Y/n confirmation.
+    """
+
+    RCLONE_CONF = (
+        "[alpha]\n"
+        "type = s3\n"
+        "provider = AWS\n"
+        "\n"
+        "[beta]\n"
+        "type = ftp\n"
+        "host = example.com\n"
+    )
+
+    def setUp(self):
+        self._tmpdir = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmpdir.cleanup)
+        self.tmp_path = Path(self._tmpdir.name)
+
+    def _write_rclone_conf(self, text: str) -> Path:
+        path = self.tmp_path / "rclone.conf"
+        path.write_text(text, encoding="utf-8")
+        return path
+
+    def _make(self, inputs, existing_names=None):
+        sqlite_handler = mock.Mock()
+        sqlite_handler.get_profiles.return_value = [
+            {"name": name} for name in (existing_names or [])
+        ]
+        sqlite_handler.add_profile.return_value = 1
+        prompt = MockPromptService(inputs=inputs)
+        util = DiagnosticUtil(
+            sqlite_handler=sqlite_handler, logger=mock.Mock(), prompt=prompt
+        )
+        return util, sqlite_handler, prompt
+
+    def _imported_names(self, sqlite_handler):
+        return [call.kwargs["name"] for call in sqlite_handler.add_profile.call_args_list]
+
+    def test_select_all_imports_every_profile(self):
+        util, sqlite_handler, _ = self._make(["0"])
+
+        util.check_profile_import(
+            select=True, rclone_config_path=self._write_rclone_conf(self.RCLONE_CONF)
+        )
+
+        self.assertEqual(self._imported_names(sqlite_handler), ["alpha", "beta"])
+
+    def test_select_single_imports_only_that_profile(self):
+        util, sqlite_handler, _ = self._make(["1", ""])
+
+        util.check_profile_import(
+            select=True, rclone_config_path=self._write_rclone_conf(self.RCLONE_CONF)
+        )
+
+        self.assertEqual(self._imported_names(sqlite_handler), ["alpha"])
+
+    def test_select_none_imports_nothing(self):
+        util, sqlite_handler, prompt = self._make([""])
+
+        util.check_profile_import(
+            select=True, rclone_config_path=self._write_rclone_conf(self.RCLONE_CONF)
+        )
+
+        sqlite_handler.add_profile.assert_not_called()
+        self.assertIn("No profiles selected", prompt.output_text)
+
+    def test_config_test_mode_yes_imports_all(self):
+        util, sqlite_handler, _ = self._make(["y"])
+
+        util.check_profile_import(
+            rclone_config_path=self._write_rclone_conf(self.RCLONE_CONF)
+        )
+
+        self.assertEqual(self._imported_names(sqlite_handler), ["alpha", "beta"])
+
+    def test_config_test_mode_no_cancels(self):
+        util, sqlite_handler, prompt = self._make(["n"])
+
+        util.check_profile_import(
+            rclone_config_path=self._write_rclone_conf(self.RCLONE_CONF)
+        )
+
+        sqlite_handler.add_profile.assert_not_called()
+        self.assertIn("Profile import cancelled", prompt.output_text)
+
+    def test_already_imported_profiles_are_excluded(self):
+        util, sqlite_handler, _ = self._make(["0"], existing_names=["alpha"])
+
+        util.check_profile_import(
+            select=True, rclone_config_path=self._write_rclone_conf(self.RCLONE_CONF)
+        )
+
+        self.assertEqual(self._imported_names(sqlite_handler), ["beta"])
+
+    def test_no_importable_profiles(self):
+        util, sqlite_handler, prompt = self._make(
+            [], existing_names=["alpha", "beta"]
+        )
+
+        util.check_profile_import(
+            select=True, rclone_config_path=self._write_rclone_conf(self.RCLONE_CONF)
+        )
+
+        sqlite_handler.add_profile.assert_not_called()
+        self.assertIn("No profiles to import", prompt.output_text)
+
+    def test_missing_config_path_reports_not_found(self):
+        util, sqlite_handler, prompt = self._make([])
+
+        util.check_profile_import(
+            select=True, rclone_config_path=self.tmp_path / "missing.conf"
+        )
+
+        sqlite_handler.add_profile.assert_not_called()
+        self.assertIn("No profiles found in", prompt.output_text)
+
+    def test_import_maps_type_and_adds_display_hints(self):
+        util, sqlite_handler, _ = self._make(["0"])
+
+        util.check_profile_import(
+            select=True, rclone_config_path=self._write_rclone_conf(self.RCLONE_CONF)
+        )
+
+        first_call = sqlite_handler.add_profile.call_args_list[0]
+        self.assertEqual(first_call.kwargs["profile_type"], "s3")
+        self.assertEqual(first_call.kwargs["config"]["provider_name"], "AWS")
+        self.assertIn("comment", first_call.kwargs["config"])
+        self.assertIn("important", first_call.kwargs["config"])
 
 
 if __name__ == "__main__":

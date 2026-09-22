@@ -101,6 +101,9 @@
   ```bash
   mhub profile import
   ```
+  You can pick which profiles to import: enter `0` to import all, enter a
+  profile number to add individual profiles one at a time, or press Enter to
+  stop (nothing is imported when no profile was selected).
 
 3 **Getting help**
   Getting help about commands available
@@ -151,6 +154,10 @@ The S3Handler is a builtin file handler. It eliminates the need for Rclone when 
 A builtin S3 handler makes it easier to use MonitorHub.
 You can import the rclone profiles with command:  
 python mhub.py profile import
+
+The import lets you choose which profiles to bring over: enter `0` to import
+all, a profile number to add individual profiles one at a time, or press Enter
+to stop.
 
 Over time we will add native handlers for common cloud storage providers and other storage types.  
 

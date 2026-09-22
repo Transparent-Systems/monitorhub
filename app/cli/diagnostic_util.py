@@ -12,6 +12,7 @@ from typing import Any
 
 from app.cli.process_test_result import ProcessTestResult
 from app.cli.prompt_service import PromptService
+from app.cli.selectors import ProfileImportSelector
 from app.utils import reference_data
 from app.utils.sqlite_handler import SQLiteHandler
 
@@ -30,6 +31,8 @@ class DiagnosticUtil:
         self.logger = logger or logging.getLogger(__name__)
 
         self.prompt = prompt or PromptService()
+        # Interactive import selection is delegated to a focused collaborator.
+        self.selector = ProfileImportSelector(prompt=self.prompt)
         self.check_app_env_result = False
         self.check_profile_import_result = False
         self.check_rclone_dependency_result = False
@@ -46,59 +49,74 @@ class DiagnosticUtil:
         self.prompt.print("=== Summary environment and configuration test results END ===")
 
 
-    def check_profile_import(self):
+    def check_profile_import(
+        self,
+        select: bool = False,
+        rclone_config_path: Path | None = None,
+    ):
         """
         Check if we can import profiles from rclone.
-        Only import profiles not yet present in profiles table
+        Only import profiles not yet present in profiles table.
+
+        When ``select`` is True the user chooses which profiles to import
+        (none, all, or individual entries) via :class:`ProfileImportSelector`;
+        otherwise the legacy all-or-nothing Y/n confirmation is used, as in
+        ``config test``.
         """
         self.check_profile_import_result = True
 
-        # Determine rclone config path
-        if os.name == "nt":
-            rclone_config_path = Path(os.environ.get("APPDATA", "")) / "rclone" / "rclone.conf"
-        else:
-            rclone_config_path = Path.home() / ".config" / "rclone" / "rclone.conf"
-
-        if not rclone_config_path.is_file():
-            self.prompt.print(f"No profiles found in {rclone_config_path}")
+        rclone_config_path = rclone_config_path or self._default_rclone_config_path()
+        parser = self._read_rclone_config(rclone_config_path)
+        if parser is None:
             return
 
-        parser = configparser.ConfigParser()
-        parser.read(rclone_config_path, encoding="utf-8")
-        rclone_profile_names = parser.sections()
-        if not rclone_profile_names:
-            self.prompt.print(f"No profiles found in {rclone_config_path}")
-            return
-
-        # The main purpose of importing a profile is that it can be linked to a
-        # monitor. 
-        # Providers are code-defined reference data, so imported rclone profiles just keep their
-        # provider_name in the profile config.
-        # Iterate over rlone profile names
-        # If a profile is in Rclone but not in monitorhub, then add profile to profile_to_import list
-        # Ask for permission to import
-        # If Yes, then continue
-        # If Not, then return
-        profiles_to_import = []
-        monitorhub_profile_names = []
-        profiles = self.sqlite_handler.get_profiles()
-        if profiles:
-            for profile in profiles:
-                profile_name = profile.get("name", "")
-                monitorhub_profile_names.append(profile_name)
-
-        for rclone_profile_name in rclone_profile_names:
-            if rclone_profile_name in monitorhub_profile_names:
-                continue
-            profiles_to_import.append(rclone_profile_name)
-
-        if (len(profiles_to_import) == 0):
+        profiles_to_import = self._find_importable_profiles(parser.sections())
+        if not profiles_to_import:
             self.prompt.print("No profiles to import")
             return
 
-        # Prompt user for permission to import profiles
+        if select:
+            profiles_to_import = self.selector.select_interactive(profiles_to_import)
+            if not profiles_to_import:
+                self.prompt.print("No profiles selected")
+                return
+        elif not self._confirm_profile_import(profiles_to_import):
+            self.prompt.print("Profile import cancelled")
+            return
+
+        self._import_profiles(parser=parser, profile_names=profiles_to_import)
+
+    @staticmethod
+    def _default_rclone_config_path() -> Path:
+        """Return the platform-specific default rclone config path."""
+        if os.name == "nt":
+            return Path(os.environ.get("APPDATA", "")) / "rclone" / "rclone.conf"
+        return Path.home() / ".config" / "rclone" / "rclone.conf"
+
+    def _read_rclone_config(self, rclone_config_path: Path) -> configparser.ConfigParser | None:
+        """Read the rclone config file, returning None when it has no sections."""
+        if not rclone_config_path.is_file():
+            self.prompt.print(f"No profiles found in {rclone_config_path}")
+            return None
+
+        parser = configparser.ConfigParser()
+        parser.read(rclone_config_path, encoding="utf-8")
+        if not parser.sections():
+            self.prompt.print(f"No profiles found in {rclone_config_path}")
+            return None
+        return parser
+
+    def _find_importable_profiles(self, rclone_profile_names: list[str]) -> list[str]:
+        """Return rclone profile names that are not yet in the profiles table."""
+        existing_names = {
+            profile.get("name", "") for profile in self.sqlite_handler.get_profiles()
+        }
+        return [name for name in rclone_profile_names if name not in existing_names]
+
+    def _confirm_profile_import(self, profiles_to_import: list[str]) -> bool:
+        """Print the import list and ask the legacy all-or-nothing Y/n question."""
         self.prompt.print("\n")
-        self.prompt.print("=" *60)
+        self.prompt.print("=" * 60)
         self.prompt.print("Please confirm to import the following profiles from Rclone")
         self.prompt.print("This increases performance and reduces dependencies")
         self.prompt.print("The profiles are:")
@@ -108,30 +126,20 @@ class DiagnosticUtil:
         self.prompt.print("Ok to import profiles? (Y/n)")
         self.prompt.print("Y: Yes is default value, press Enter to accept")
         self.prompt.print("N: No")
-        if not self.prompt.prompt_yes_no("Import Rclone profiles (Y/n)\n", default=True):
-            self.prompt.print("Profile import cancelled")
-            return
+        return self.prompt.prompt_yes_no("Import Rclone profiles (Y/n)\n", default=True)
 
-        # Some Rclone attribute names differ from those in MonitorHub
-        # We use a map to conver those attribute names
+    def _import_profiles(
+        self, parser: configparser.ConfigParser, profile_names: list[str]
+    ) -> None:
+        """Convert the selected rclone sections into MonitorHub profiles."""
+        # Some Rclone attribute names differ from those in MonitorHub.
         config_attribute_map = {
             "provider": "provider_name",
-            "access_key_secret" : "access_key_secret"
+            "access_key_secret": "access_key_secret",
         }
-
-        existing_profile_names = []
-        profiles = self.sqlite_handler.get_profiles()
-        for profile in profiles:
-            profile_name = profile.get("name", "")
-            existing_profile_names.append(profile_name)
-
         config_attribute_map_keys = config_attribute_map.keys()
-        # Iterate over rlone profile names
-        for profile_name in rclone_profile_names:
-            # If the profile already exists, then skip it
-            if profile_name in existing_profile_names:
-                continue
 
+        for profile_name in profile_names:
             rclone_profile = dict(parser[profile_name]) if profile_name in parser else {}
             profile_type = ""
             profile_config = {}
@@ -153,13 +161,11 @@ class DiagnosticUtil:
             if self.sqlite_handler.add_profile(
                 name=profile_name,
                 profile_type=profile_type,
-                config=profile_config
+                config=profile_config,
             ):
                 self.prompt.print(f"Profile name: {profile_name} imported to profiles")
             else:
                 self.prompt.print(f"Profile name: {profile_name} not imported to profiles")
-        
-        return
 
     
     def check_app_env(self) -> bool:

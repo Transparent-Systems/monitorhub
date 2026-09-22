@@ -643,6 +643,13 @@ class TestCommands(unittest.TestCase):
         self.assertFalse(result)
         self.assertIn("Profile with name='non-existent-profile' not found.", mock_prompt2.output_text)
 
+    def test_profile_import_uses_interactive_selection(self):
+        """``profile import`` must ask the diagnostic util for selection mode."""
+        diagnostic_util = mock.Mock()
+        commands, _ = self._make_commands([], diagnostic_util=diagnostic_util)
+        commands.profile.import_profiles()
+        diagnostic_util.check_profile_import.assert_called_once_with(select=True)
+
     def test_version(self):
         commands, mock_prompt = self._make_commands([])
         commands.app.version()
