@@ -69,6 +69,23 @@ def _make_handler(command_timeout: float = 0) -> RcloneHandler:
     return handler
 
 
+class TestRcloneGetRemotePath(unittest.TestCase):
+    """``get_remote_path`` derives the remote path from the local one."""
+
+    def test_path_under_base_is_appended(self):
+        handler = _make_handler()
+        self.assertEqual(
+            handler.get_remote_path("/tmp/a/b.txt"), "remote:path/a/b.txt"
+        )
+
+    def test_path_outside_base_falls_back_to_file_name(self):
+        """A path outside base_monitor_path must not raise (regression)."""
+        handler = _make_handler()
+        self.assertEqual(
+            handler.get_remote_path("/other/file.txt"), "remote:path/file.txt"
+        )
+
+
 class TestRcloneExitCodeClassification(unittest.TestCase):
     def test_not_found_codes(self):
         for code in (3, 4):

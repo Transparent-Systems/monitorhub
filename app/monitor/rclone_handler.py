@@ -293,7 +293,12 @@ class RcloneHandler(RemoteHandler):
         """
 
         monitor_path_obj = Path(monitor_path)
-        relative_path = monitor_path_obj.relative_to(self.base_monitor_path)
+        try:
+            relative_path = monitor_path_obj.relative_to(self.base_monitor_path)
+        except ValueError:
+            # Fallback when the path is not relative to base_monitor_path,
+            # matching S3Handler.get_remote_path instead of raising.
+            relative_path = monitor_path_obj.name
         remote_path = self.base_remote_path / relative_path
         return remote_path.as_posix()
 

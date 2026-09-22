@@ -25,6 +25,7 @@ from app.cli.monitor_commands import (
     MonitorCommands,
     validate_monitor_type_number,
 )
+from app.cli.profile_commands import ProfileCommands
 from app.monitor.action_handler import DEFAULT_COMMAND_MAX_WORKERS
 from app.utils.constants import DB_FILENAME, MONITOR_STATUS_RUNNING, TIMESTAMP_FORMAT
 from app.utils.generic_util import parse_timestamp, utc_timestamp_now
@@ -1006,6 +1007,53 @@ class TestCommands(unittest.TestCase):
         stale = commands.monitor._cleanup_stale_monitors([stale_monitor])
         self.assertEqual(len(stale), 1)
         self.assertIn("Forcing stop and restart", mock_prompt.output_text)
+
+
+class TestCommandProfileValidation(unittest.TestCase):
+    """``_test_command_profile`` must accept legacy comma-separated event strings.
+
+    Regression: it iterated ``command_events`` directly, so a legacy string was
+    checked character by character and produced bogus "Invalid event(s)" errors.
+    """
+
+    logger = logging.getLogger(__name__)
+
+    def _make(self) -> tuple[ProfileCommands, MockPromptService]:
+        prompt = MockPromptService(inputs=[])
+        commands = ProfileCommands(
+            sqlite_handler=mock.Mock(),
+            logger=self.logger,
+            diagnostic_util=mock.Mock(),
+            prompt=prompt,
+        )
+        return commands, prompt
+
+    def test_comma_separated_events_are_parsed(self):
+        commands, prompt = self._make()
+        ok = commands._test_command_profile(
+            "cmd-profile",
+            {"command": "echo hi", "command_events": "created,modified"},
+        )
+        self.assertTrue(ok)
+        self.assertNotIn("Invalid event(s)", prompt.output_text)
+
+    def test_invalid_event_in_string_is_reported(self):
+        commands, prompt = self._make()
+        ok = commands._test_command_profile(
+            "cmd-profile",
+            {"command": "echo hi", "command_events": "created,bogus"},
+        )
+        self.assertFalse(ok)
+        self.assertIn("Invalid event(s): bogus", prompt.output_text)
+
+    def test_event_list_is_accepted(self):
+        commands, prompt = self._make()
+        ok = commands._test_command_profile(
+            "cmd-profile",
+            {"command": "echo hi", "command_events": ["created", "timer"]},
+        )
+        self.assertTrue(ok)
+        self.assertNotIn("Invalid event(s)", prompt.output_text)
 
 
 if __name__ == "__main__":

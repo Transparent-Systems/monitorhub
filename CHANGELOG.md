@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+- ``RcloneHandler.get_remote_path`` now falls back to the path's file name when
+  the given path is not relative to ``base_monitor_path`` instead of raising
+  ``ValueError``, matching ``S3Handler.get_remote_path``.  ``profile test`` also
+  accepts a legacy comma-separated ``command_events`` string: it is parsed into
+  a list first, so events are no longer validated one character at a time and
+  reported as bogus "Invalid event(s)" entries.
+
 - ``DiagnosticUtil.check_rclone_dependency`` now decides whether rclone is
   required from each profile's ``profile_type`` rather than a
   ``config["handler"]`` key that nothing in the application writes any more.

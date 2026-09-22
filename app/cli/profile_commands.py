@@ -160,9 +160,14 @@ class ProfileCommands:
 
         # Validate events
         events = config.get("command_events")
+        # Tolerate a legacy comma-separated string as well as the list written
+        # by the editor; iterating a string would otherwise check single
+        # characters and report bogus "Invalid event(s)" errors.
+        if isinstance(events, str):
+            events = [e.strip() for e in events.split(",") if e.strip()]
         valid_events = {"created", "deleted", "modified", "moved", "closed", "timer"}
         if events:
-            self.prompt.print(f"Events: {', '.join(events) if events else 'all'}")
+            self.prompt.print(f"Events: {', '.join(events)}")
             invalid = [e for e in events if e not in valid_events]
             if invalid:
                 errors.append(f"Invalid event(s): {', '.join(invalid)}")
