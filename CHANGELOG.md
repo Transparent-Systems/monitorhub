@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+- ``mhub database info`` now reports whether the database file actually exists
+  instead of only printing its configured location. A missing database is
+  reported as ``SQLite database does not exist: <path>`` with a hint to run
+  ``database init``; an existing one is confirmed with ``SQLite database
+  exists: <path>``. The check uses ``os.path.exists`` on the resolved path, so
+  it stays read-only and never opens the lazy connection (which would have
+  created the very file it is reporting on).
+
 - Added an explicit ``SQLiteHandler.is_closed()`` state accessor (True once
   ``close()`` has been called, regardless of whether the lazy connection was
   ever opened). ``DatabaseTestData.remove_test_data()`` now uses it instead of

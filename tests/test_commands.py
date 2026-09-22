@@ -76,7 +76,30 @@ class TestCommands(unittest.TestCase):
     def test_database_info(self):
         commands, mock_prompt = self._make_commands([])
         commands.database.info()
-        self.assertIn("Location of SQLite database", mock_prompt.output_text)
+        text = mock_prompt.output_text
+        self.assertIn("Location of SQLite database", text)
+        self.assertIn("SQLite database exists", text)
+        self.assertIn(str(commands.sqlite_handler.db_path), text)
+
+    def test_database_info_missing_database(self):
+        """A missing database is reported by path, and is not created."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            mock_prompt = MockPromptService(inputs=[])
+            commands = build_commands(
+                logger=self.logger,
+                db_dir=tmp_dir,
+                prompt=mock_prompt,
+            )
+            try:
+                commands.database.info()
+                self.assertFalse(commands.sqlite_handler.db_path.exists())
+            finally:
+                commands.sqlite_handler.close()
+
+        text = mock_prompt.output_text
+        self.assertIn("Location of SQLite database", text)
+        self.assertIn("SQLite database does not exist", text)
+        self.assertIn(os.path.join(tmp_dir, DB_FILENAME), text)
 
     def test_database_version(self):
         commands, mock_prompt = self._make_commands([])

@@ -30,6 +30,15 @@ class DatabaseCommands:
             return
         self.prompt.print(f"Location of SQLite database: {db_path}")
 
+        # Existence is checked on the file itself (not via is_initialized()):
+        # opening a lazy connection here would create the missing file as a
+        # side effect, which is exactly what this read-only command must avoid.
+        if not os.path.exists(db_path):
+            self.prompt.print(f"SQLite database does not exist: {db_path}")
+            self.prompt.print("Run 'database init' to create it.")
+            return
+        self.prompt.print(f"SQLite database exists: {db_path}")
+
     def version(self):
         """
         Print the database schema version together with the application version
