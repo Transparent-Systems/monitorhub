@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+- ``monitor edit`` now validates the monitor-type selection like every other
+  prompt.  ``MonitorCommands._edit_basic_fields`` previously called
+  ``int(...)`` on the raw ``input()`` result, so a typo (``abc``) raised an
+  uncaught ``ValueError``, an out-of-range number (``99``) raised
+  ``IndexError``, and ``0`` silently selected the last type via ``[-1]``.
+  The type prompt now goes through ``prompt_choice`` with the new shared
+  ``validate_monitor_type_number`` helper (also used by ``monitor new``),
+  which rejects non-digits and values outside ``1..len(monitor_types)`` and
+  re-asks; an empty entry still keeps the current type.  New unit tests cover
+  the non-numeric, out-of-range and ``0`` cases.
+
 - Replaced the "implemented profile type" vocabulary with a single
   profile-type -> handler mapping.  ``RemoteHandlerFactory`` is gone: the
   remote mapping is now a declarative ``REMOTE_HANDLERS`` table in the new

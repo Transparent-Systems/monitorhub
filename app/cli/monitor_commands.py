@@ -34,6 +34,20 @@ STALE_HEARTBEAT_SECONDS = 60
 STOP_GRACE_SECONDS = 15
 
 
+def validate_monitor_type_number(
+    value: str, monitor_types: list[tuple[str, str]]
+) -> str | None:
+    """Validate a 1-based monitor type selection.
+
+    Returns an error message when ``value`` is not a digit within
+    ``1..len(monitor_types)``, otherwise ``None``. Shared by the ``new`` and
+    ``edit`` flows so both reject typos and out-of-range numbers consistently.
+    """
+    if not value.isdigit() or not (0 < int(value) <= len(monitor_types)):
+        return f"Invalid monitor type number: {value}. Please try again."
+    return None
+
+
 class MonitorCommands:
     """Monitor CRUD, start/stop, test, and lifecycle commands."""
 
@@ -242,16 +256,25 @@ class MonitorCommands:
             self.prompt.print("No monitor types available")
             return
 
-        self.prompt.print("List of monitor types")
-        self.prompt.print("=" * 50)
-        for i, (name, description) in enumerate(monitor_types):
-            self.prompt.print(f"{i+1}. {name} - {description}")
-        self.prompt.print("=" * 50)
-        self.prompt.print(f"Current monitor type: {monitor.get('monitor_type', 'N/A')}")
-        self.prompt.print("Press Enter to keep current monitor type")
-        input_monitor_type = self.prompt.input("Enter new monitor type: ")
-        if input_monitor_type.strip() != "":
-            monitor["monitor_type"] = monitor_types[int(input_monitor_type) - 1][0]
+        def render_monitor_types() -> None:
+            self.prompt.print("List of monitor types")
+            self.prompt.print("=" * 50)
+            for i, (name, description) in enumerate(monitor_types):
+                self.prompt.print(f"{i+1}. {name} - {description}")
+            self.prompt.print("=" * 50)
+            self.prompt.print(
+                f"Current monitor type: {monitor.get('monitor_type', 'N/A')}"
+            )
+            self.prompt.print("Press Enter to keep current monitor type")
+
+        raw_monitor_type = self.prompt.prompt_choice(
+            "Enter new monitor type: ",
+            valid=lambda value: validate_monitor_type_number(value, monitor_types),
+            render=render_monitor_types,
+            allow_cancel=True,
+        )
+        if raw_monitor_type is not None:
+            monitor["monitor_type"] = monitor_types[int(raw_monitor_type) - 1][0]
 
     def _edit_interval(self, monitor: dict) -> None:
         """Edit the interval config for backup/restore monitor types."""
@@ -556,14 +579,9 @@ class MonitorCommands:
             for i, (name, description) in enumerate(monitor_types):
                 self.prompt.print(f"{i+1}. {name} - {description}")
 
-        def valid_monitor_type(value: str) -> str | None:
-            if not value.isdigit() or not (0 < int(value) <= len(monitor_types)):
-                return f"Invalid monitor type number: {value}. Please try again."
-            return None
-
         raw_monitor_type_number = self.prompt.prompt_choice(
             "Please select number of monitor type: ",
-            valid=valid_monitor_type,
+            valid=lambda value: validate_monitor_type_number(value, monitor_types),
             render=render_monitor_types,
             empty_message="Monitor type cannot be just spaces",
         )

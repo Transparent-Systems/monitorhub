@@ -20,7 +20,11 @@ from pathlib import Path
 from unittest import mock
 
 from app.cli.commands import Commands, build_commands
-from app.cli.monitor_commands import STALE_HEARTBEAT_SECONDS, MonitorCommands
+from app.cli.monitor_commands import (
+    STALE_HEARTBEAT_SECONDS,
+    MonitorCommands,
+    validate_monitor_type_number,
+)
 from app.monitor.action_handler import DEFAULT_COMMAND_MAX_WORKERS
 from app.utils.constants import MONITOR_STATUS_RUNNING, TIMESTAMP_FORMAT
 from app.utils.generic_util import parse_timestamp, utc_timestamp_now
@@ -312,6 +316,53 @@ class TestCommands(unittest.TestCase):
         self.assertIn("Current restore interval: 1m", mock_prompt.output_text)
         updated_monitor = commands.sqlite_handler.get_monitor(monitor_id=monitor["id"])
         self.assertEqual(updated_monitor["config"]["interval"], "20m")
+
+    def test_monitor_edit_rejects_non_numeric_monitor_type(self):
+        monitor = self.database_test_data.sqlite_handler.get_monitor(
+            monitor_name="Backup Monitor 1"
+        )
+        self.assertIsNotNone(monitor)
+        # Inputs: keep name/path/remote, type 'abc' (invalid, retried), type '1'
+        # (instant), then the remaining keep/stop prompts.
+        commands, mock_prompt = self._make_commands(
+            ["", "", "", "abc", "1", "", "", "", ""]
+        )
+        commands.monitor.edit(monitor_id=monitor["id"])
+        self.assertIn(
+            "Invalid monitor type number: abc. Please try again.",
+            mock_prompt.output_text,
+        )
+        updated_monitor = commands.sqlite_handler.get_monitor(monitor_id=monitor["id"])
+        self.assertEqual(updated_monitor["monitor_type"], "instant")
+
+    def test_monitor_edit_rejects_out_of_range_monitor_type(self):
+        monitor = self.database_test_data.sqlite_handler.get_monitor(
+            monitor_name="Backup Monitor 1"
+        )
+        self.assertIsNotNone(monitor)
+        # '99' is above the range and '0' would index from the end of the list;
+        # both must be rejected before a valid '1' (instant) is accepted.
+        commands, mock_prompt = self._make_commands(
+            ["", "", "", "99", "0", "1", "", "", "", ""]
+        )
+        commands.monitor.edit(monitor_id=monitor["id"])
+        self.assertIn(
+            "Invalid monitor type number: 99. Please try again.",
+            mock_prompt.output_text,
+        )
+        self.assertIn(
+            "Invalid monitor type number: 0. Please try again.",
+            mock_prompt.output_text,
+        )
+        updated_monitor = commands.sqlite_handler.get_monitor(monitor_id=monitor["id"])
+        self.assertEqual(updated_monitor["monitor_type"], "instant")
+
+    def test_validate_monitor_type_number(self):
+        monitor_types = [("instant", "i"), ("backup", "b"), ("restore", "r")]
+        self.assertIsNone(validate_monitor_type_number("1", monitor_types))
+        self.assertIsNone(validate_monitor_type_number("3", monitor_types))
+        for invalid in ("0", "-1", "4", "abc", "1.0", ""):
+            self.assertIsNotNone(validate_monitor_type_number(invalid, monitor_types))
 
     def test_monitor_edit_adds_profile_and_stops_with_enter(self):
         profiles = self.database_test_data.sqlite_handler.get_profiles()
