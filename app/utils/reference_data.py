@@ -40,7 +40,7 @@ class Provider:
 
 
 PROVIDERS: tuple[Provider, ...] = (
-    Provider("Amazon AWS S3", "s3", "Amazon AWS S3"),
+    Provider("AWS", "s3", "Amazon AWS S3"),
     Provider("Cloudflare",    "s3", "Cloudflare R2 - S3 compatible cloud storage"),
     Provider("IDrive",        "s3", "IDrive E2 - S3 compatible cloud storage"),
     Provider("Backblaze",     "s3", "Backblaze B2 - S3 compatible cloud storage"),
