@@ -1,11 +1,13 @@
-"""Tests for the profile_type -> handler mapping and high-level dispatch.
+"""Tests for the profile routing key -> handler mapping and high-level dispatch.
 
 The mapping is a plain declarative table (:data:`handler_factory.REMOTE_HANDLERS`)
-with an rclone fallback; ``HandlerFactory.get_handler`` turns a profile into an
+keyed by a profile's ``remote_handler`` value, with the rclone key as the
+delegated fallback; ``HandlerFactory.get_handler`` turns a profile into an
 ActionHandler using that table plus the command profile-type category.
 """
 
 import unittest
+from unittest import mock
 
 from app.monitor import handler_factory
 from app.monitor.action_handler import CommandActionHandler, RemoteActionHandler
@@ -13,6 +15,7 @@ from app.monitor.handler_factory import HandlerFactory, get_remote_handler
 from app.monitor.rclone_handler import RcloneHandler
 from app.monitor.remote_handler import RemoteHandler
 from app.monitor.s3_handler import S3Handler
+from app.utils import reference_data
 
 
 class _FakeRemoteHandler(RemoteHandler):
@@ -83,17 +86,27 @@ class TestRemoteHandlerMapping(unittest.TestCase):
         self.assertEqual(handler.profile_name, "myftp")
 
     def test_mapped_type_uses_native_handler(self):
-        handler_factory.REMOTE_HANDLERS["_fake"] = _FakeRemoteHandler
-        try:
+        # Registering a native key means both the handler table and the
+        # reference-data vocabulary (a guard test keeps them in sync).
+        with (
+            mock.patch.object(reference_data, "NATIVE_PROFILE_TYPES", ("_fake",)),
+            mock.patch.dict(
+                handler_factory.REMOTE_HANDLERS, {"_fake": _FakeRemoteHandler}
+            ),
+        ):
             handler = get_remote_handler(
                 monitor_path="/local",
                 remote_path="/remote",
-                profile={"profile_type": "_fake", "name": "fake", "config": {"x": 1}},
+                profile={
+                    "profile_type": "_fake",
+                    "name": "fake",
+                    "config": {"remote_handler": "_fake", "x": 1},
+                },
             )
-            self.assertIsInstance(handler, _FakeRemoteHandler)
-            self.assertEqual(handler.profile_config, {"x": 1})
-        finally:
-            del handler_factory.REMOTE_HANDLERS["_fake"]
+        self.assertIsInstance(handler, _FakeRemoteHandler)
+        self.assertEqual(
+            handler.profile_config, {"remote_handler": "_fake", "x": 1}
+        )
 
     def test_empty_profile_name_falls_back_to_rclone(self):
         handler = get_remote_handler(
@@ -102,6 +115,45 @@ class TestRemoteHandlerMapping(unittest.TestCase):
             profile={"profile_type": "", "name": "", "config": {}},
         )
         self.assertIsInstance(handler, RcloneHandler)
+
+    def test_stored_key_overrides_profile_type(self):
+        """An s3 profile switched to rclone is built as an RcloneHandler."""
+        handler = get_remote_handler(
+            monitor_path="/local",
+            remote_path="/remote",
+            profile={
+                "profile_type": "s3",
+                "name": "myremote",
+                "config": {"remote_handler": "rclone"},
+            },
+        )
+        self.assertIsInstance(handler, RcloneHandler)
+        self.assertEqual(handler.profile_name, "myremote")
+
+    def test_stored_native_key_wins_for_a_delegated_type(self):
+        """The stored key wins even when profile_type would route to rclone.
+
+        A new native key must be registered in both the handler table and the
+        reference-data vocabulary; ``test_reference_data`` guards the two from
+        drifting, so here both are patched for the duration of the test.
+        """
+        with (
+            mock.patch.object(reference_data, "NATIVE_PROFILE_TYPES", ("_fake",)),
+            mock.patch.dict(
+                handler_factory.REMOTE_HANDLERS, {"_fake": _FakeRemoteHandler}
+            ),
+        ):
+            handler = get_remote_handler(
+                monitor_path="/local",
+                remote_path="/remote",
+                profile={
+                    "profile_type": "ftp",
+                    "name": "fake",
+                    "config": {"remote_handler": "_fake", "x": 2},
+                },
+            )
+        self.assertIsInstance(handler, _FakeRemoteHandler)
+        self.assertEqual(handler.profile_config, {"remote_handler": "_fake", "x": 2})
 
 
 class TestEveryConcreteRemoteHandlerIsMapped(unittest.TestCase):
@@ -142,21 +194,41 @@ class TestHandlerFactory(unittest.TestCase):
         self.assertIsInstance(handler, CommandActionHandler)
 
     def test_mapped_remote_profile_gets_remote_action_handler(self):
-        handler_factory.REMOTE_HANDLERS["_fake"] = _FakeRemoteHandler
-        try:
+        with (
+            mock.patch.object(reference_data, "NATIVE_PROFILE_TYPES", ("_fake",)),
+            mock.patch.dict(
+                handler_factory.REMOTE_HANDLERS, {"_fake": _FakeRemoteHandler}
+            ),
+        ):
             monitor = {"name": "m", "monitor_path": "/tmp/m", "remote_path": "r:d"}
-            profile = {"name": "fake", "profile_type": "_fake", "config": {}}
+            profile = {
+                "name": "fake",
+                "profile_type": "_fake",
+                "config": {"remote_handler": "_fake"},
+            }
             handler = HandlerFactory.get_handler(monitor=monitor, profile=profile)
             self.assertIsInstance(handler, RemoteActionHandler)
             assert isinstance(handler, RemoteActionHandler)
             self.assertIsInstance(handler.remote_handler, _FakeRemoteHandler)
             handler.stop()
-        finally:
-            del handler_factory.REMOTE_HANDLERS["_fake"]
 
     def test_unmapped_remote_profile_gets_rclone_action_handler(self):
         monitor = {"name": "m", "monitor_path": "/tmp/m", "remote_path": "r:d"}
         profile = {"name": "myftp", "profile_type": "ftp", "config": {}}
+        handler = HandlerFactory.get_handler(monitor=monitor, profile=profile)
+        self.assertIsInstance(handler, RemoteActionHandler)
+        assert isinstance(handler, RemoteActionHandler)
+        self.assertIsInstance(handler.remote_handler, RcloneHandler)
+        handler.stop()
+
+    def test_remote_profile_routed_by_stored_key(self):
+        """An s3 profile with remote_handler=rclone gets the rclone handler."""
+        monitor = {"name": "m", "monitor_path": "/tmp/m", "remote_path": "r:d"}
+        profile = {
+            "name": "myremote",
+            "profile_type": "s3",
+            "config": {"remote_handler": "rclone"},
+        }
         handler = HandlerFactory.get_handler(monitor=monitor, profile=profile)
         self.assertIsInstance(handler, RemoteActionHandler)
         assert isinstance(handler, RemoteActionHandler)

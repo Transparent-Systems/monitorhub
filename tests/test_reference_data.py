@@ -2,6 +2,7 @@ import subprocess
 import sys
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from app.monitor import handler_factory
 from app.utils import reference_data
@@ -142,22 +143,98 @@ class TestReferenceDataFactoryWiring(unittest.TestCase):
         )
 
 
-class TestReferenceDataRcloneProfileTypes(unittest.TestCase):
-    def test_command_types_do_not_need_rclone(self):
-        for profile_type in reference_data.COMMAND_PROFILE_TYPES:
-            self.assertFalse(reference_data.is_rclone_profile_type(profile_type))
+class TestReferenceDataRemoteHandlerKeys(unittest.TestCase):
+    """Default routing: native types keep their handler, the rest use rclone."""
 
-    def test_native_types_do_not_need_rclone(self):
+    def test_native_types_default_to_their_own_handler(self):
         for profile_type in reference_data.NATIVE_PROFILE_TYPES:
-            self.assertFalse(reference_data.is_rclone_profile_type(profile_type))
+            self.assertEqual(
+                reference_data.default_remote_handler_key(profile_type),
+                profile_type,
+            )
 
-    def test_other_remote_types_need_rclone(self):
-        self.assertTrue(reference_data.is_rclone_profile_type("ftp"))
-        self.assertTrue(reference_data.is_rclone_profile_type("sftp"))
-        self.assertTrue(reference_data.is_rclone_profile_type("drive"))
+    def test_other_remote_types_default_to_rclone(self):
+        self.assertEqual(
+            reference_data.default_remote_handler_key("ftp"),
+            reference_data.RCLONE_REMOTE_HANDLER,
+        )
+        self.assertEqual(
+            reference_data.default_remote_handler_key("sftp"),
+            reference_data.RCLONE_REMOTE_HANDLER,
+        )
 
-    def test_empty_profile_type_does_not_need_rclone(self):
-        self.assertFalse(reference_data.is_rclone_profile_type(""))
+    def test_command_types_have_no_remote_handler(self):
+        for profile_type in reference_data.COMMAND_PROFILE_TYPES:
+            self.assertEqual(
+                reference_data.default_remote_handler_key(profile_type), ""
+            )
+
+    def test_empty_profile_type_has_no_remote_handler(self):
+        self.assertEqual(reference_data.default_remote_handler_key(""), "")
+
+    def test_remote_handler_keys_cover_native_handlers_and_rclone(self):
+        self.assertEqual(
+            set(reference_data.remote_handler_keys()),
+            set(handler_factory.REMOTE_HANDLERS)
+            | {reference_data.RCLONE_REMOTE_HANDLER},
+            "remote_handler values must cover every native handler key plus rclone",
+        )
+
+
+class TestReferenceDataRemoteHandlerKeyResolution(unittest.TestCase):
+    """A stored ``remote_handler`` key wins over profile_type routing."""
+
+    def test_stored_key_wins_over_profile_type(self):
+        profile = {
+            "name": "p",
+            "profile_type": "s3",
+            "config": {reference_data.CONFIG_REMOTE_HANDLER: "rclone"},
+        }
+        self.assertEqual(reference_data.remote_handler_key(profile), "rclone")
+
+    def test_missing_key_falls_back_to_profile_type(self):
+        s3_profile = {"name": "p", "profile_type": "s3", "config": {}}
+        ftp_profile = {"name": "p", "profile_type": "ftp", "config": None}
+        self.assertEqual(reference_data.remote_handler_key(s3_profile), "s3")
+        self.assertEqual(reference_data.remote_handler_key(ftp_profile), "rclone")
+
+    def test_unknown_key_warns_and_falls_back(self):
+        logger = mock.Mock()
+        profile = {
+            "name": "p",
+            "profile_type": "s3",
+            "config": {reference_data.CONFIG_REMOTE_HANDLER: "bogus"},
+        }
+        self.assertEqual(
+            reference_data.remote_handler_key(profile, logger=logger), "s3"
+        )
+        logger.warning.assert_called_once()
+
+    def test_is_rclone_profile(self):
+        self.assertTrue(
+            reference_data.is_rclone_profile(
+                {"name": "p", "profile_type": "ftp", "config": {}}
+            )
+        )
+        self.assertTrue(
+            reference_data.is_rclone_profile(
+                {
+                    "name": "p",
+                    "profile_type": "s3",
+                    "config": {reference_data.CONFIG_REMOTE_HANDLER: "rclone"},
+                }
+            )
+        )
+        self.assertFalse(
+            reference_data.is_rclone_profile(
+                {"name": "p", "profile_type": "s3", "config": {}}
+            )
+        )
+        self.assertFalse(
+            reference_data.is_rclone_profile(
+                {"name": "p", "profile_type": "event_command", "config": {}}
+            )
+        )
 
 
 if __name__ == "__main__":

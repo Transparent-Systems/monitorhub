@@ -2,6 +2,21 @@
 
 ## [Unreleased]
 
+- Remote profiles now carry an explicit ``remote_handler`` config key (``s3`` or
+  ``rclone``) that selects their handler, so an S3 profile can be delegated to
+  rclone instead of the builtin S3Handler -- useful for rclone transfer tuning
+  (``transfers``), object lock mode, chunk size and storage class, which are set
+  in the profile's ``rclone.conf`` remote.  ``reference_data`` owns the routing
+  vocabulary and resolver (``remote_handler_key``, ``default_remote_handler_key``,
+  ``remote_handler_keys``, ``is_rclone_profile``), and ``handler_factory``,
+  ``profile test`` and ``check_rclone_dependency`` all resolve through it, so the
+  CLI and the monitor runtime cannot disagree.  ``profile new`` stores ``s3``,
+  ``profile import`` stores ``rclone`` (imported profiles are rclone-managed by
+  definition, so an imported ``type = s3`` profile now runs through rclone) and
+  ``profile edit`` gained a yes/no prompt to switch an S3 profile to rclone and
+  back.  A missing or unknown value falls back to profile-type routing with a
+  warning, which is the only role ``profile_type`` keeps in routing.
+
 - ``mhub profile import`` now lets the user choose which rclone profiles to
   import instead of importing all or nothing.  The numbered list accepts ``0``
   to select all, a profile number to add individual entries one at a time, and

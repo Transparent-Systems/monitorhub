@@ -217,6 +217,24 @@ class ProfileEditor:
                 # Update endpoint in profile_config
                 profile_config["endpoint"] = input_profile_endpoint
 
+        # Route: allow switching this profile between the built-in S3 handler
+        # and rclone.  rclone exposes more transfer tuning (transfers, chunk
+        # size, storage class, object lock) but needs a remote with the same
+        # name in rclone.conf.
+        native_handler_key = reference_data.default_remote_handler_key(
+            profile.get("profile_type", "")
+        )
+        current_handler_key = reference_data.remote_handler_key(profile)
+        use_rclone = self.prompt.prompt_yes_no(
+            "Use rclone instead of the built-in S3 handler? "
+            "This requires a remote with the same name in rclone.conf "
+            f"(current: {current_handler_key}; Enter to keep; y/n): ",
+            default=current_handler_key == reference_data.RCLONE_REMOTE_HANDLER,
+        )
+        profile_config[reference_data.CONFIG_REMOTE_HANDLER] = (
+            reference_data.RCLONE_REMOTE_HANDLER if use_rclone else native_handler_key
+        )
+
         # Profile_config has already been populated with provider_name, access_key_id etc
         # Now update profile
         if self.sqlite_handler.update_profile(
@@ -525,6 +543,11 @@ class ProfileEditor:
             "provider_name": input_provider_name,
             "access_key_id": input_access_key_id,
             "access_key_secret": input_access_key_id_secret,
+            # Store the route explicitly so it never has to be re-derived.
+            # "profile edit" can switch it to rclone later.
+            reference_data.CONFIG_REMOTE_HANDLER: reference_data.default_remote_handler_key(
+                input_type_name
+            ),
         }
 
         if "Amazon AWS" in input_provider_name:

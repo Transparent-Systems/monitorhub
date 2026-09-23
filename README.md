@@ -166,6 +166,44 @@ Over time we will add native handlers for common cloud storage providers and oth
 Rclone is the swiss knife of copying file to and from cloud storage. 
 Any remote profile type without a native handler is delegated to a call to Rclone.
 
+### S3 via rclone
+
+Every remote profile records which handler it is routed through in its
+`remote_handler` setting, so an S3 profile does not have to use the builtin
+S3Handler:
+
+* `remote_handler: s3` - the builtin S3Handler (what `profile new` stores).
+* `remote_handler: rclone` - the profile is delegated to rclone.
+
+Use the rclone route when you want rclone's transfer tuning for S3, for example
+`--transfers`, `--s3-chunk-size`, `--s3-storage-class` or
+`--s3-object-lock-mode`. Those are rclone settings, so they belong in the
+profile's remote section in `rclone.conf`:
+
+    [my-remote]
+    type = s3
+    provider = Other
+    endpoint = https://example.invalid
+    access_key_id = ...
+    secret_access_key = ...
+    transfers = 8
+    s3_chunk_size = 16M
+    s3_storage_class = STANDARD
+
+Switch a profile with `mhub profile edit` (answer yes to the rclone question),
+or by setting `remote_handler` in the profile configuration (`mhub profile
+show` displays it). Profiles created with `mhub profile import` are managed by
+rclone and are routed to rclone automatically.
+
+Note: `remote_handler: rclone` currently requires a remote with the same name
+as the profile in `rclone.conf`; MonitorHub does not build an on-the-fly remote
+from the profile configuration yet, so `mhub profile test` reports
+`didn't find section in config file` when that remote is missing.
+
+Also note that `--transfers` only applies to folder copies (backup and
+restore); a single-file instant upload is tuned with `--s3-chunk-size` and
+`--s3-upload-concurrency` instead.
+
 
 ## Acknowledgments
 
@@ -181,7 +219,7 @@ Later on in the project I started using OpenRouter which makes it easy to try ou
     mhub monitor start
 * A monitor consumes an event and detaches actions to one or more profile handlers
 * A profile stores the configuration details of a profile handler
-* A profile type is linked to a sepcific handler
+* A remote profile records the handler it is routed through (`remote_handler`: `s3` or `rclone`), so an S3 profile can use the builtin handler or rclone
 * A profile category is a superset of profile types, for example remote profiles or command profiles
 
 ## Shell Command Handler

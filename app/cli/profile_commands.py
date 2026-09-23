@@ -47,10 +47,10 @@ class ProfileCommands:
         """
         Test selected profile.
 
-        Dispatch is based on the profile's category (from the profile_types
-        lookup table), not the profile_type directly. This keeps the
-        application future-proof: adding a new "remote" profile type (e.g.
-        ftp) only requires adding a new handler branch under that category.
+        Dispatch is based on the profile's category. Local/command profiles are
+        tested in-process, while a remote profile is tested through the handler
+        its ``remote_handler`` config key resolves to -- the same rule the
+        monitor runtime uses, so the two cannot disagree.
         """
 
         if profile_id is not None and profile_name is not None:
@@ -95,25 +95,33 @@ class ProfileCommands:
                 live=live,
             )
         if category == "remote":
-            # Currently only the s3_handler is implemented as a native Python
-            # handler. All other remote profile types use rclone_handler.
-            # More native handlers can be added here in the future.
-            if profile_type == "s3":
+            # The profile's remote_handler key selects the route (it is written
+            # when the profile is created), matching the monitor runtime. Only
+            # s3 has a native test today; a future native handler adds its
+            # branch here.
+            handler_key = reference_data.remote_handler_key(profile, logger=self.logger)
+            if handler_key == "s3":
                 # Lazy import: S3Factory pulls in boto3, so it is only loaded
                 # when a native s3 profile is actually being tested.
                 from app.monitor.s3_factory import S3Factory
 
                 S3Factory.test_connection(profile_config=config, logger=self.logger, prompt=self.prompt)
-            else:
-                profile_name = profile.get("name")
-                if profile_name is None:
+            elif handler_key == reference_data.RCLONE_REMOTE_HANDLER:
+                rclone_profile_name = profile.get("name")
+                if rclone_profile_name is None:
                     self.prompt.print(f"Profile name not found for profile id: {profile_id}")
                     return False
                 RcloneHandler.test_connection(
-                    profile_name=profile_name,
+                    profile_name=rclone_profile_name,
                     logger=self.logger,
                     prompt=self.prompt,
                 )
+            else:
+                self.prompt.print(
+                    f"Unknown or unsupported remote handler '{handler_key}' "
+                    f"for profile id: {profile_id}"
+                )
+                return False
             return True
 
         self.prompt.print(f"Unknown or unsupported profile category '{category}' for profile type '{profile_type}'")

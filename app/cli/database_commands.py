@@ -5,6 +5,7 @@ import sqlite3
 
 from app.cli.db_error_messages import integrity_error_message
 from app.cli.prompt_service import PromptService
+from app.utils import reference_data
 from app.utils.constants import MONITOR_STATUS_STOPPED, MONITOR_TYPE_INSTANT
 from app.utils.schema_versioning import DATABASE_SCHEMA_VERSION, classify
 from app.utils.sqlite_handler import SQLiteHandler
@@ -178,6 +179,9 @@ class DatabaseCommands:
             "access_key_id": "FAKE_ACCESS_KEY_ID",
             "access_key_secret": "FAKE_ACCESS_KEY_SECRET",
             "endpoint": "https://example.invalid",
+            reference_data.CONFIG_REMOTE_HANDLER: reference_data.default_remote_handler_key(
+                "s3"
+            ),
         }
 
         profile_id = self.sqlite_handler.add_profile(

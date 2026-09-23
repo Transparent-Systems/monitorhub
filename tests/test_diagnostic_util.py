@@ -15,6 +15,7 @@ from pathlib import Path
 from unittest import mock
 
 from app.cli.diagnostic_util import DiagnosticUtil
+from app.utils import reference_data
 from tests.mock_prompt_service import MockPromptService
 
 MODULE_LOGGER_NAME = "app.cli.diagnostic_util"
@@ -64,11 +65,13 @@ class DiagnosticUtilConstructorTest(unittest.TestCase):
 
 
 class DiagnosticUtilRcloneDependencyTest(unittest.TestCase):
-    """``check_rclone_dependency`` must route by ``profile_type``.
+    """``check_rclone_dependency`` must route by the ``remote_handler`` key.
 
     Regression: it previously read a ``config["handler"]`` key that nothing in
-    the application writes any more, so every profile was skipped and the check
-    silently reported success even when an rclone-backed profile existed.
+    the application wrote, so every profile was skipped and the check silently
+    reported success even when an rclone-backed profile existed.  Routing is now
+    the same ``remote_handler`` resolution used by ``handler_factory``, so a
+    native profile type switched to rclone (e.g. s3) is checked too.
     """
 
     def _make(self, profiles):
@@ -93,7 +96,11 @@ class DiagnosticUtilRcloneDependencyTest(unittest.TestCase):
     def test_native_and_command_profiles_do_not_need_rclone(self):
         util = self._make(
             [
-                {"name": "s3-test", "profile_type": "s3", "config": {}},
+                {
+                    "name": "s3-test",
+                    "profile_type": "s3",
+                    "config": {reference_data.CONFIG_REMOTE_HANDLER: "s3"},
+                },
                 {"name": "cmd", "profile_type": "event_command", "config": {}},
             ]
         )
@@ -103,23 +110,24 @@ class DiagnosticUtilRcloneDependencyTest(unittest.TestCase):
             self.assertTrue(util.check_rclone_dependency())
         check.assert_not_called()
 
-    def test_legacy_handler_key_is_ignored(self):
-        # A stale config["handler"] must not force an rclone check for a native
-        # profile type: routing is driven by profile_type.
+    def test_native_profile_routed_to_rclone_needs_rclone(self):
+        # An s3 profile switched to the rclone handler must trigger the check.
         util = self._make(
             [
                 {
                     "name": "s3-test",
                     "profile_type": "s3",
-                    "config": {"handler": "rclone"},
+                    "config": {
+                        reference_data.CONFIG_REMOTE_HANDLER: reference_data.RCLONE_REMOTE_HANDLER
+                    },
                 }
             ]
         )
         with mock.patch.object(
-            util, "_check_rclone_exists", return_value=False
+            util, "_check_rclone_exists", return_value=True
         ) as check:
             self.assertTrue(util.check_rclone_dependency())
-        check.assert_not_called()
+        check.assert_called_once()
 
     def test_no_profiles_returns_true(self):
         util = self._make([])
@@ -247,7 +255,7 @@ class DiagnosticUtilProfileImportTest(unittest.TestCase):
         sqlite_handler.add_profile.assert_not_called()
         self.assertIn("No profiles found in", prompt.output_text)
 
-    def test_import_maps_type_and_adds_display_hints(self):
+    def test_import_maps_type_sets_rclone_route_and_adds_hints(self):
         util, sqlite_handler, _ = self._make(["0"])
 
         util.check_profile_import(
@@ -259,6 +267,12 @@ class DiagnosticUtilProfileImportTest(unittest.TestCase):
         self.assertEqual(first_call.kwargs["config"]["provider_name"], "AWS")
         self.assertIn("comment", first_call.kwargs["config"])
         self.assertIn("important", first_call.kwargs["config"])
+        # Imported profiles are rclone-managed, so they are routed to rclone
+        # even though their type (s3) has a native handler.
+        self.assertEqual(
+            first_call.kwargs["config"][reference_data.CONFIG_REMOTE_HANDLER],
+            reference_data.RCLONE_REMOTE_HANDLER,
+        )
 
 
 if __name__ == "__main__":

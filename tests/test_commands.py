@@ -27,6 +27,7 @@ from app.cli.monitor_commands import (
 )
 from app.cli.profile_commands import ProfileCommands
 from app.monitor.action_handler import DEFAULT_COMMAND_MAX_WORKERS
+from app.utils import reference_data
 from app.utils.constants import DB_FILENAME, MONITOR_STATUS_RUNNING, TIMESTAMP_FORMAT
 from app.utils.generic_util import parse_timestamp, utc_timestamp_now
 from tests.database_test_data import DatabaseTestData
@@ -543,6 +544,101 @@ class TestCommands(unittest.TestCase):
         self.assertEqual(profile["config"]["command_max_workers"], 5)
         self.assertIn("Invalid number of workers: abc", mock_prompt.output_text)
         self.assertIn("Number of workers must be between 1 and 1000", mock_prompt.output_text)
+
+    def test_profile_new_remote_stores_remote_handler(self):
+        # category 1 = remote, provider 3 = IDrive (endpoint prompt path)
+        commands, _ = self._make_commands(
+            [
+                "1",
+                "my-s3-profile",
+                "3",
+                "FAKE_ACCESS_KEY_ID",
+                "FAKE_ACCESS_KEY_SECRET",
+                "https://example.invalid",
+            ]
+        )
+        commands.profile.new()
+        profile = commands.sqlite_handler.get_profile(profile_name="my-s3-profile")
+        self.assertTrue(profile)
+        self.assertEqual(profile["profile_type"], "s3")
+        self.assertEqual(
+            profile["config"][reference_data.CONFIG_REMOTE_HANDLER], "s3"
+        )
+
+    def test_profile_edit_remote_switches_to_rclone(self):
+        profile_id = self.database_test_data.sqlite_handler.get_profile(
+            profile_name="s3-test"
+        )["id"]
+        # Keep access key, secret and endpoint (empty entries), then answer yes
+        # to the rclone routing question.
+        commands, _ = self._make_commands([str(profile_id), "", "", "", "y"])
+        commands.profile.edit()
+        profile = commands.sqlite_handler.get_profile(profile_id=profile_id)
+        self.assertEqual(
+            profile["config"][reference_data.CONFIG_REMOTE_HANDLER],
+            reference_data.RCLONE_REMOTE_HANDLER,
+        )
+
+    def test_profile_edit_remote_keeps_native_handler(self):
+        profile_id = self.database_test_data.sqlite_handler.get_profile(
+            profile_name="s3-test"
+        )["id"]
+        commands, _ = self._make_commands([str(profile_id), "", "", "", "n"])
+        commands.profile.edit()
+        profile = commands.sqlite_handler.get_profile(profile_id=profile_id)
+        self.assertEqual(profile["config"][reference_data.CONFIG_REMOTE_HANDLER], "s3")
+
+    def test_profile_test_s3_profile_uses_native_handler(self):
+        commands, _ = self._make_commands([])
+        with (
+            mock.patch("app.monitor.s3_factory.S3Factory.test_connection") as native_test,
+            mock.patch(
+                "app.cli.profile_commands.RcloneHandler.test_connection"
+            ) as rclone_test,
+        ):
+            result = commands.profile.test(profile_name="s3-test")
+        self.assertTrue(result)
+        native_test.assert_called_once()
+        rclone_test.assert_not_called()
+
+    def test_profile_test_rclone_profile_uses_rclone_handler(self):
+        commands, _ = self._make_commands([])
+        with (
+            mock.patch("app.monitor.s3_factory.S3Factory.test_connection") as native_test,
+            mock.patch(
+                "app.cli.profile_commands.RcloneHandler.test_connection"
+            ) as rclone_test,
+        ):
+            result = commands.profile.test(profile_name="ftp-test")
+        self.assertTrue(result)
+        rclone_test.assert_called_once()
+        native_test.assert_not_called()
+
+    def test_profile_test_s3_profile_routed_to_rclone(self):
+        profile_id = self.database_test_data.sqlite_handler.get_profile(
+            profile_name="s3-test"
+        )["id"]
+        commands, _ = self._make_commands([])
+        stored = commands.sqlite_handler.get_profile(profile_id=profile_id)
+        stored["config"][reference_data.CONFIG_REMOTE_HANDLER] = (
+            reference_data.RCLONE_REMOTE_HANDLER
+        )
+        commands.sqlite_handler.update_profile(
+            profile_id=profile_id,
+            name=stored["name"],
+            profile_type=stored["profile_type"],
+            config=stored["config"],
+        )
+        with (
+            mock.patch("app.monitor.s3_factory.S3Factory.test_connection") as native_test,
+            mock.patch(
+                "app.cli.profile_commands.RcloneHandler.test_connection"
+            ) as rclone_test,
+        ):
+            result = commands.profile.test(profile_name="s3-test")
+        self.assertTrue(result)
+        rclone_test.assert_called_once()
+        native_test.assert_not_called()
 
     def test_profile_edit_command(self):
         profile_id = self.database_test_data.sqlite_handler.get_profile(

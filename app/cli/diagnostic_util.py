@@ -157,6 +157,12 @@ class DiagnosticUtil:
             config = profile_config
             config["comment"] = reference_data.RCLONE_PROFILE_COMMENT
             config["important"] = reference_data.RCLONE_PROFILE_IMPORTANT
+            # Imported profiles are rclone-managed by definition: the section
+            # they came from must stay in rclone.conf, so route them through
+            # rclone even when their type has a native handler (e.g. s3).
+            config[reference_data.CONFIG_REMOTE_HANDLER] = (
+                reference_data.RCLONE_REMOTE_HANDLER
+            )
             # Add profile to database
             if self.sqlite_handler.add_profile(
                 name=profile_name,
@@ -227,11 +233,12 @@ class DiagnosticUtil:
     def check_rclone_dependency(self) -> bool:
         """Check whether any profile depends on rclone, and if so whether it is installed.
 
-        Dependency is derived from the profile's ``profile_type`` (the same
-        routing rule used by ``handler_factory``): command profiles and profile
-        types with a native handler do not need rclone; every other remote
-        profile type is delegated to the rclone CLI. Returns True when no
-        rclone-backed profile exists or rclone is available, False otherwise.
+        Dependency is derived from each profile's ``remote_handler`` key (the
+        same rule used by ``handler_factory``), so a profile whose key resolves
+        to rclone -- for example an s3 profile switched to the rclone handler --
+        is checked too.  Command profiles and profiles using a native handler do
+        not need rclone.  Returns True when no rclone-backed profile exists or
+        rclone is available, False otherwise.
         """
 
         # All profiles should be in monitorhub database now, because:
@@ -246,9 +253,9 @@ class DiagnosticUtil:
             return True
 
         for profile in profiles:
-            profile_type = profile.get("profile_type", "")
-            if not reference_data.is_rclone_profile_type(profile_type):
+            if not reference_data.is_rclone_profile(profile, logger=self.logger):
                 continue
+            profile_type = profile.get("profile_type", "")
 
             # Check to see if rclone is installed, if not then we have a dependency problem
             if self._check_rclone_exists():

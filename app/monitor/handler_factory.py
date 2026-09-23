@@ -8,9 +8,12 @@ Every profile type resolves to exactly one action handler:
 - any other type     -> :class:`~app.monitor.action_handler.RemoteActionHandler`
   wrapping :class:`~app.monitor.rclone_handler.RcloneHandler`
 
-Remote profile types are resolved through the declarative
-:data:`REMOTE_HANDLERS` table; a profile type absent from the table is
-delegated to rclone.  Command profile types are the ones listed in
+Remote profiles are routed by their ``remote_handler`` config key (see
+``app.utils.reference_data``): a key present in the declarative
+:data:`REMOTE_HANDLERS` table gets its native handler, and the ``rclone`` key is
+delegated to rclone.  A profile without a usable key falls back to its
+``profile_type`` (native handler when mapped, otherwise rclone).  Command
+profile types are the ones listed in
 ``app.utils.reference_data.COMMAND_PROFILE_TYPES`` -- the profile-type to
 category table that also drives the CLI prompts.
 
@@ -32,9 +35,11 @@ from app.monitor.s3_handler import S3Handler
 from app.utils import reference_data
 from app.utils.constants import DEFAULT_COMMAND_MAX_WORKERS
 
-# Declarative profile_type -> RemoteHandler class mapping.  A profile type with
-# no entry here is delegated to RcloneHandler.  Adding a native handler means
-# one entry in this table (plus the handler class itself).
+# Declarative remote_handler key -> RemoteHandler class mapping.  The ``rclone``
+# key (reference_data.RCLONE_REMOTE_HANDLER) is the delegated fallback rather
+# than a table entry.  Adding a native handler means one entry in this table
+# (plus the handler class itself and its key in
+# reference_data.NATIVE_PROFILE_TYPES).
 REMOTE_HANDLERS: dict[str, type[RemoteHandler]] = {
     S3Handler.PROFILE_TYPE: S3Handler,
 }
@@ -47,11 +52,13 @@ def get_remote_handler(
     logger: logging.Logger | None = None,
     exclude_patterns: list[str] | None = None,
 ) -> RemoteHandler:
-    """Return the :class:`RemoteHandler` for a profile's ``profile_type``.
+    """Return the :class:`RemoteHandler` for a profile's routing key.
 
-    A profile type present in :data:`REMOTE_HANDLERS` gets its native handler;
-    every other profile type is delegated to rclone, using the profile's name
-    (which matches the remote section name in ``rclone.conf``).
+    The profile's ``remote_handler`` config key selects the handler: a key
+    present in :data:`REMOTE_HANDLERS` gets its native handler, and
+    ``rclone`` is delegated to :class:`RcloneHandler`.  When the key is missing
+    the route is derived from ``profile_type`` (see
+    :func:`app.utils.reference_data.remote_handler_key`).
 
     :param monitor_path: Local monitor path
     :param remote_path: Remote path
@@ -66,7 +73,13 @@ def get_remote_handler(
     profile_name = profile.get("name", "").strip()
     profile_config = profile.get("config", {})
 
-    handler_class = REMOTE_HANDLERS.get(profile_type)
+    handler_key = reference_data.remote_handler_key(profile, logger=logger)
+    logger.debug(
+        f"get_remote_handler: profile '{profile_name}' "
+        f"(type={profile_type or 'n/a'}) routed via '{handler_key}'"
+    )
+
+    handler_class = REMOTE_HANDLERS.get(handler_key)
     if handler_class is not None:
         return handler_class(
             base_monitor_path=monitor_path,
@@ -76,7 +89,9 @@ def get_remote_handler(
             exclude_patterns=exclude_patterns or [],
         )
 
-    # Any profile type without a native handler is delegated to rclone.
+    # The rclone key (and, defensively, any unresolvable key) uses the rclone
+    # CLI.  The on-the-fly remote syntax (":s3,...:") is not built yet, so the
+    # profile name must match a section in rclone.conf.
     rclone_profile_name = profile_name or profile_type
     if not rclone_profile_name:
         logger.warning(
@@ -98,8 +113,9 @@ class HandlerFactory:
     Dispatch is driven purely by ``profile_type``: command profile types
     (``reference_data.COMMAND_PROFILE_TYPES``) get a
     :class:`CommandActionHandler`; every other profile type is a remote profile
-    wrapped in a :class:`RemoteActionHandler` (native handler when one is
-    mapped in :data:`REMOTE_HANDLERS`, otherwise rclone).
+    wrapped in a :class:`RemoteActionHandler` whose underlying
+    :class:`RemoteHandler` is chosen by the profile's ``remote_handler`` key
+    (native handler when mapped in :data:`REMOTE_HANDLERS`, otherwise rclone).
     """
 
     @classmethod
