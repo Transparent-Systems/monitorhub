@@ -13,6 +13,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from app.monitor import rclone_env
 from app.monitor.rclone_handler import RcloneHandler
 from app.monitor.remote_result import RemoteErrorKind
 
@@ -266,6 +267,30 @@ class TestRcloneProfileEnvironment(unittest.TestCase):
             handler.run_command(["ls", "remote:path"])
 
         self.assertIsNone(popen.call_args.kwargs["env"])
+
+    def test_unsupported_rclone_options_are_warned_about(self):
+        """rclone ignores unknown RCLONE_* variables, so MonitorHub warns."""
+        logger = mock.Mock()
+        profile = {
+            "id": 5,
+            "name": "mh_env_live",
+            "profile_type": "s3",
+            "config": {"rclone_options": {"s3_object_lock_mod": "GOVERNANCE"}},
+        }
+        with mock.patch.object(
+            rclone_env, "unknown_rclone_options", return_value=["s3_object_lock_mod"]
+        ):
+            RcloneHandler(
+                base_monitor_path="/tmp",
+                base_remote_path="bucket/prefix",
+                profile_name="mh_env_live",
+                logger=logger,
+                profile=profile,
+            )
+        messages = [call.args[0] for call in logger.warning.call_args_list]
+        self.assertTrue(
+            any("s3_object_lock_mod" in message for message in messages), messages
+        )
 
     def test_test_connection_uses_the_profile_environment(self):
         prompt = mock.Mock()

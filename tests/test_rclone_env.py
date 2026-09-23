@@ -160,5 +160,85 @@ class TestBuildRcloneEnv(unittest.TestCase):
         logger.warning.assert_called_once()
 
 
+class TestUnknownRcloneOptions(unittest.TestCase):
+    """Options the installed rclone does not support must be reported.
+
+    rclone silently ignores ``RCLONE_*`` variables for unknown flags, so a typo
+    or an older rclone would otherwise apply nothing without saying so.
+    """
+
+    FLAGS_OUTPUT = (
+        "      --transfers int            Number of file transfers to run in parallel\n"
+        "      --s3-chunk-size SizeSuffix  Chunk size to use for uploading\n"
+        "      --s3-object-lock-mode string  Object Lock mode\n"
+    )
+
+    def _flags_probe(self):
+        return mock.patch(
+            "app.monitor.rclone_env.subprocess.run",
+            return_value=mock.Mock(stdout=self.FLAGS_OUTPUT),
+        )
+
+    def test_supported_options_are_not_reported(self):
+        with mock.patch.object(rclone_env, "_KNOWN_FLAGS_CACHE", {}), self._flags_probe():
+            self.assertEqual(
+                rclone_env.unknown_rclone_options(
+                    {
+                        "transfers": 8,
+                        "s3_chunk_size": "16M",
+                        "s3_object_lock_mode": "GOVERNANCE",
+                    },
+                    "rclone",
+                ),
+                [],
+            )
+
+    def test_unsupported_option_is_reported(self):
+        with mock.patch.object(rclone_env, "_KNOWN_FLAGS_CACHE", {}), self._flags_probe():
+            self.assertEqual(
+                rclone_env.unknown_rclone_options(
+                    {"s3_object_lock_mod": "GOVERNANCE", "transfers": 8}, "rclone"
+                ),
+                ["s3_object_lock_mod"],
+            )
+
+    def test_flags_are_probed_once_per_binary(self):
+        with (
+            mock.patch.object(rclone_env, "_KNOWN_FLAGS_CACHE", {}),
+            self._flags_probe() as run,
+        ):
+            rclone_env.unknown_rclone_options({"transfers": 8}, "rclone")
+            rclone_env.unknown_rclone_options({"transfers": 8}, "rclone")
+        self.assertEqual(run.call_count, 1)
+
+    def test_probe_failure_is_reported_and_treated_as_unknown(self):
+        logger = mock.Mock()
+        with (
+            mock.patch.object(rclone_env, "_KNOWN_FLAGS_CACHE", {}),
+            mock.patch(
+                "app.monitor.rclone_env.subprocess.run", side_effect=OSError("no rclone")
+            ),
+        ):
+            self.assertEqual(
+                rclone_env.unknown_rclone_options({"bogus": 1}, "rclone", logger=logger),
+                [],
+            )
+        logger.warning.assert_called_once()
+
+    def test_missing_rclone_path_is_not_probed(self):
+        with (
+            mock.patch.object(rclone_env, "_KNOWN_FLAGS_CACHE", {}),
+            mock.patch("app.monitor.rclone_env.subprocess.run") as run,
+        ):
+            self.assertEqual(rclone_env.unknown_rclone_options({"bogus": 1}, ""), [])
+        run.assert_not_called()
+
+    def test_empty_or_non_mapping_options_are_not_probed(self):
+        with mock.patch("app.monitor.rclone_env.subprocess.run") as run:
+            self.assertEqual(rclone_env.unknown_rclone_options(None, "rclone"), [])
+            self.assertEqual(rclone_env.unknown_rclone_options({}, "rclone"), [])
+        run.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()

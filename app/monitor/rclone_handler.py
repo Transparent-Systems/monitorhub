@@ -141,6 +141,23 @@ class RcloneHandler(RemoteHandler):
                 profile_config=profile.get("config") or {},
                 logger=self.logger,
             )
+            # rclone ignores RCLONE_* variables for flags it does not have, so
+            # report options that this rclone build cannot apply (an older
+            # rclone without object lock, or a typo).
+            profile_config = profile.get("config")
+            options = (
+                profile_config.get(rclone_env.RCLONE_OPTIONS_KEY)
+                if isinstance(profile_config, dict)
+                else None
+            )
+            unknown_options = rclone_env.unknown_rclone_options(
+                options, self.rclone_path, logger=self.logger
+            )
+            if unknown_options:
+                self.logger.warning(
+                    f"Profile '{human_name}': rclone does not support "
+                    f"{', '.join(unknown_options)}; these settings are ignored"
+                )
 
         if (resolved_profile_name is None):
             self.profile_name = ""

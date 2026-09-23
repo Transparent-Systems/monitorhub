@@ -29,6 +29,7 @@ have the name in the log match the one rclone sees.
 
 import logging
 import re
+import subprocess
 
 from app.utils import reference_data
 
@@ -63,6 +64,13 @@ RCLONE_OPTIONS_KEY = "rclone_options"
 _ENV_SAFE_NAME_RE = re.compile(r"^[A-Za-z0-9_]+$")
 _UNSAFE_CHARS_RE = re.compile(r"[^A-Za-z0-9_]")
 _OPTION_NAME_RE = re.compile(r"^[a-z][a-z0-9_]*$")
+_FLAG_TOKEN_RE = re.compile(r"--([a-z0-9][a-z0-9-]*)")
+
+# How long to wait for ``rclone help flags`` when validating options.
+FLAGS_PROBE_TIMEOUT = 30.0
+
+# Flags supported by an rclone binary, keyed by its path (probed once per run).
+_KNOWN_FLAGS_CACHE: dict[str, frozenset[str]] = {}
 
 
 def env_remote_name(profile_name: str, profile_id: int | None = None) -> str:
@@ -160,4 +168,67 @@ def _add_rclone_options(
         if value is None or value == "":
             continue
         env[f"RCLONE_{option_name.upper()}"] = str(value)
+
+
+def known_rclone_flags(
+    rclone_path: str,
+    logger: logging.Logger | None = None,
+) -> frozenset[str] | None:
+    """Return the flags the rclone binary supports, or None when unknown.
+
+    The probe runs ``rclone help flags`` once per binary and is cached for the
+    rest of the run.  It never raises: a missing or failing rclone yields None.
+    """
+    rclone_path = (rclone_path or "").strip()
+    if not rclone_path:
+        return None
+    if rclone_path in _KNOWN_FLAGS_CACHE:
+        return _KNOWN_FLAGS_CACHE[rclone_path]
+
+    try:
+        completed = subprocess.run(
+            [rclone_path, "help", "flags"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=FLAGS_PROBE_TIMEOUT,
+        )
+    except (OSError, subprocess.SubprocessError) as error:
+        if logger is not None:
+            logger.warning(f"Could not read the rclone flags: {error}")
+        return None
+
+    flags = frozenset(_FLAG_TOKEN_RE.findall(completed.stdout))
+    _KNOWN_FLAGS_CACHE[rclone_path] = flags
+    return flags
+
+
+def unknown_rclone_options(
+    options: object,
+    rclone_path: str,
+    logger: logging.Logger | None = None,
+) -> list[str]:
+    """Return the configured rclone options the installed rclone does not know.
+
+    rclone silently ignores ``RCLONE_<OPTION>`` variables for flags it does not
+    have, so a typo or a machine with an older rclone would otherwise apply
+    nothing without saying so (an unsupported object lock mode, for example).
+    Returns an empty list when the options are unknown or the flags cannot be
+    read.
+    """
+    if not isinstance(options, dict) or not options:
+        return []
+
+    known = known_rclone_flags(rclone_path, logger=logger)
+    if not known:
+        return []
+
+    unknown = []
+    for name in options:
+        option_name = str(name).strip()
+        if not _OPTION_NAME_RE.match(option_name):
+            continue  # already reported by _add_rclone_options
+        if option_name.replace("_", "-") not in known:
+            unknown.append(option_name)
+    return sorted(unknown)
 

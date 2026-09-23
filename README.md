@@ -200,9 +200,18 @@ become rclone flag variables:
     "rclone_options": {
       "transfers": 8,
       "s3_chunk_size": "16M",
+      "s3_upload_concurrency": 8,
       "s3_storage_class": "STANDARD",
-      "s3_object_lock_mode": "GOVERNANCE"
+      "s3_object_lock_mode": "GOVERNANCE",
+      "s3_object_lock_legal_hold_status": "ON",
+      "s3_object_lock_retain_until_date": "2030-01-01T00:00:00Z",
+      "s3_bucket_object_lock_enabled": true
     }
+
+Object lock needs an rclone that supports it (1.7x; check with
+`rclone help flags | grep object-lock`). rclone silently ignores options it does
+not know, so MonitorHub logs a warning naming any configured option the installed
+rclone cannot apply.
 
 Switch a profile with `mhub profile edit` (answer yes to the rclone question) or
 by setting `remote_handler` in the profile configuration (`mhub profile show`

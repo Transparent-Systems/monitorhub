@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+- A profile's ``rclone_options`` are now checked against the installed rclone:
+  rclone silently ignores ``RCLONE_*`` variables for flags it does not have, so
+  MonitorHub logs a warning naming the unsupported options (a typo, or an rclone
+  build without object lock).  The ``rclone help flags`` probe is cached per
+  rclone binary and never fails a transfer.
+
 - An rclone-routed profile no longer needs a section in ``rclone.conf``:
   MonitorHub passes the profile's settings to the rclone subprocess through
   ``RCLONE_CONFIG_<REMOTE>_<OPTION>`` environment variables (new
