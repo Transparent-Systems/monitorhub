@@ -63,6 +63,13 @@ class _FakeS3Client:
         return {}
 
 
+class _FakeHttpResponse:
+    """Minimal stand-in for botocore's ``AWSResponse`` (status only)."""
+
+    def __init__(self, status_code: int) -> None:
+        self.status_code = status_code
+
+
 def _make_handler(fake_client, base_monitor_path: str, base_remote_path: str = "bucket/prefix") -> S3Handler:
     """Build an S3Handler whose client is the supplied fake (no boto3 call)."""
     with mock.patch("app.monitor.s3_handler.S3Factory") as factory_cls:
@@ -223,6 +230,117 @@ class TestS3FactoryProviderDetection(unittest.TestCase):
             }
         )
         self.assertIn("endpoint_url", kwargs)
+
+
+class TestS3FactoryRetryLogging(unittest.TestCase):
+    """Only genuinely retryable S3 responses may be logged as retries.
+
+    Regression: the ``needs-retry`` callback logged every error code, so the
+    benign 404 from a HEAD on a not-yet-uploaded object was reported as
+    "Retrying S3 request due to: 404" even though botocore did not retry.
+    """
+
+    def setUp(self):
+        self.factory = S3Factory(logger=LOGGER)
+
+    @staticmethod
+    def _response(status_code: int, code: str | None = None) -> tuple:
+        parsed: dict = {"ResponseMetadata": {"HTTPStatusCode": status_code}}
+        if code is not None:
+            parsed["Error"] = {"Code": code}
+        return (_FakeHttpResponse(status_code), parsed)
+
+    def _call(self, **kwargs):
+        """Invoke the callback and return the patched debug/warning mocks."""
+        with mock.patch.object(LOGGER, "debug") as debug, mock.patch.object(
+            LOGGER, "warning"
+        ) as warning:
+            self.factory._log_retry_events(**kwargs)
+        return debug, warning
+
+    def test_missing_object_404_is_not_logged_as_a_retry(self):
+        debug, warning = self._call(attempts=1, response=self._response(404, "404"))
+        debug.assert_not_called()
+        warning.assert_not_called()
+
+    def test_successful_response_is_not_logged(self):
+        debug, warning = self._call(attempts=1, response=self._response(200))
+        debug.assert_not_called()
+        warning.assert_not_called()
+
+    def test_access_denied_is_not_logged_as_a_retry(self):
+        debug, warning = self._call(
+            attempts=1, response=self._response(403, "AccessDenied")
+        )
+        debug.assert_not_called()
+        warning.assert_not_called()
+
+    def test_throttling_code_logs_a_warning(self):
+        debug, warning = self._call(attempts=1, response=self._response(400, "SlowDown"))
+        warning.assert_called_once()
+        self.assertIn("THROTTLED", warning.call_args.args[0])
+        self.assertIn("SlowDown", warning.call_args.args[0])
+        debug.assert_not_called()
+
+    def test_transient_error_code_logs_a_retry(self):
+        debug, warning = self._call(
+            attempts=1, response=self._response(400, "RequestTimeout")
+        )
+        debug.assert_called_once()
+        self.assertIn(
+            "Retrying S3 request due to: RequestTimeout", debug.call_args.args[0]
+        )
+        warning.assert_not_called()
+
+    def test_transient_status_code_logs_a_retry(self):
+        debug, warning = self._call(attempts=1, response=self._response(503))
+        debug.assert_called_once()
+        self.assertIn(
+            "Retrying S3 request due to: HTTP 503", debug.call_args.args[0]
+        )
+        warning.assert_not_called()
+
+    def test_connection_exception_logs_a_retry(self):
+        debug, warning = self._call(
+            attempts=1,
+            response=None,
+            caught_exception=EndpointConnectionError(
+                endpoint_url="https://example.invalid"
+            ),
+        )
+        debug.assert_called_once()
+        self.assertIn("EndpointConnectionError", debug.call_args.args[0])
+        warning.assert_not_called()
+
+    def test_final_attempt_is_not_logged(self):
+        """On the last attempt botocore will not retry, so nothing is logged."""
+        debug, warning = self._call(
+            attempts=self.factory._MAX_ATTEMPTS,
+            response=self._response(400, "SlowDown"),
+        )
+        debug.assert_not_called()
+        warning.assert_not_called()
+
+    def test_max_attempts_matches_botocore_total_attempts(self):
+        """The logging cap must match botocore's derived total attempt count.
+
+        Client ``max_attempts`` means *retries*; botocore adds one for the
+        initial request (and drops the ``max_attempts`` key), so the cap has to
+        be ``_MAX_RETRIES + 1``.
+        """
+        client = S3Factory(logger=LOGGER).get_s3_client(
+            {
+                "provider_name": "Amazon AWS S3",
+                "access_key_id": "key",
+                "access_key_secret": "secret",
+                "region": "us-east-1",
+            }
+        )
+        retries = client.meta.config.retries
+        self.assertEqual(retries["mode"], "standard")
+        self.assertNotIn("max_attempts", retries)
+        self.assertEqual(retries["total_max_attempts"], S3Factory._MAX_ATTEMPTS)
+        self.assertEqual(S3Factory._MAX_ATTEMPTS, S3Factory._MAX_RETRIES + 1)
 
 
 if __name__ == "__main__":

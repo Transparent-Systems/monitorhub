@@ -9,6 +9,43 @@ if TYPE_CHECKING:
     from mypy_boto3_s3.client import S3Client
 
 class S3Factory:
+    # The client's ``retries.max_attempts`` counts *retries*, so botocore makes
+    # one extra attempt for the initial request -- ``botocore/args.py`` derives
+    # ``total_max_attempts = max_attempts + 1``. Retry logging caps at that
+    # total so the final (non-retryable) attempt is not reported as a retry.
+    _MAX_RETRIES = 3
+    _MAX_ATTEMPTS = _MAX_RETRIES + 1
+
+    # Error codes that botocore's ``standard`` retry mode treats as throttling.
+    # Mirrors ``botocore.retries.standard.ThrottledRetryableChecker``.
+    _THROTTLED_ERROR_CODES = frozenset({
+        "Throttling",
+        "ThrottlingException",
+        "ThrottledException",
+        "RequestThrottledException",
+        "TooManyRequestsException",
+        "ProvisionedThroughputExceededException",
+        "TransactionInProgressException",
+        "RequestLimitExceeded",
+        "BandwidthLimitExceeded",
+        "LimitExceededException",
+        "RequestThrottled",
+        "SlowDown",
+        "PriorRequestNotComplete",
+        "EC2ThrottledException",
+    })
+
+    # Error codes botocore's ``standard`` retry mode retries as transient
+    # failures. Mirrors ``botocore.retries.standard.TransientRetryableChecker``.
+    _TRANSIENT_ERROR_CODES = frozenset({
+        "RequestTimeout",
+        "RequestTimeoutException",
+        "PriorRequestNotComplete",
+    })
+
+    # HTTP status codes botocore's ``standard`` retry mode retries.
+    _TRANSIENT_STATUS_CODES = frozenset({500, 502, 503, 504})
+
     def __init__(self, logger : logging.Logger
                 ):
         """
@@ -20,26 +57,72 @@ class S3Factory:
         """
         self.logger = logger or logging.getLogger(__name__)
 
-    def _log_retry_events(self, **kwargs):
-        """Callback function to log internal boto3 retries."""
-        # Pull the response out of the keyword arguments safely
-        response = kwargs.get('response')
-        error_code = 'Unknown'
-        
-        if response and isinstance(response, tuple):
-            # response is (http_response, parsed_data)
-            _, parsed_data = response
+    @staticmethod
+    def _extract_error_details(kwargs: dict) -> tuple[str | None, int | None]:
+        """Pull the error code and HTTP status out of a ``needs-retry`` event.
+
+        The ``response`` kwarg is ``(http_response, parsed_data)``. HEAD
+        responses (e.g. HeadObject) carry no body, so botocore synthesizes the
+        error code from the HTTP status -- a missing object yields ``"404"``.
+
+        :param kwargs: keyword arguments of the botocore ``needs-retry`` event
+        :return: ``(error_code, status_code)``; either may be ``None``
+        :rtype: tuple[str | None, int | None]
+        """
+        error_code: str | None = None
+        status_code: int | None = None
+
+        response = kwargs.get("response")
+        if isinstance(response, tuple):
+            http_response, parsed_data = response
+            status_code = getattr(http_response, "status_code", None)
             if isinstance(parsed_data, dict):
-                error_info = parsed_data.get('Error', {})
-                error_code = error_info.get('Code', 'Unknown')
-        elif 'caught_exception' in kwargs:
-            error_code = type(kwargs['caught_exception']).__name__
-            
-        if error_code != 'Unknown':
-            if error_code in ['SlowDown', 'Throttling', 'RequestLimitExceeded']:
-                self.logger.warning(f"(!) THROTTLED: IDrive/S3 requested a backoff. Code: {error_code}")
-            else:
-                self.logger.debug(f"Retrying S3 request due to: {error_code}")
+                error_info = parsed_data.get("Error", {})
+                if isinstance(error_info, dict):
+                    error_code = error_info.get("Code")
+
+        if error_code is None and kwargs.get("caught_exception") is not None:
+            error_code = type(kwargs["caught_exception"]).__name__
+
+        return error_code, status_code
+
+    def _log_retry_events(self, **kwargs):
+        """Log only the S3 retries that botocore actually performs.
+
+        The ``needs-retry`` event fires for *every* response so that handlers
+        can vote on the retry decision -- it does not fire only when a retry
+        happens. Logging it unconditionally therefore reported benign,
+        non-retryable responses (e.g. the 404 from a HEAD on a not-yet-uploaded
+        object) as retries. Restrict logging to the codes/statuses that the
+        configured ``standard`` retry mode retries, and only while attempts
+        remain.
+        """
+        attempts = kwargs.get("attempts") or 1
+        if attempts >= self._MAX_ATTEMPTS:
+            # Final attempt: botocore will not retry, so do not claim it will.
+            return
+
+        error_code, status_code = self._extract_error_details(kwargs)
+
+        if error_code in self._THROTTLED_ERROR_CODES:
+            self.logger.warning(
+                f"(!) THROTTLED: S3 requested a backoff. Code: {error_code}"
+            )
+            return
+
+        if (
+            error_code in self._TRANSIENT_ERROR_CODES
+            or status_code in self._TRANSIENT_STATUS_CODES
+        ):
+            reason = error_code or f"HTTP {status_code}"
+            self.logger.debug(f"Retrying S3 request due to: {reason}")
+            return
+
+        caught_exception = kwargs.get("caught_exception")
+        if caught_exception is not None:
+            self.logger.debug(
+                f"Retrying S3 request due to: {type(caught_exception).__name__}"
+            )
 
     def get_s3_client(self, profile_config: dict) -> "S3Client":
         """
@@ -73,7 +156,7 @@ class S3Factory:
 
         # Define common client settings once
         common_config = Config(
-            retries={'max_attempts': 3, 'mode': 'standard'},
+            retries={'max_attempts': self._MAX_RETRIES, 'mode': 'standard'},
             # Optional: connect_timeout and read_timeout can be added here for extra reliability
             connect_timeout=5, 
             read_timeout=10
