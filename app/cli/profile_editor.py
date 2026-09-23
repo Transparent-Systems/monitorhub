@@ -224,7 +224,6 @@ class ProfileEditor:
         current_handler_key = reference_data.remote_handler_key(profile)
         use_rclone = self.prompt.prompt_yes_no(
             "Use rclone instead of the built-in S3 handler? "
-            "This requires a remote with the same name in rclone.conf "
             f"(current: {current_handler_key}; Enter to keep; y/n): ",
             default=current_handler_key == reference_data.RCLONE_REMOTE_HANDLER,
         )
