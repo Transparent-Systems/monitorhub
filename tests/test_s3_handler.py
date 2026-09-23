@@ -185,11 +185,13 @@ class TestS3ErrorClassification(unittest.TestCase):
 
 
 class TestS3FactoryProviderDetection(unittest.TestCase):
-    """The AWS branch must match the built-in "Amazon AWS S3" provider name.
+    """The AWS branch matches the provider names MonitorHub and rclone use.
 
-    Regression: the check compared the provider name to the bare string
-    ``"aws"``, so a profile created through the CLI (provider "Amazon AWS S3")
-    never took the region-only path.
+    The built-in provider is named ``AWS`` (the rclone remote key); a legacy
+    CLI-created name (``Amazon AWS S3``) and any rclone-imported name containing
+    ``amazon`` must take the same region-only path.  Regression: the check once
+    compared the provider name to the bare string ``"aws"``, so those names never
+    took the region-only path.
     """
 
     def _client_kwargs(self, profile_config: dict) -> dict:

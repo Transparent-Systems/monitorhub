@@ -152,15 +152,12 @@ class DiagnosticUtil:
                 else:
                     profile_config[key] = rclone_profile[key]
 
-            # Add display hints: credentials are informational only and the
-            # profile must remain in rclone.conf to keep working.
-            config = profile_config
-            config["comment"] = reference_data.RCLONE_PROFILE_COMMENT
-            config["important"] = reference_data.RCLONE_PROFILE_IMPORTANT
-            # Imported profiles are rclone-managed by definition: the section
-            # they came from must stay in rclone.conf, so route them through
-            # rclone even when their type has a native handler (e.g. s3).
-            config[reference_data.CONFIG_REMOTE_HANDLER] = (
+            # MonitorHub owns the profile configuration: the display hints of
+            # the rclone-import era (``comment``/``important``) are no longer
+            # written, and existing ones are ignored when the rclone environment
+            # is built.  Imported profiles are still rclone-managed, so they are
+            # routed through rclone even when their type has a native handler.
+            profile_config[reference_data.CONFIG_REMOTE_HANDLER] = (
                 reference_data.RCLONE_REMOTE_HANDLER
             )
             # Add profile to database

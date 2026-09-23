@@ -22,7 +22,7 @@ class TestReferenceDataProviders(unittest.TestCase):
         providers = reference_data.get_providers()
         self.assertTrue(len(providers) >= 5)
         names = [p.name for p in providers]
-        self.assertIn("Amazon AWS S3", names)
+        self.assertIn("AWS", names)
         self.assertIn("Other", names)
         for p in providers:
             self.assertEqual(p.profile_type, "s3")
@@ -35,6 +35,16 @@ class TestReferenceDataProviders(unittest.TestCase):
 
     def test_get_provider_unknown_returns_none(self):
         self.assertIsNone(reference_data.get_provider("DoesNotExist"))
+
+    def test_is_aws_provider(self):
+        # Built-in name (matches the rclone key), the historical CLI name, and
+        # any rclone-imported name containing "amazon".
+        self.assertTrue(reference_data.is_aws_provider("AWS"))
+        self.assertTrue(reference_data.is_aws_provider("aws"))
+        self.assertTrue(reference_data.is_aws_provider("Amazon AWS S3"))
+        self.assertFalse(reference_data.is_aws_provider("IDrive"))
+        self.assertFalse(reference_data.is_aws_provider("Cloudflare"))
+        self.assertFalse(reference_data.is_aws_provider(""))
 
 
 class TestReferenceDataProfileTypes(unittest.TestCase):

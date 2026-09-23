@@ -115,6 +115,7 @@ class ProfileCommands:
                     profile_name=rclone_profile_name,
                     logger=self.logger,
                     prompt=self.prompt,
+                    profile=profile,
                 )
             else:
                 self.prompt.print(

@@ -25,6 +25,7 @@ Usage:
 """
 
 import logging
+import os
 import shlex
 import shutil
 import subprocess
@@ -32,6 +33,7 @@ import sys
 import time
 from pathlib import Path
 
+from app.monitor import rclone_env
 from app.monitor.remote_handler import RemoteHandler
 from app.monitor.remote_result import RemoteErrorKind, RemoteResult
 
@@ -86,6 +88,7 @@ class RcloneHandler(RemoteHandler):
         logger: logging.Logger | None = None,
         command_timeout: float | None = None,
         exclude_patterns: list[str] | None = None,
+        profile: dict | None = None,
     ):
         """
         Docstring for __init__
@@ -97,6 +100,13 @@ class RcloneHandler(RemoteHandler):
         :param logger: logger instance
         :param command_timeout: Optional timeout (seconds) for each rclone subprocess.
             Defaults to DEFAULT_COMMAND_TIMEOUT. Set to None to disable the timeout.
+        :param exclude_patterns: Optional list of exclude patterns applied by
+            backup and restore.
+        :param profile: Optional full profile dict. When given, the profile's
+            configuration is passed to rclone through the environment
+            (``RCLONE_CONFIG_<NAME>_*``) instead of a section in ``rclone.conf``,
+            and the remote name is derived from the profile name so it can be
+            expressed as an environment variable.
         """    
         self.logger = logger or logging.getLogger(__name__)
         self.command_timeout = (
@@ -108,55 +118,89 @@ class RcloneHandler(RemoteHandler):
         # Get rclone_path
         self.rclone_path = RcloneHandler.get_rclone_path(logger=self.logger)
 
-        if (profile_name is None):
+        # MonitorHub owns the profile configuration, so an rclone-routed profile
+        # is described to rclone through its environment.  The remote name rclone
+        # resolves must match those variable names, so it is derived from the
+        # profile name (see app.monitor.rclone_env).
+        resolved_profile_name = profile_name
+        self.rclone_env: dict[str, str] = {}
+        if profile:
+            human_name = str(profile.get("name") or profile_name or "")
+            resolved_profile_name = rclone_env.env_remote_name(
+                human_name, profile.get("id")
+            )
+            if resolved_profile_name != human_name:
+                self.logger.warning(
+                    f"Profile name '{human_name}' cannot be used as an rclone "
+                    f"remote name (letters, digits and underscores only); using "
+                    f"'{resolved_profile_name}'"
+                )
+            self.rclone_env = rclone_env.build_rclone_env(
+                remote_name=resolved_profile_name,
+                profile_type=str(profile.get("profile_type") or ""),
+                profile_config=profile.get("config") or {},
+                logger=self.logger,
+            )
+
+        if (resolved_profile_name is None):
             self.profile_name = ""
         else:
-            self.profile_name = profile_name
+            self.profile_name = resolved_profile_name
 
         if self.profile_name != "":
             # Check if remote_path is in the conventional rclone format with remote_profile prefix (remote_profile:)
             remote_path_str = str(Path(base_remote_path).as_posix())
-            if not remote_path_str.startswith(profile_name + ":"):
-                base_remote_path = profile_name + ":" + base_remote_path
+            if not remote_path_str.startswith(self.profile_name + ":"):
+                base_remote_path = self.profile_name + ":" + base_remote_path
 
         self.base_remote_path = Path(base_remote_path)
         self.base_monitor_path = Path(base_monitor_path)
         self.exclude_patterns = exclude_patterns or []
 
     @staticmethod
-    def test_connection(profile_name: str, logger: logging.Logger, prompt) -> RemoteResult:
+    def test_connection(
+        profile_name: str,
+        logger: logging.Logger,
+        prompt,
+        profile: dict | None = None,
+    ) -> RemoteResult:
         """
         Test Rclone connectivity by running the 'lsd' command.
 
+        When the full ``profile`` is given its configuration is passed to rclone
+        through the environment, so a profile does not need a section in
+        ``rclone.conf``.
+
         Prints results via the provided prompt service.
         """
-        base_remote_path = f"{profile_name}:"
         handler = RcloneHandler(
             logger=logger,
             base_monitor_path="profile_test_temp_source",
-            base_remote_path=base_remote_path,
+            base_remote_path="",
             profile_name=profile_name,
+            profile=profile,
         )
-        rclone_parms = ["lsd", f"{profile_name}:"]
+        remote_name = handler.profile_name
+        rclone_parms = ["lsd", f"{remote_name}:"]
         try:
             result = handler.run_command(rclone_parms=rclone_parms)
             if result.ok:
                 if "failed to create file system" in result.message.lower():
-                    prompt.print(f"Connection failed to remote: {profile_name}")
+                    prompt.print(f"Connection failed to remote: {remote_name}")
                     prompt.print(f"Error output: {result.message}")
                 else:
-                    prompt.print(f"Connection successful to remote: {profile_name}")
+                    prompt.print(f"Connection successful to remote: {remote_name}")
                     prompt.print(f"Output: {result.message}")
             else:
-                prompt.print(f"Connection failed to remote: {profile_name}")
+                prompt.print(f"Connection failed to remote: {remote_name}")
                 prompt.print(f"Error output: {result.message}")
                 prompt.print("Test failed")
             return result
         except (OSError, subprocess.SubprocessError) as e:
-            prompt.print(f"Connection failed to remote: {profile_name}")
+            prompt.print(f"Connection failed to remote: {remote_name}")
             prompt.print(f"Error: {e}")
             return RemoteResult.failure(
-                f"Connection failed to remote: {profile_name}. Error: {e}", code=1
+                f"Connection failed to remote: {remote_name}. Error: {e}", code=1
             )
     
     @classmethod
@@ -220,6 +264,18 @@ class RcloneHandler(RemoteHandler):
 
         self.logger.debug(f"Running command: {' '.join(rclone_command)}")
 
+        # The profile configuration is handed to rclone through the environment
+        # (RCLONE_CONFIG_<NAME>_*).  Merge with the inherited environment so
+        # rclone keeps PATH, HOME and friends, and so MonitorHub's values win
+        # over any same-named remote in the user's rclone.conf.  Secrets stay out
+        # of the command line, so only the variable names are logged.
+        process_env: dict[str, str] | None = None
+        if self.rclone_env:
+            process_env = {**os.environ, **self.rclone_env}
+            self.logger.debug(
+                "rclone environment: " + ", ".join(sorted(self.rclone_env))
+            )
+
         # Launch rclone and wait in short slices so we can detect (and log) a
         # hung command well before the overall timeout. We keep draining
         # stdout/stderr to avoid pipe-buffer deadlocks on large outputs.
@@ -228,6 +284,7 @@ class RcloneHandler(RemoteHandler):
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            env=process_env,
         )
 
         start_time = time.monotonic()

@@ -164,7 +164,8 @@ Over time we will add native handlers for common cloud storage providers and oth
 ### Rclone
 
 Rclone is the swiss knife of copying file to and from cloud storage. 
-Any remote profile type without a native handler is delegated to a call to Rclone.
+Any remote profile type without a native handler is delegated to a call to Rclone,
+which is configured from the MonitorHub profile itself (no `rclone.conf` needed).
 
 ### S3 via rclone
 
@@ -176,33 +177,47 @@ S3Handler:
 * `remote_handler: rclone` - the profile is delegated to rclone.
 
 Use the rclone route when you want rclone's transfer tuning for S3, for example
-`--transfers`, `--s3-chunk-size`, `--s3-storage-class` or
-`--s3-object-lock-mode`. Those are rclone settings, so they belong in the
-profile's remote section in `rclone.conf`:
+`transfers`, `s3_chunk_size`, `s3_storage_class` or `s3_object_lock_mode`.
 
-    [my-remote]
-    type = s3
-    provider = Other
-    endpoint = https://example.invalid
-    access_key_id = ...
-    secret_access_key = ...
-    transfers = 8
-    s3_chunk_size = 16M
-    s3_storage_class = STANDARD
+**MonitorHub owns the profile configuration.** An rclone-routed profile does not
+need a section in `rclone.conf`: MonitorHub passes the profile's settings to the
+rclone process through its environment, and rclone resolves them as the remote:
 
-Switch a profile with `mhub profile edit` (answer yes to the rclone question),
-or by setting `remote_handler` in the profile configuration (`mhub profile
-show` displays it). Profiles created with `mhub profile import` are managed by
-rclone and are routed to rclone automatically.
+    RCLONE_CONFIG_MY_REMOTE_TYPE=s3
+    RCLONE_CONFIG_MY_REMOTE_PROVIDER=Other
+    RCLONE_CONFIG_MY_REMOTE_ENDPOINT=https://example.invalid
+    RCLONE_CONFIG_MY_REMOTE_ACCESS_KEY_ID=...
+    RCLONE_CONFIG_MY_REMOTE_SECRET_ACCESS_KEY=...
 
-Note: `remote_handler: rclone` currently requires a remote with the same name
-as the profile in `rclone.conf`; MonitorHub does not build an on-the-fly remote
-from the profile configuration yet, so `mhub profile test` reports
-`didn't find section in config file` when that remote is missing.
+The variables are set per rclone process, so they are local to the transfer that
+belongs to that profile: other monitors, other rclone runs and your shell are
+unaffected, and secrets never appear on the command line. If an `rclone.conf`
+section with the same name exists, the MonitorHub settings win.
 
-Also note that `--transfers` only applies to folder copies (backup and
-restore); a single-file instant upload is tuned with `--s3-chunk-size` and
-`--s3-upload-concurrency` instead.
+Per-profile rclone options live in the profile config as `rclone_options` and
+become rclone flag variables:
+
+    "rclone_options": {
+      "transfers": 8,
+      "s3_chunk_size": "16M",
+      "s3_storage_class": "STANDARD",
+      "s3_object_lock_mode": "GOVERNANCE"
+    }
+
+Switch a profile with `mhub profile edit` (answer yes to the rclone question) or
+by setting `remote_handler` in the profile configuration (`mhub profile show`
+displays it). `mhub profile import` reads profiles out of `rclone.conf` once;
+from then on MonitorHub is the source of truth for their configuration.
+
+Keep profile names to letters, digits and underscores: the name is used in the
+environment variable names and rclone does not substitute other characters (a
+name such as `my-dest` is used as `my_dest` for rclone, with a warning in the
+log). The object lock options need a recent rclone (`rclone help flags | grep
+object-lock`).
+
+Also note that `transfers` only applies to folder copies (backup and restore); a
+single-file instant upload is tuned with `s3_chunk_size` and
+`s3_upload_concurrency` instead.
 
 
 ## Acknowledgments

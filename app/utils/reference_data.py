@@ -61,6 +61,19 @@ def get_providers() -> tuple[Provider, ...]:
     return PROVIDERS
 
 
+def is_aws_provider(provider_name: str) -> bool:
+    """Return True when a provider name refers to Amazon AWS S3.
+
+    The built-in provider is named ``AWS`` (matching the rclone remote key) and
+    rclone-imported profiles may carry ``AWS`` or a name containing ``amazon``
+    (e.g. the historical ``Amazon AWS S3``).  AWS profiles need a region instead
+    of an endpoint, so this rule is shared by the CLI wizard and the S3 client
+    factory.
+    """
+    provider_key = (provider_name or "").strip().lower()
+    return provider_key == "aws" or "amazon" in provider_key
+
+
 # ---------------------------------------------------------------------------
 # Monitor type / status reference data
 # ---------------------------------------------------------------------------
@@ -118,15 +131,10 @@ CONFIG_REMOTE_HANDLER = "remote_handler"
 RCLONE_REMOTE_HANDLER = "rclone"
 
 # Display hints stored in the config of profiles imported from rclone.  They
-# explain that the stored credentials are informational only and that the
-# profile must stay in rclone.conf to keep working.  Rclone-managed profile
-# types are not editable from MonitorHub; see ProfileEditor._edit_remote.
-RCLONE_PROFILE_COMMENT = (
-    "Credentials stored here are for informational purposes only."
-)
-RCLONE_PROFILE_IMPORTANT = (
-    "Profile must be in rclone config in order to work ! "
-)
+# are no longer written: MonitorHub owns the profile configuration and feeds it
+# to rclone through the environment (see ``app.monitor.rclone_env``).  Existing
+# profiles may still carry ``comment``/``important``; they are ignored when the
+# rclone environment is built.
 
 # Documentation-only — handled by rclone, not a native handler.
 # Listed here so the vocabulary is visible; no runtime behaviour depends on them.

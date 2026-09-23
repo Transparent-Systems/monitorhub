@@ -565,6 +565,27 @@ class TestCommands(unittest.TestCase):
             profile["config"][reference_data.CONFIG_REMOTE_HANDLER], "s3"
         )
 
+    def test_profile_new_aws_provider_stores_region(self):
+        # provider 1 = AWS: the wizard must ask for a region, not an endpoint
+        # (regression from renaming the provider to "AWS").
+        commands, _ = self._make_commands(
+            [
+                "1",
+                "my-aws-profile",
+                "1",
+                "FAKE_ACCESS_KEY_ID",
+                "FAKE_ACCESS_KEY_SECRET",
+                "eu-west-1",
+            ]
+        )
+        commands.profile.new()
+        profile = commands.sqlite_handler.get_profile(profile_name="my-aws-profile")
+        self.assertTrue(profile)
+        self.assertEqual(profile["config"]["provider_name"], "AWS")
+        self.assertEqual(profile["config"]["region"], "eu-west-1")
+        self.assertEqual(profile["config"]["env_auth"], "false")
+        self.assertNotIn("endpoint", profile["config"])
+
     def test_profile_edit_remote_switches_to_rclone(self):
         profile_id = self.database_test_data.sqlite_handler.get_profile(
             profile_name="s3-test"
@@ -613,6 +634,13 @@ class TestCommands(unittest.TestCase):
         self.assertTrue(result)
         rclone_test.assert_called_once()
         native_test.assert_not_called()
+        # The full profile is handed over, so rclone is configured via env.
+        passed_profile = rclone_test.call_args.kwargs["profile"]
+        self.assertEqual(passed_profile["name"], "ftp-test")
+        self.assertEqual(
+            passed_profile["config"][reference_data.CONFIG_REMOTE_HANDLER],
+            reference_data.RCLONE_REMOTE_HANDLER,
+        )
 
     def test_profile_test_s3_profile_routed_to_rclone(self):
         profile_id = self.database_test_data.sqlite_handler.get_profile(

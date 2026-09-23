@@ -116,6 +116,24 @@ class TestRemoteHandlerMapping(unittest.TestCase):
         )
         self.assertIsInstance(handler, RcloneHandler)
 
+    def test_rclone_route_receives_the_profile_configuration(self):
+        """The rclone branch gets the profile, so rclone is configured via env."""
+        handler = get_remote_handler(
+            monitor_path="/local",
+            remote_path="/remote",
+            profile={
+                "id": 9,
+                "profile_type": "ftp",
+                "name": "myftp",
+                "config": {"host": "example.com", "user": "ftpuser", "pass": "p"},
+            },
+        )
+        self.assertIsInstance(handler, RcloneHandler)
+        self.assertEqual(handler.rclone_env["RCLONE_CONFIG_MYFTP_TYPE"], "ftp")
+        self.assertEqual(
+            handler.rclone_env["RCLONE_CONFIG_MYFTP_HOST"], "example.com"
+        )
+
     def test_stored_key_overrides_profile_type(self):
         """An s3 profile switched to rclone is built as an RcloneHandler."""
         handler = get_remote_handler(

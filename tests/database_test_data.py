@@ -63,7 +63,6 @@ class DatabaseTestData:
                     "access_key_secret" : f"{S3_TEST_ACCESS_KEY_SECRET}",
                     "endpoint" : f"{S3_TEST_ENDPOINT}",
                     "remote_handler": "s3",
-                    "comment": "Credentials stored here are for informational purposes only."
                     }
             },
             {
@@ -75,8 +74,6 @@ class DatabaseTestData:
                     "user": "ftpuser",
                     "pass": f"{RCLONE_TEST_FTP_PASS}",
                     "remote_handler": "rclone",
-                    "comment": "Credentials stored here are for informational purposes only.",
-                    "important": "Profile must be in rclone config in order to work ! "
                 }
             },
             {

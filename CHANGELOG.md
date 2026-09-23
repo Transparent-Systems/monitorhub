@@ -2,6 +2,24 @@
 
 ## [Unreleased]
 
+- An rclone-routed profile no longer needs a section in ``rclone.conf``:
+  MonitorHub passes the profile's settings to the rclone subprocess through
+  ``RCLONE_CONFIG_<REMOTE>_<OPTION>`` environment variables (new
+  ``app.monitor.rclone_env``), so rclone resolves the profile's remote from
+  MonitorHub alone and the variables stay local to that one rclone process
+  (secrets never reach the command line).  Verified against the installed
+  rclone: the remote resolves with no config file at all, and the MonitorHub
+  values win over a same-named ``rclone.conf`` section.  Per-profile rclone
+  tuning is stored in the profile config as ``rclone_options`` (``transfers``,
+  ``s3_chunk_size``, ``s3_storage_class``, ``s3_object_lock_mode``, ...) and
+  becomes ``RCLONE_<OPTION>`` flag variables.  ``RcloneHandler`` accepts the
+  full profile (and so does ``test_connection``, via ``profile test``); a
+  profile name that is not ``[A-Za-z0-9_]`` is sanitised for the rclone remote
+  name with a warning.  The ``comment``/``important`` display hints of the
+  rclone-import era are no longer written (existing ones are ignored when the
+  environment is built), and ``profile edit`` reports that editing non-s3
+  remote types is not implemented yet instead of pointing at ``rclone config``.
+
 - Remote profiles now carry an explicit ``remote_handler`` config key (``s3`` or
   ``rclone``) that selects their handler, so an S3 profile can be delegated to
   rclone instead of the builtin S3Handler -- useful for rclone transfer tuning

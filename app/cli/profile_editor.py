@@ -133,21 +133,18 @@ class ProfileEditor:
         """
         Handles profile edit for profiles with category "remote".
 
-        Only the s3 profile type currently has an edit wizard. Rclone-managed
-        remote types (ftp, sftp, drive, ...) are configured in rclone.conf and
-        are not editable here; add a dedicated ``_edit_<type>`` method for a
-        native remote type when its wizard is written.
+        Only the s3 profile type has an edit wizard so far.  A generic editor
+        for the other remote types (ftp, sftp, drive, ...) is still to be
+        written; their configuration lives in MonitorHub but cannot be changed
+        from the CLI yet.
         """
         profile_type = profile.get("profile_type", "")
         if profile_type != "s3":
-            profile_config = profile.get("config") or {}
             self.prompt.print(
-                f"Profile type '{profile_type}' cannot be edited from MonitorHub."
+                f"Editing profile type '{profile_type}' is not implemented yet."
             )
-            important = profile_config.get("important", "")
             self.prompt.print(
-                important
-                or "Rclone-managed profiles must be edited with 'rclone config'."
+                "Only the s3 profile type can be edited from MonitorHub at the moment."
             )
             return
 
@@ -182,7 +179,7 @@ class ProfileEditor:
         # Prompt user for region
         # For Amazon we need the region
         provider_name = profile_config.get("provider_name", "N/A")
-        if "Amazon AWS" in provider_name:
+        if reference_data.is_aws_provider(provider_name):
             profile_config["env_auth"] = "false"
             profile_region = profile_config.get("region", None)
 
@@ -523,7 +520,7 @@ class ProfileEditor:
 
         input_region: str = ""
         input_endpoint: str = ""
-        if "Amazon AWS" in input_provider_name:
+        if reference_data.is_aws_provider(input_provider_name):
             input_region = self.prompt.prompt_required(
                 f"Enter S3 region of your provider: {input_provider_name}: ",
                 empty_message="Region cannot be empty. Please try again.",
@@ -550,7 +547,7 @@ class ProfileEditor:
             ),
         }
 
-        if "Amazon AWS" in input_provider_name:
+        if reference_data.is_aws_provider(input_provider_name):
             profile_config["env_auth"] = "false"
             profile_config["region"] = input_region
         else:

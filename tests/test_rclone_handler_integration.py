@@ -27,6 +27,7 @@ from tests.util.testing_util import create_test_data
 class TestRcloneHandlerIntegration(unittest.TestCase):
     monitor: ClassVar[dict] = {}
     profile_name: ClassVar[str] = ""
+    profile: ClassVar[dict] = {}
     logger : logging.Logger
     
     @classmethod
@@ -60,6 +61,9 @@ class TestRcloneHandlerIntegration(unittest.TestCase):
             base_monitor_path=cls.monitor_path,
             base_remote_path=cls.remote_path,
             profile_name=cls.profile_name,
+            # The full profile makes rclone use the MonitorHub configuration
+            # through the environment (RCLONE_CONFIG_<NAME>_*), not rclone.conf.
+            profile=cls.profile,
         )
         
         # Ensure monitor directory exists
@@ -276,6 +280,7 @@ if __name__ == "__main__":
     # Inject monitor configuration into Test Class
     TestRcloneHandlerIntegration.monitor = monitor
     TestRcloneHandlerIntegration.profile_name = profile.get("name", "")
+    TestRcloneHandlerIntegration.profile = profile
     TestRcloneHandlerIntegration.logger = logger
     logger.info(f"Running tests for monitor: {monitor.get('name')}")
     loader = unittest.TestLoader()

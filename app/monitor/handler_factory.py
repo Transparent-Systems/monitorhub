@@ -90,8 +90,8 @@ def get_remote_handler(
         )
 
     # The rclone key (and, defensively, any unresolvable key) uses the rclone
-    # CLI.  The on-the-fly remote syntax (":s3,...:") is not built yet, so the
-    # profile name must match a section in rclone.conf.
+    # CLI.  The profile's configuration is passed through the environment
+    # (RCLONE_CONFIG_<NAME>_*), so no section in rclone.conf is required.
     rclone_profile_name = profile_name or profile_type
     if not rclone_profile_name:
         logger.warning(
@@ -104,6 +104,7 @@ def get_remote_handler(
         profile_name=rclone_profile_name,
         logger=logger,
         exclude_patterns=exclude_patterns or [],
+        profile=profile,
     )
 
 

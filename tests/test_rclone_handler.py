@@ -5,8 +5,12 @@ fake process so the mapping from rclone exit codes to RemoteResult is verified.
 """
 
 import logging
+import os
+import shutil
 import subprocess
+import tempfile
 import unittest
+from pathlib import Path
 from unittest import mock
 
 from app.monitor.rclone_handler import RcloneHandler
@@ -64,6 +68,23 @@ def _make_handler(command_timeout: float = 0) -> RcloneHandler:
         profile_name="remote",
         logger=logger,
         command_timeout=command_timeout,
+    )
+    handler.rclone_path = "rclone"
+    return handler
+
+
+def _make_profiled_handler(profile: dict, command_timeout: float = 0) -> RcloneHandler:
+    """Build a handler from a full profile dict (env-based rclone config)."""
+    logger = logging.getLogger("tests.test_rclone_handler")
+    logger.setLevel(logging.CRITICAL)
+    logger.propagate = False
+    handler = RcloneHandler(
+        base_monitor_path="/tmp",
+        base_remote_path="bucket/prefix",
+        profile_name=profile.get("name", ""),
+        logger=logger,
+        command_timeout=command_timeout,
+        profile=profile,
     )
     handler.rclone_path = "rclone"
     return handler
@@ -183,6 +204,143 @@ class TestRcloneRunCommand(unittest.TestCase):
         self.assertEqual(result.kind, RemoteErrorKind.TIMEOUT)
         self.assertTrue(result.retryable)
         self.assertEqual(result.code, 1)
+
+
+class TestRcloneProfileEnvironment(unittest.TestCase):
+    """A profile is described to rclone through the environment, not rclone.conf.
+
+    The variables are passed per subprocess, so they only affect the rclone
+    process that belongs to this handler.
+    """
+
+    PROFILE = {
+        "id": 3,
+        "name": "my-dest",
+        "profile_type": "s3",
+        "config": {
+            "provider_name": "Other",
+            "endpoint": "https://example.invalid",
+            "access_key_id": "MYKEY",
+            "access_key_secret": "MYSECRET",
+            "remote_handler": "rclone",
+            "rclone_options": {"transfers": 8},
+        },
+    }
+
+    def test_remote_name_is_sanitised_and_used_for_paths(self):
+        handler = _make_profiled_handler(self.PROFILE)
+
+        self.assertEqual(handler.profile_name, "my_dest")
+        self.assertEqual(handler.base_remote_path.as_posix(), "my_dest:bucket/prefix")
+        self.assertEqual(handler.rclone_env["RCLONE_CONFIG_MY_DEST_TYPE"], "s3")
+        self.assertEqual(
+            handler.rclone_env["RCLONE_CONFIG_MY_DEST_SECRET_ACCESS_KEY"], "MYSECRET"
+        )
+        self.assertEqual(handler.rclone_env["RCLONE_TRANSFERS"], "8")
+        self.assertNotIn("RCLONE_CONFIG_MY_DEST_REMOTE_HANDLER", handler.rclone_env)
+
+    def test_popen_receives_merged_environment_and_no_secret_in_argv(self):
+        handler = _make_profiled_handler(self.PROFILE)
+
+        with mock.patch(
+            "app.monitor.rclone_handler.subprocess.Popen",
+            return_value=_FakeProcess(0, stdout="ok"),
+        ) as popen:
+            handler.run_command(["copy", "/local", "my_dest:bucket/prefix"])
+
+        env = popen.call_args.kwargs["env"]
+        self.assertEqual(env["RCLONE_CONFIG_MY_DEST_TYPE"], "s3")
+        # The inherited environment is kept (rclone needs PATH/HOME).
+        self.assertTrue(set(os.environ.items()) <= set(env.items()))
+        # Secrets are only in the environment, never on the command line.
+        argv = popen.call_args.args[0]
+        self.assertNotIn("MYSECRET", argv)
+
+    def test_handler_without_profile_keeps_the_inherited_environment(self):
+        handler = _make_handler()
+
+        with mock.patch(
+            "app.monitor.rclone_handler.subprocess.Popen",
+            return_value=_FakeProcess(0),
+        ) as popen:
+            handler.run_command(["ls", "remote:path"])
+
+        self.assertIsNone(popen.call_args.kwargs["env"])
+
+    def test_test_connection_uses_the_profile_environment(self):
+        prompt = mock.Mock()
+
+        with mock.patch(
+            "app.monitor.rclone_handler.subprocess.Popen",
+            return_value=_FakeProcess(0, stdout="bucket"),
+        ) as popen:
+            RcloneHandler.test_connection(
+                profile_name="my-dest",
+                logger=logging.getLogger("tests.test_rclone_handler"),
+                prompt=prompt,
+                profile=self.PROFILE,
+            )
+
+        argv = popen.call_args.args[0]
+        self.assertEqual(argv[1:3], ["lsd", "my_dest:"])
+        self.assertEqual(
+            popen.call_args.kwargs["env"]["RCLONE_CONFIG_MY_DEST_TYPE"], "s3"
+        )
+
+
+class TestRcloneEnvAgainstRealBinary(unittest.TestCase):
+    """End-to-end: rclone resolves the profile from the environment alone.
+
+    Hermetic: the endpoint is a refused loopback port, so no network and no
+    credentials are needed.  rclone's error names the endpoint it actually used,
+    which is how resolution and precedence are asserted.
+    """
+
+    PROFILE = {
+        "id": 11,
+        "name": "mh_env_live",
+        "profile_type": "s3",
+        "config": {
+            "provider_name": "Other",
+            "endpoint": "http://127.0.0.1:1",
+            "access_key_id": "KEYID",
+            "access_key_secret": "SECRETVALUE",
+            # Fail after one attempt instead of retrying for a minute.
+            "rclone_options": {"retries": 1, "low_level_retries": 1},
+        },
+    }
+
+    def _run_lsd(self, config_path: str) -> object:
+        with mock.patch.dict(os.environ, {"RCLONE_CONFIG": config_path}):
+            handler = _make_profiled_handler(self.PROFILE, command_timeout=30)
+            return handler.run_command(["lsd", "mh_env_live:"])
+
+    @unittest.skipUnless(shutil.which("rclone"), "rclone not installed")
+    def test_remote_is_resolved_without_rclone_conf(self):
+        result = self._run_lsd("/tmp/monitorhub_missing_rclone.conf")
+
+        # Resolved from the environment: the failure is the refused endpoint,
+        # not a missing config section.
+        self.assertNotIn("didn't find section in config file", result.message)
+        self.assertIn("127.0.0.1:1", result.message)
+
+    @unittest.skipUnless(shutil.which("rclone"), "rclone not installed")
+    def test_monitorhub_environment_wins_over_rclone_conf(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            conf = Path(tmp) / "rclone.conf"
+            conf.write_text(
+                "[mh_env_live]\n"
+                "type = s3\n"
+                "provider = Other\n"
+                "endpoint = http://127.0.0.1:2\n"
+                "access_key_id = FROM_CONF\n"
+                "secret_access_key = FROM_CONF\n",
+                encoding="utf-8",
+            )
+            result = self._run_lsd(str(conf))
+
+        self.assertIn("127.0.0.1:1", result.message)
+        self.assertNotIn("127.0.0.1:2", result.message)
 
 
 if __name__ == "__main__":

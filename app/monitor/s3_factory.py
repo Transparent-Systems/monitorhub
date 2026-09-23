@@ -5,6 +5,8 @@ import boto3
 from botocore.client import Config
 from botocore.exceptions import BotoCoreError, ClientError
 
+from app.utils import reference_data
+
 if TYPE_CHECKING:
     from mypy_boto3_s3.client import S3Client
 
@@ -164,13 +166,13 @@ class S3Factory:
 
         # On AWS we can omit the endpoint_url and use the region only
 
-        # Built-in providers are named "Amazon AWS S3"; rclone-imported AWS
-        # profiles carry the bare rclone key "AWS". Match both, plus any other
-        # name containing "amazon", so native-AWS profiles take the region path.
+        # The provider rule is shared with the CLI wizard
+        # (reference_data.is_aws_provider): the built-in provider is "AWS" (the
+        # rclone key) and any name containing "amazon" is treated the same, so
+        # native-AWS profiles take the region path.
         provider_key = (provider_name or "").strip().lower()
-        is_aws = provider_key == "aws" or "amazon" in provider_key
 
-        if is_aws:
+        if reference_data.is_aws_provider(provider_name):
             self.logger.debug("Provider is AWS")
             client = boto3.client(
                 service_name='s3',
