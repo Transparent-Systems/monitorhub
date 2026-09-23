@@ -20,16 +20,22 @@ other rclone invocations are unaffected, and secrets never appear in the command
 line (``ps``) or in the log.
 
 Environment names are ``RCLONE_CONFIG_`` + the remote name uppercased + ``_`` +
-the option name uppercased.  rclone does not substitute characters in the name
-(verified: ``my-dest`` does not resolve ``RCLONE_CONFIG_MY_DEST_*``), so a name
-that is not ``[A-Za-z0-9_]`` cannot be expressed.  Such names are sanitised by
-:func:`env_remote_name`; keep profile names to letters, digits and underscores to
-have the name in the log match the one rclone sees.
+the option name uppercased.  rclone substitutes nothing in the name (verified:
+``my-dest`` does not resolve ``RCLONE_CONFIG_MY_DEST_*``), so the remote name we
+hand rclone must consist of letters, digits and underscores.  That is a purely
+technical restriction of the environment-variable channel -- rclone itself
+handles names with dashes perfectly well -- so :func:`env_remote_name` normalises
+such names (``s3-test`` -> ``s3_test``) and the mapping is logged at DEBUG level.
+
+:func:`build_environment` is the entry point for a handler: it returns the remote
+name together with the variables, so the handler never has to know how the name
+is derived.
 """
 
 import logging
 import re
 import subprocess
+from dataclasses import dataclass
 
 from app.utils import reference_data
 
@@ -73,20 +79,34 @@ FLAGS_PROBE_TIMEOUT = 30.0
 _KNOWN_FLAGS_CACHE: dict[str, frozenset[str]] = {}
 
 
+@dataclass(frozen=True)
+class RcloneEnvironment:
+    """Everything a handler needs to run rclone for one profile.
+
+    ``remote_name`` is the name rclone resolves from ``variables``; the handler
+    uses it for the ``<remote>:path`` arguments.
+    """
+
+    remote_name: str
+    variables: dict[str, str]
+    unsupported_options: tuple[str, ...] = ()
+
+
 def env_remote_name(profile_name: str, profile_id: int | None = None) -> str:
     """Return the remote name rclone will see for a profile.
 
-    The name must be expressible as an environment variable name, so a name
-    that is not ``[A-Za-z0-9_]`` is sanitised (invalid characters become ``_``).
-    An empty name falls back to ``mh_<profile id>``.
+    The name must be expressible as an environment variable name, so characters
+    other than letters, digits and underscore are normalised to ``_`` (the
+    profile-name to remote-name mapping is reported at DEBUG by
+    :func:`build_environment`).  An empty name falls back to ``mh_<profile id>``.
     """
     name = (profile_name or "").strip()
     if _ENV_SAFE_NAME_RE.match(name):
         return name
 
-    sanitised = _UNSAFE_CHARS_RE.sub("_", name)
-    if sanitised:
-        return sanitised
+    normalised = _UNSAFE_CHARS_RE.sub("_", name)
+    if normalised:
+        return normalised
     return f"mh_{profile_id}" if profile_id is not None else "mh_profile"
 
 
@@ -231,4 +251,64 @@ def unknown_rclone_options(
         if option_name.replace("_", "-") not in known:
             unknown.append(option_name)
     return sorted(unknown)
+
+
+def build_environment(
+    profile: dict,
+    rclone_path: str = "",
+    logger: logging.Logger | None = None,
+) -> RcloneEnvironment:
+    """Build the rclone environment for a profile.
+
+    Owns the whole profile-to-rclone mapping, so callers (handlers) never deal
+    with the remote-name derivation or the option validation themselves:
+
+    * the remote name (normalised for the environment-variable channel, reported
+      at DEBUG when it changes);
+    * the ``RCLONE_CONFIG_<NAME>_*`` variables for the profile's backend options;
+    * the ``RCLONE_<OPTION>`` flag variables for the profile's ``rclone_options``;
+    * the options the installed rclone does not support (reported as a warning,
+      because rclone ignores unknown values silently).
+
+    :param profile: Profile dict with ``name``, ``profile_type`` and ``config``
+    :param rclone_path: rclone binary used to validate the options; when empty
+        the options are not validated
+    :param logger: Optional logger for the normalisation and option messages
+    """
+    profile_name = str(profile.get("name") or "")
+    remote_name = env_remote_name(profile_name, profile.get("id"))
+    if logger is not None and remote_name != profile_name:
+        logger.debug(
+            f"Profile '{profile_name}': rclone remote name normalised to "
+            f"'{remote_name}' (rclone environment variable names allow letters, "
+            "digits and underscores only)"
+        )
+
+    config = profile.get("config")
+    profile_config = config if isinstance(config, dict) else {}
+    variables = build_rclone_env(
+        remote_name=remote_name,
+        profile_type=str(profile.get("profile_type") or ""),
+        profile_config=profile_config,
+        logger=logger,
+    )
+
+    unsupported: tuple[str, ...] = ()
+    if rclone_path:
+        unknown = unknown_rclone_options(
+            profile_config.get(RCLONE_OPTIONS_KEY), rclone_path, logger=logger
+        )
+        if unknown:
+            if logger is not None:
+                logger.warning(
+                    f"Profile '{profile_name or remote_name}': rclone does not "
+                    f"support {', '.join(unknown)}; these settings are ignored"
+                )
+            unsupported = tuple(unknown)
+
+    return RcloneEnvironment(
+        remote_name=remote_name,
+        variables=variables,
+        unsupported_options=unsupported,
+    )
 

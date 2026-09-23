@@ -228,7 +228,7 @@ class TestRcloneProfileEnvironment(unittest.TestCase):
         },
     }
 
-    def test_remote_name_is_sanitised_and_used_for_paths(self):
+    def test_remote_name_is_normalised_and_used_for_paths(self):
         handler = _make_profiled_handler(self.PROFILE)
 
         self.assertEqual(handler.profile_name, "my_dest")

@@ -104,9 +104,8 @@ class RcloneHandler(RemoteHandler):
             backup and restore.
         :param profile: Optional full profile dict. When given, the profile's
             configuration is passed to rclone through the environment
-            (``RCLONE_CONFIG_<NAME>_*``) instead of a section in ``rclone.conf``,
-            and the remote name is derived from the profile name so it can be
-            expressed as an environment variable.
+            (``RCLONE_CONFIG_<NAME>_*``) instead of a section in ``rclone.conf``;
+            ``app.monitor.rclone_env`` derives and normalises the remote name.
         """    
         self.logger = logger or logging.getLogger(__name__)
         self.command_timeout = (
@@ -119,50 +118,19 @@ class RcloneHandler(RemoteHandler):
         self.rclone_path = RcloneHandler.get_rclone_path(logger=self.logger)
 
         # MonitorHub owns the profile configuration, so an rclone-routed profile
-        # is described to rclone through its environment.  The remote name rclone
-        # resolves must match those variable names, so it is derived from the
-        # profile name (see app.monitor.rclone_env).
+        # is described to rclone through its environment.  rclone_env owns that
+        # mapping entirely (including the remote-name normalisation), so this
+        # handler only consumes the result.
         resolved_profile_name = profile_name
         self.rclone_env: dict[str, str] = {}
         if profile:
-            human_name = str(profile.get("name") or profile_name or "")
-            resolved_profile_name = rclone_env.env_remote_name(
-                human_name, profile.get("id")
+            environment = rclone_env.build_environment(
+                profile, rclone_path=self.rclone_path, logger=self.logger
             )
-            if resolved_profile_name != human_name:
-                self.logger.warning(
-                    f"Profile name '{human_name}' cannot be used as an rclone "
-                    f"remote name (letters, digits and underscores only); using "
-                    f"'{resolved_profile_name}'"
-                )
-            self.rclone_env = rclone_env.build_rclone_env(
-                remote_name=resolved_profile_name,
-                profile_type=str(profile.get("profile_type") or ""),
-                profile_config=profile.get("config") or {},
-                logger=self.logger,
-            )
-            # rclone ignores RCLONE_* variables for flags it does not have, so
-            # report options that this rclone build cannot apply (an older
-            # rclone without object lock, or a typo).
-            profile_config = profile.get("config")
-            options = (
-                profile_config.get(rclone_env.RCLONE_OPTIONS_KEY)
-                if isinstance(profile_config, dict)
-                else None
-            )
-            unknown_options = rclone_env.unknown_rclone_options(
-                options, self.rclone_path, logger=self.logger
-            )
-            if unknown_options:
-                self.logger.warning(
-                    f"Profile '{human_name}': rclone does not support "
-                    f"{', '.join(unknown_options)}; these settings are ignored"
-                )
+            resolved_profile_name = environment.remote_name
+            self.rclone_env = environment.variables
 
-        if (resolved_profile_name is None):
-            self.profile_name = ""
-        else:
-            self.profile_name = resolved_profile_name
+        self.profile_name = resolved_profile_name or ""
 
         if self.profile_name != "":
             # Check if remote_path is in the conventional rclone format with remote_profile prefix (remote_profile:)

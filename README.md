@@ -218,11 +218,11 @@ by setting `remote_handler` in the profile configuration (`mhub profile show`
 displays it). `mhub profile import` reads profiles out of `rclone.conf` once;
 from then on MonitorHub is the source of truth for their configuration.
 
-Keep profile names to letters, digits and underscores: the name is used in the
-environment variable names and rclone does not substitute other characters (a
-name such as `my-dest` is used as `my_dest` for rclone, with a warning in the
-log). The object lock options need a recent rclone (`rclone help flags | grep
-object-lock`).
+A profile name can contain any characters -- rclone itself is happy with dashes
+(`s3-test`). The name is only normalised for the environment-variable channel,
+which allows letters, digits and underscores, so a profile named `s3-test` is
+used as `s3_test` for rclone; the mapping is logged at DEBUG level when the two
+differ.
 
 Also note that `transfers` only applies to folder copies (backup and restore); a
 single-file instant upload is tuned with `s3_chunk_size` and

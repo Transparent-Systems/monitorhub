@@ -20,9 +20,9 @@ class TestEnvRemoteName(unittest.TestCase):
     def test_names_are_stripped(self):
         self.assertEqual(rclone_env.env_remote_name("  mydest  "), "mydest")
 
-    def test_unsafe_characters_are_replaced(self):
-        # rclone does not substitute characters, so the name we pass must be
-        # expressible as an environment variable name.
+    def test_unsafe_characters_are_normalised(self):
+        # rclone substitutes nothing in the env-var name, so the remote name we
+        # pass must be expressible as an environment variable name.
         self.assertEqual(rclone_env.env_remote_name("my-dest"), "my_dest")
         self.assertEqual(rclone_env.env_remote_name("my.dest"), "my_dest")
         self.assertEqual(rclone_env.env_remote_name("my dest"), "my_dest")
@@ -238,6 +238,88 @@ class TestUnknownRcloneOptions(unittest.TestCase):
             self.assertEqual(rclone_env.unknown_rclone_options(None, "rclone"), [])
             self.assertEqual(rclone_env.unknown_rclone_options({}, "rclone"), [])
         run.assert_not_called()
+
+
+class TestBuildEnvironment(unittest.TestCase):
+    """The profile-to-rclone mapping is owned by rclone_env, not the handler."""
+
+    PROFILE = {
+        "id": 3,
+        "name": "s3-test",
+        "profile_type": "s3",
+        "config": {
+            "provider_name": "Other",
+            "endpoint": "https://example.invalid",
+            "access_key_id": "MYKEY",
+            "access_key_secret": "MYSECRET",
+            "remote_handler": "rclone",
+        },
+    }
+
+    def test_returns_remote_name_and_variables(self):
+        environment = rclone_env.build_environment(self.PROFILE)
+
+        self.assertEqual(environment.remote_name, "s3_test")
+        self.assertEqual(environment.variables["RCLONE_CONFIG_S3_TEST_TYPE"], "s3")
+        self.assertEqual(
+            environment.variables["RCLONE_CONFIG_S3_TEST_SECRET_ACCESS_KEY"],
+            "MYSECRET",
+        )
+        self.assertEqual(environment.unsupported_options, ())
+
+    def test_normalised_name_is_reported_at_debug(self):
+        logger = mock.Mock()
+
+        rclone_env.build_environment(self.PROFILE, logger=logger)
+
+        logger.debug.assert_called_once()
+        self.assertIn("s3_test", logger.debug.call_args.args[0])
+        logger.warning.assert_not_called()
+
+    def test_env_safe_name_is_not_reported(self):
+        logger = mock.Mock()
+
+        environment = rclone_env.build_environment(
+            dict(self.PROFILE, name="s3_test"), logger=logger
+        )
+
+        self.assertEqual(environment.remote_name, "s3_test")
+        logger.debug.assert_not_called()
+
+    def test_unsupported_options_are_warned_about_and_returned(self):
+        logger = mock.Mock()
+        profile = dict(
+            self.PROFILE,
+            config={
+                **self.PROFILE["config"],
+                "rclone_options": {"s3_object_lock_mod": "GOVERNANCE"},
+            },
+        )
+        with mock.patch.object(
+            rclone_env, "unknown_rclone_options", return_value=["s3_object_lock_mod"]
+        ):
+            environment = rclone_env.build_environment(
+                profile, rclone_path="rclone", logger=logger
+            )
+
+        self.assertEqual(environment.unsupported_options, ("s3_object_lock_mod",))
+        logger.warning.assert_called_once()
+        self.assertIn("s3_object_lock_mod", logger.warning.call_args.args[0])
+
+    def test_options_are_not_validated_without_an_rclone_path(self):
+        with mock.patch.object(rclone_env, "unknown_rclone_options") as unknown:
+            environment = rclone_env.build_environment(self.PROFILE)
+
+        unknown.assert_not_called()
+        self.assertEqual(environment.unsupported_options, ())
+
+    def test_profile_without_name_or_config(self):
+        environment = rclone_env.build_environment({"name": "", "profile_type": "s3"})
+
+        self.assertEqual(environment.remote_name, "mh_profile")
+        self.assertEqual(
+            environment.variables, {"RCLONE_CONFIG_MH_PROFILE_TYPE": "s3"}
+        )
 
 
 if __name__ == "__main__":

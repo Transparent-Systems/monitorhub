@@ -20,8 +20,12 @@
   ``s3_chunk_size``, ``s3_storage_class``, ``s3_object_lock_mode``, ...) and
   becomes ``RCLONE_<OPTION>`` flag variables.  ``RcloneHandler`` accepts the
   full profile (and so does ``test_connection``, via ``profile test``); a
-  profile name that is not ``[A-Za-z0-9_]`` is sanitised for the rclone remote
-  name with a warning.  The ``comment``/``important`` display hints of the
+  profile name is normalised for the rclone remote name when it contains
+  characters the environment-variable channel cannot express (``s3-test`` ->
+  ``s3_test``), reported at DEBUG level -- rclone itself handles such names
+  fine.  ``app.monitor.rclone_env.build_environment`` owns that whole mapping and
+  returns the remote name plus the variables.  The ``comment``/``important``
+  display hints of the
   rclone-import era are no longer written (existing ones are ignored when the
   environment is built), and ``profile edit`` reports that editing non-s3
   remote types is not implemented yet instead of pointing at ``rclone config``.
