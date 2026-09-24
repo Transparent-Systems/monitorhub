@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+- ``profile import`` is now robust to an rclone config value that is wrapped
+  across lines.  ``DiagnosticUtil`` folds a continued line back into its value
+  instead of letting ``configparser`` turn each extra line into a bogus key
+  (which once corrupted an imported ``google-drive`` profile) and prints a
+  warning naming the section and key; the config is parsed with
+  ``interpolation=None`` and ``=``-only delimiters so a ``%`` or ``:`` in a
+  value is left untouched.  A key that is not an rclone option name is skipped
+  with a warning instead of being imported as a bogus property.
+
 - Secret profile values are now masked (``********``) in every profile display:
   ``profile show``, the ``s3`` edit wizard (the current access key secret) and
   the rclone property/``rclone_options`` listing of ``profile edit``.  The new

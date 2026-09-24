@@ -2,6 +2,7 @@ import configparser
 import importlib.util
 import logging
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -13,6 +14,7 @@ from typing import Any
 from app.cli.process_test_result import ProcessTestResult
 from app.cli.prompt_service import PromptService
 from app.cli.selectors import ProfileImportSelector
+from app.monitor import rclone_env
 from app.utils import reference_data
 from app.utils.sqlite_handler import SQLiteHandler
 
@@ -93,18 +95,93 @@ class DiagnosticUtil:
             return Path(os.environ.get("APPDATA", "")) / "rclone" / "rclone.conf"
         return Path.home() / ".config" / "rclone" / "rclone.conf"
 
+    _SECTION_RE = re.compile(r"^\s*\[.*\]\s*$")
+    _KEY_RE = re.compile(r"^\s*[a-z0-9_]+\s*=")
+    _COMMENT_RE = re.compile(r"^\s*[#;]")
+
     def _read_rclone_config(self, rclone_config_path: Path) -> configparser.ConfigParser | None:
-        """Read the rclone config file, returning None when it has no sections."""
+        """Read the rclone config file, returning None when it has no sections.
+
+        rclone stores every value on a single line, but a hand-edited or pasted
+        config can wrap one across lines.  ``configparser`` only treats
+        *indented* lines as a continuation, so an unindented wrap would become
+        extra keys (this corrupted an imported ``google-drive`` profile once).
+        The text is therefore folded first and every joined value is reported.
+        """
         if not rclone_config_path.is_file():
             self.prompt.print(f"No profiles found in {rclone_config_path}")
             return None
 
-        parser = configparser.ConfigParser()
-        parser.read(rclone_config_path, encoding="utf-8")
+        try:
+            text = rclone_config_path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as error:
+            self.logger.warning(
+                f"Cannot read rclone config {rclone_config_path}: {error}"
+            )
+            self.prompt.print(f"No profiles found in {rclone_config_path}")
+            return None
+
+        folded, wrapped = self._fold_wrapped_values(text)
+        for section, key in wrapped:
+            self.prompt.print(
+                "Warning: rclone config value is wrapped across lines "
+                f"([{section}] {key}); MonitorHub joined it. Please check that "
+                f"profile in {rclone_config_path}."
+            )
+
+        # rclone.conf uses ``=`` only and has no configparser interpolation; the
+        # defaults would treat ``:`` as a delimiter and expand ``%`` in a value.
+        parser = configparser.ConfigParser(interpolation=None, delimiters=("=",))
+        parser.read_string(folded, source=str(rclone_config_path))
         if not parser.sections():
             self.prompt.print(f"No profiles found in {rclone_config_path}")
             return None
         return parser
+
+    @classmethod
+    def _fold_wrapped_values(cls, text: str) -> tuple[str, list[tuple[str, str]]]:
+        """Join config lines that continue a value into that value.
+
+        A line is a new logical line when it is a section header, a comment, a
+        blank line or a ``key = ...`` line; every other line is treated as a
+        continuation of the last ``key = ...`` line and appended (stripped, no
+        separator), which is how a wrapped value is reconstructed.
+
+        Returns the folded text plus a ``(section, key)`` entry for each value
+        that had lines folded into it, so the caller can warn about a config
+        that is not in the shape rclone writes.
+
+        Note: this is a heuristic.  A continuation chunk that itself looks like
+        ``key=`` (e.g. base64 ending in ``==``) is still treated as a key;
+        rclone tokens do not contain ``=``, so that case does not arise in
+        practice.
+        """
+        folded: list[str] = []
+        wrapped: list[tuple[str, str]] = []
+        section = ""
+        last_key_index: int | None = None
+
+        for line in text.splitlines():
+            if cls._SECTION_RE.match(line):
+                section = line.strip()[1:-1].strip()
+                folded.append(line)
+                last_key_index = None
+            elif cls._KEY_RE.match(line):
+                folded.append(line)
+                last_key_index = len(folded) - 1
+            elif line.strip() == "" or cls._COMMENT_RE.match(line):
+                folded.append(line)
+                last_key_index = None
+            elif last_key_index is not None:
+                folded[last_key_index] += line.strip()
+                key = folded[last_key_index].split("=", 1)[0].strip()
+                note = (section or "?", key)
+                if note not in wrapped:
+                    wrapped.append(note)
+            else:
+                folded.append(line)
+
+        return "\n".join(folded), wrapped
 
     def _find_importable_profiles(self, rclone_profile_names: list[str]) -> list[str]:
         """Return rclone profile names that are not yet in the profiles table."""
@@ -147,6 +224,13 @@ class DiagnosticUtil:
             for key in rclone_profile:
                 if key == "type":
                     profile_type = rclone_profile[key]
+                elif not rclone_env.is_valid_option_name(key):
+                    # Not an rclone option name: a mangled config line would
+                    # only add a bogus property, so skip it and say so.
+                    self.prompt.print(
+                        f"Warning: skipping unexpected key '{key}' in rclone "
+                        f"profile '{profile_name}'"
+                    )
                 elif key in config_attribute_map_keys:
                     profile_config[config_attribute_map[key]] = rclone_profile[key]
                 else:
