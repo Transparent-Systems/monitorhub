@@ -213,10 +213,17 @@ Object lock needs an rclone that supports it (1.7x; check with
 not know, so MonitorHub logs a warning naming any configured option the installed
 rclone cannot apply.
 
-Switch a profile with `mhub profile edit` (answer yes to the rclone question) or
-by setting `remote_handler` in the profile configuration (`mhub profile show`
-displays it). `mhub profile import` reads profiles out of `rclone.conf` once;
-from then on MonitorHub is the source of truth for their configuration.
+`mhub profile edit` edits every remote profile. An `s3` profile using the
+built-in S3Handler keeps its provider/credentials/region wizard, while any
+rclone-routed profile -- an imported `ftp`/`sftp`/`drive`/... remote, or an `s3`
+profile switched to rclone -- is edited property by property: each backend
+option is shown with its current value and pressing Enter keeps it. The
+profile's `rclone_options` are entered as `key=value` pairs (enter `none` to
+remove them). Switch a profile between the built-in handler and rclone by
+answering the rclone question, or by setting `remote_handler` in the profile
+configuration (`mhub profile show` displays it). `mhub profile import` reads
+profiles out of `rclone.conf` once; from then on MonitorHub is the source of
+truth for their configuration.
 
 A profile name can contain any characters -- rclone itself is happy with dashes
 (`s3-test`). The name is only normalised for the environment-variable channel,

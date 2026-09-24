@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+- ``profile edit`` now edits every remote profile, not only ``s3`` and
+  ``event_command``.  An ``s3`` profile using the built-in S3Handler keeps its
+  provider/credentials/region wizard, while every rclone-routed profile -- an
+  imported ``ftp``/``sftp``/``drive``/... remote, or an ``s3`` profile switched
+  to rclone -- is edited property by property: each backend option is listed
+  with its current value and pressing Enter keeps it.  ``rclone_options`` has
+  its own ``key=value`` prompt (``none`` removes them; option names are
+  validated with the rule shared with ``app.monitor.rclone_env``), the legacy
+  ``comment``/``important`` hints are not offered, and ``remote_handler`` stays
+  a yes/no question so an ``s3`` profile can still switch between the built-in
+  S3Handler and rclone.
+
 - A profile's ``rclone_options`` are now checked against the installed rclone:
   rclone silently ignores ``RCLONE_*`` variables for flags it does not have, so
   MonitorHub logs a warning naming the unsupported options (a typo, or an rclone

@@ -190,6 +190,17 @@ def _add_rclone_options(
         env[f"RCLONE_{option_name.upper()}"] = str(value)
 
 
+def is_valid_option_name(name: str) -> bool:
+    """Return True when ``name`` is a valid rclone option name.
+
+    Option names become ``RCLONE_<OPTION>`` flag variables, so they are limited
+    to lowercase letters, digits and underscores (``transfers``,
+    ``s3_chunk_size``).  Exposed so the CLI can validate the same names it asks
+    the user for without duplicating the rule.
+    """
+    return bool(_OPTION_NAME_RE.match(str(name)))
+
+
 def known_rclone_flags(
     rclone_path: str,
     logger: logging.Logger | None = None,

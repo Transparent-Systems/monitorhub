@@ -609,6 +609,113 @@ class TestCommands(unittest.TestCase):
         profile = commands.sqlite_handler.get_profile(profile_id=profile_id)
         self.assertEqual(profile["config"][reference_data.CONFIG_REMOTE_HANDLER], "s3")
 
+    def _route_s3_profile_through_rclone(self, profile_name: str) -> int:
+        """Seed an s3 profile routed through rclone, returning its id."""
+        profile = self.database_test_data.sqlite_handler.get_profile(
+            profile_name=profile_name
+        )
+        config = dict(profile["config"])
+        config[reference_data.CONFIG_REMOTE_HANDLER] = (
+            reference_data.RCLONE_REMOTE_HANDLER
+        )
+        self.database_test_data.sqlite_handler.update_profile(
+            profile_id=profile["id"],
+            name=profile["name"],
+            profile_type=profile["profile_type"],
+            config=config,
+        )
+        return profile["id"]
+
+    def test_profile_edit_rclone_profile_updates_property(self):
+        # ftp-test is an rclone-managed remote: every backend property is
+        # offered and Enter keeps the others.
+        profile_id = self.database_test_data.sqlite_handler.get_profile(
+            profile_name="ftp-test"
+        )["id"]
+        commands, _ = self._make_commands(
+            [str(profile_id), "192.168.1.99", "", "", ""]
+        )
+        commands.profile.edit()
+        profile = commands.sqlite_handler.get_profile(profile_id=profile_id)
+        self.assertEqual(profile["config"]["host"], "192.168.1.99")
+        self.assertEqual(profile["config"]["user"], "ftpuser")
+        self.assertEqual(
+            profile["config"][reference_data.CONFIG_REMOTE_HANDLER],
+            reference_data.RCLONE_REMOTE_HANDLER,
+        )
+
+    def test_profile_edit_rclone_profile_keeps_values(self):
+        profile_id = self.database_test_data.sqlite_handler.get_profile(
+            profile_name="ftp-test"
+        )["id"]
+        commands, _ = self._make_commands([str(profile_id), "", "", "", ""])
+        commands.profile.edit()
+        profile = commands.sqlite_handler.get_profile(profile_id=profile_id)
+        self.assertEqual(profile["config"]["host"], "192.168.1.51")
+        self.assertEqual(profile["config"]["user"], "ftpuser")
+
+    def test_profile_edit_rclone_profile_updates_rclone_options(self):
+        profile_id = self.database_test_data.sqlite_handler.get_profile(
+            profile_name="ftp-test"
+        )["id"]
+        commands, _ = self._make_commands(
+            [str(profile_id), "", "", "", "transfers=8, s3_chunk_size=16M"]
+        )
+        commands.profile.edit()
+        profile = commands.sqlite_handler.get_profile(profile_id=profile_id)
+        self.assertEqual(
+            profile["config"]["rclone_options"],
+            {"transfers": "8", "s3_chunk_size": "16M"},
+        )
+
+    def test_profile_edit_rclone_profile_rejects_invalid_options(self):
+        profile_id = self.database_test_data.sqlite_handler.get_profile(
+            profile_name="ftp-test"
+        )["id"]
+        # "transfers" (no value) is rejected and re-asked.
+        commands, mock_prompt = self._make_commands(
+            [str(profile_id), "", "", "", "transfers", "transfers=8"]
+        )
+        commands.profile.edit()
+        self.assertIn("Invalid rclone option", mock_prompt.output_text)
+        profile = commands.sqlite_handler.get_profile(profile_id=profile_id)
+        self.assertEqual(profile["config"]["rclone_options"], {"transfers": "8"})
+
+    def test_profile_edit_s3_rclone_profile_updates_property(self):
+        # An s3 profile routed through rclone uses the property editor and can
+        # switch back to the built-in handler.
+        profile_id = self._route_s3_profile_through_rclone("s3-test")
+        # Properties: provider_name, access_key_id, access_key_secret, endpoint;
+        # then rclone options; then the handler question (answer "n").
+        commands, _ = self._make_commands(
+            [
+                str(profile_id),
+                "",
+                "",
+                "",
+                "https://example.invalid",
+                "",
+                "n",
+            ]
+        )
+        commands.profile.edit()
+        profile = commands.sqlite_handler.get_profile(profile_id=profile_id)
+        self.assertEqual(profile["config"]["endpoint"], "https://example.invalid")
+        self.assertEqual(profile["config"]["provider_name"], "IDrive")
+        self.assertEqual(profile["config"][reference_data.CONFIG_REMOTE_HANDLER], "s3")
+
+    def test_profile_edit_s3_rclone_profile_keeps_rclone_route(self):
+        profile_id = self._route_s3_profile_through_rclone("s3-test")
+        commands, _ = self._make_commands(
+            [str(profile_id), "", "", "", "", "", ""]
+        )
+        commands.profile.edit()
+        profile = commands.sqlite_handler.get_profile(profile_id=profile_id)
+        self.assertEqual(
+            profile["config"][reference_data.CONFIG_REMOTE_HANDLER],
+            reference_data.RCLONE_REMOTE_HANDLER,
+        )
+
     def test_profile_test_s3_profile_uses_native_handler(self):
         commands, _ = self._make_commands([])
         with (

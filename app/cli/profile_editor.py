@@ -11,6 +11,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.cli.prompt_service import PromptService
+from app.monitor import rclone_env
 from app.utils import reference_data
 from app.utils.constants import (
     DEFAULT_COMMAND_MAX_WORKERS,
@@ -133,21 +134,33 @@ class ProfileEditor:
         """
         Handles profile edit for profiles with category "remote".
 
-        Only the s3 profile type has an edit wizard so far.  A generic editor
-        for the other remote types (ftp, sftp, drive, ...) is still to be
-        written; their configuration lives in MonitorHub but cannot be changed
-        from the CLI yet.
+        A profile using the built-in s3 handler keeps its dedicated wizard
+        (provider, credentials, region or endpoint).  Every rclone-routed
+        profile -- an imported ftp/sftp/drive/... remote, or an s3 profile
+        switched to rclone -- is edited property by property instead: each
+        backend option is listed with its current value and pressing Enter
+        keeps it.
         """
         profile_type = profile.get("profile_type", "")
-        if profile_type != "s3":
-            self.prompt.print(
-                f"Editing profile type '{profile_type}' is not implemented yet."
-            )
-            self.prompt.print(
-                "Only the s3 profile type can be edited from MonitorHub at the moment."
-            )
+        handler_key = reference_data.remote_handler_key(profile)
+
+        if (
+            profile_type == "s3"
+            and handler_key != reference_data.RCLONE_REMOTE_HANDLER
+        ):
+            self._edit_s3(profile=profile, profile_name=profile_name)
             return
 
+        self._edit_remote_properties(profile=profile, profile_name=profile_name)
+
+    def _edit_s3(self, profile: dict[str, Any], profile_name: str):
+        """
+        Edit an s3 profile that is routed through the built-in S3Handler.
+
+        Prompts for the access key, the secret, and the region (AWS) or the
+        endpoint (other providers), then asks whether the profile should be
+        routed through rclone instead.
+        """
         # Lookup current provider from code-defined reference data
         profile_config = profile.get("config", {})
         current_provider_name = profile_config.get("provider_name", "")
@@ -157,7 +170,8 @@ class ProfileEditor:
             return
 
         # At this point the profile type is s3 and we have a provider_name.
-        # A future native remote type adds its own _edit_<type> method above.
+        # A future native remote type adds its own _edit_<type> method, called
+        # from _edit_remote above.
         # Show current access key
         current_profile_access_key = profile_config.get("access_key_id", "N/A")
         self.prompt.print(f"Press Enter to keep current S3 access key: : {current_profile_access_key}")
@@ -215,21 +229,8 @@ class ProfileEditor:
                 profile_config["endpoint"] = input_profile_endpoint
 
         # Route: allow switching this profile between the built-in S3 handler
-        # and rclone.  rclone exposes more transfer tuning (transfers, chunk
-        # size, storage class, object lock) but needs a remote with the same
-        # name in rclone.conf.
-        native_handler_key = reference_data.default_remote_handler_key(
-            profile.get("profile_type", "")
-        )
-        current_handler_key = reference_data.remote_handler_key(profile)
-        use_rclone = self.prompt.prompt_yes_no(
-            "Use rclone instead of the built-in S3 handler? "
-            f"(current: {current_handler_key}; Enter to keep; y/n): ",
-            default=current_handler_key == reference_data.RCLONE_REMOTE_HANDLER,
-        )
-        profile_config[reference_data.CONFIG_REMOTE_HANDLER] = (
-            reference_data.RCLONE_REMOTE_HANDLER if use_rclone else native_handler_key
-        )
+        # and rclone.
+        self._prompt_remote_handler(profile=profile, profile_config=profile_config)
 
         # Profile_config has already been populated with provider_name, access_key_id etc
         # Now update profile
@@ -245,6 +246,163 @@ class ProfileEditor:
 
         self.prompt.print("Please test profile with one of the following commands:")
         self.prompt.print("   Command: mhub profile test")
+
+    def _edit_remote_properties(self, profile: dict[str, Any], profile_name: str):
+        """
+        Edit an rclone-routed profile property by property.
+
+        Every backend option in the profile config is listed with its current
+        value and the user may enter a replacement; pressing Enter keeps the
+        value unchanged.  MonitorHub-only keys (``remote_handler``,
+        ``rclone_options`` and the legacy ``comment``/``important`` hints) are
+        not offered as plain properties: the rclone route is asked as a yes/no
+        question and ``rclone_options`` has its own prompt.
+        """
+        profile_config = profile.get("config")
+        if not isinstance(profile_config, dict):
+            profile_config = {}
+
+        backend_keys = [
+            key
+            for key in profile_config
+            if key not in rclone_env.MONITORHUB_ONLY_KEYS
+        ]
+
+        if backend_keys:
+            self.prompt.print(
+                f"Editing rclone profile '{profile_name}' "
+                f"(type: {profile.get('profile_type', 'N/A')})"
+            )
+            self.prompt.print("Current properties:")
+            for key in backend_keys:
+                self.prompt.print(f"   {key}: {profile_config[key]}")
+            self.prompt.print(
+                "Press Enter to keep the current value of a property."
+            )
+            for key in backend_keys:
+                new_value = self.prompt.prompt_required(
+                    f"Enter new value for '{key}' (Enter to keep): ",
+                    allow_cancel=True,
+                )
+                if new_value is not None:
+                    profile_config[key] = new_value
+        else:
+            self.prompt.print(
+                f"Profile '{profile_name}' has no backend properties to edit."
+            )
+
+        self._prompt_rclone_options(profile_config)
+        self._prompt_remote_handler(profile=profile, profile_config=profile_config)
+
+        if self.sqlite_handler.update_profile(
+            profile_id=profile["id"],
+            name=profile["name"],
+            profile_type=profile["profile_type"],
+            config=profile_config,
+        ):
+            self.prompt.print(f"Profile name: {profile_name} updated")
+        else:
+            self.prompt.print(f"Profile name: {profile_name} not updated")
+
+        self.prompt.print("Please test profile with one of the following commands:")
+        self.prompt.print("   Command: mhub profile test")
+
+    def _prompt_remote_handler(
+        self, profile: dict[str, Any], profile_config: dict
+    ) -> None:
+        """
+        Ask whether a profile should use its native handler or rclone.
+
+        Only a profile type that has a native handler gets the question (only
+        ``s3`` today); every other remote type is rclone-only, so its route is
+        left untouched.
+        """
+        profile_type = profile.get("profile_type", "")
+        native_handler_key = reference_data.default_remote_handler_key(profile_type)
+        if (
+            not native_handler_key
+            or native_handler_key == reference_data.RCLONE_REMOTE_HANDLER
+        ):
+            return
+
+        current_handler_key = reference_data.remote_handler_key(profile)
+        use_rclone = self.prompt.prompt_yes_no(
+            f"Use rclone instead of the built-in {profile_type} handler? "
+            f"(current: {current_handler_key}; Enter to keep; y/n): ",
+            default=current_handler_key == reference_data.RCLONE_REMOTE_HANDLER,
+        )
+        profile_config[reference_data.CONFIG_REMOTE_HANDLER] = (
+            reference_data.RCLONE_REMOTE_HANDLER if use_rclone else native_handler_key
+        )
+
+    def _prompt_rclone_options(self, profile_config: dict) -> None:
+        """
+        Prompt for the profile's ``rclone_options`` (rclone flag variables).
+
+        The options are entered as ``key=value`` pairs separated by commas.
+        Pressing Enter keeps the current options and ``none`` removes them.
+        """
+        current_options = profile_config.get(rclone_env.RCLONE_OPTIONS_KEY)
+        self.prompt.print(
+            "rclone options tune the rclone transfer (for example "
+            "transfers=8, s3_chunk_size=16M)."
+        )
+        if isinstance(current_options, dict) and current_options:
+            self.prompt.print(
+                "Current rclone options: "
+                + ", ".join(f"{k}={v}" for k, v in current_options.items())
+            )
+        else:
+            self.prompt.print("Current rclone options: none")
+        self.prompt.print(
+            "Enter rclone options as key=value pairs separated by commas, "
+            "'none' to remove them, or press Enter to keep them."
+        )
+
+        value = self.prompt.prompt_required(
+            "Enter rclone options (Enter to keep): ",
+            allow_cancel=True,
+            validator=self._validate_rclone_options,
+        )
+        if value is None:
+            return
+        if value.strip().lower() in ("none", "-"):
+            profile_config.pop(rclone_env.RCLONE_OPTIONS_KEY, None)
+            return
+        profile_config[rclone_env.RCLONE_OPTIONS_KEY] = self._parse_rclone_options(value)
+
+    @staticmethod
+    def _validate_rclone_options(value: str) -> str | None:
+        """Return an error message when the rclone options entry is invalid."""
+        if value.strip().lower() in ("none", "-"):
+            return None
+        for pair in value.split(","):
+            pair = pair.strip()
+            if not pair:
+                continue
+            if "=" not in pair:
+                return f"Invalid rclone option '{pair}': expected key=value."
+            key, option_value = pair.split("=", 1)
+            if not rclone_env.is_valid_option_name(key.strip()):
+                return (
+                    f"Invalid rclone option name '{key.strip()}': option names "
+                    "must be lowercase letters, digits and underscores."
+                )
+            if option_value.strip() == "":
+                return f"Invalid rclone option '{pair}': value cannot be empty."
+        return None
+
+    @staticmethod
+    def _parse_rclone_options(value: str) -> dict[str, str]:
+        """Parse ``key=value, key=value`` into an rclone options mapping."""
+        options: dict[str, str] = {}
+        for pair in value.split(","):
+            pair = pair.strip()
+            if not pair:
+                continue
+            key, option_value = pair.split("=", 1)
+            options[key.strip()] = option_value.strip()
+        return options
 
     def _prompt_command_config(self, existing: dict | None = None) -> dict:
         """Prompt the user for a shell command configuration stored on a profile."""
