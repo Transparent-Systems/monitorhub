@@ -1,8 +1,6 @@
-import configparser
 import importlib.util
 import logging
 import os
-import re
 import shutil
 import subprocess
 import sys
@@ -12,9 +10,8 @@ from pathlib import Path
 from typing import Any
 
 from app.cli.process_test_result import ProcessTestResult
+from app.cli.profile_importer import ProfileImporter
 from app.cli.prompt_service import PromptService
-from app.cli.selectors import ProfileImportSelector
-from app.monitor import rclone_env
 from app.utils import reference_data
 from app.utils.sqlite_handler import SQLiteHandler
 
@@ -27,14 +24,17 @@ class DiagnosticUtil:
     def __init__(
         self,
         sqlite_handler: SQLiteHandler,
+        profile_importer: ProfileImporter,
         logger: logging.Logger | None = None,
         prompt: PromptService | None = None,
-    ):
+    ) -> None:
         self.logger = logger or logging.getLogger(__name__)
 
         self.prompt = prompt or PromptService()
-        # Interactive import selection is delegated to a focused collaborator.
-        self.selector = ProfileImportSelector(prompt=self.prompt)
+        # The rclone profile import machinery is shared, not duplicated: the
+        # diagnostic check asks the importer which profiles are available, and
+        # the CLI import action is invoked through it too.
+        self.profile_importer = profile_importer
         self.check_app_env_result = False
         self.check_profile_import_result = False
         self.check_rclone_dependency_result = False
@@ -45,216 +45,37 @@ class DiagnosticUtil:
         self.prompt.print("=" *50)
         self.prompt.print("=== Summary environment and configuration test results BEGIN ===")
         self.prompt.print(f"===> App environment test: {'OK' if self.check_app_env_result else 'FAILED'} <===")
-        self.prompt.print(f"===> Check import remote profiles: {'OK' if self.check_profile_import_result else 'FAILED'} <===")
+        self.prompt.print(f"===> Check for importable rclone profiles: {'OK' if self.check_profile_import_result else 'FAILED'} <===")
         self.prompt.print(f"===> Check rclone dependency: {'OK' if self.check_rclone_dependency_result else 'FAILED'} <===")
         self.prompt.print(f"===> App configuration test: {'OK' if self.check_app_config_result else 'FAILED'} <==")
         self.prompt.print("=== Summary environment and configuration test results END ===")
 
 
-    def check_profile_import(
-        self,
-        select: bool = False,
-        rclone_config_path: Path | None = None,
-    ):
-        """
-        Check if we can import profiles from rclone.
-        Only import profiles not yet present in profiles table.
+    def check_profile_import(self, rclone_config_path: Path | None = None) -> bool:
+        """Report whether rclone profiles are available to import.
 
-        When ``select`` is True the user chooses which profiles to import
-        (none, all, or individual entries) via :class:`ProfileImportSelector`;
-        otherwise the legacy all-or-nothing Y/n confirmation is used, as in
-        ``config test``.
+        Importing profiles is a CLI action owned by
+        :class:`~app.cli.profile_importer.ProfileImporter` and exposed as
+        ``mhub profile import``, so this diagnostic check only reports: it logs
+        the available profiles and points the user at that command rather than
+        prompting to import here.
         """
         self.check_profile_import_result = True
 
-        rclone_config_path = rclone_config_path or self._default_rclone_config_path()
-        parser = self._read_rclone_config(rclone_config_path)
-        if parser is None:
-            return
+        importable = self.profile_importer.find_importable_profiles(rclone_config_path)
+        if not importable:
+            return True
 
-        profiles_to_import = self._find_importable_profiles(parser.sections())
-        if not profiles_to_import:
-            self.prompt.print("No profiles to import")
-            return
+        self.logger.info(
+            f"Found {len(importable)} rclone profile(s) available to import: "
+            f"{', '.join(importable)}"
+        )
+        self.prompt.print(
+            "Rclone profiles can be imported with command: mhub profile import"
+        )
+        return True
 
-        if select:
-            profiles_to_import = self.selector.select_interactive(profiles_to_import)
-            if not profiles_to_import:
-                self.prompt.print("No profiles selected")
-                return
-        elif not self._confirm_profile_import(profiles_to_import):
-            self.prompt.print("Profile import cancelled")
-            return
 
-        self._import_profiles(parser=parser, profile_names=profiles_to_import)
-
-    @staticmethod
-    def _default_rclone_config_path() -> Path:
-        """Return the platform-specific default rclone config path."""
-        if os.name == "nt":
-            return Path(os.environ.get("APPDATA", "")) / "rclone" / "rclone.conf"
-        return Path.home() / ".config" / "rclone" / "rclone.conf"
-
-    _SECTION_RE = re.compile(r"^\s*\[.*\]\s*$")
-    _KEY_RE = re.compile(r"^\s*[a-z0-9_]+\s*=")
-    _COMMENT_RE = re.compile(r"^\s*[#;]")
-
-    def _read_rclone_config(self, rclone_config_path: Path) -> configparser.ConfigParser | None:
-        """Read the rclone config file, returning None when it has no sections.
-
-        rclone stores every value on a single line, but a hand-edited or pasted
-        config can wrap one across lines.  ``configparser`` only treats
-        *indented* lines as a continuation, so an unindented wrap would become
-        extra keys (this corrupted an imported ``google-drive`` profile once).
-        The text is therefore folded first and every joined value is reported.
-        """
-        if not rclone_config_path.is_file():
-            self.prompt.print(f"No profiles found in {rclone_config_path}")
-            return None
-
-        try:
-            text = rclone_config_path.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError) as error:
-            self.logger.warning(
-                f"Cannot read rclone config {rclone_config_path}: {error}"
-            )
-            self.prompt.print(f"No profiles found in {rclone_config_path}")
-            return None
-
-        folded, wrapped = self._fold_wrapped_values(text)
-        for section, key in wrapped:
-            self.prompt.print(
-                "Warning: rclone config value is wrapped across lines "
-                f"([{section}] {key}); MonitorHub joined it. Please check that "
-                f"profile in {rclone_config_path}."
-            )
-
-        # rclone.conf uses ``=`` only and has no configparser interpolation; the
-        # defaults would treat ``:`` as a delimiter and expand ``%`` in a value.
-        parser = configparser.ConfigParser(interpolation=None, delimiters=("=",))
-        parser.read_string(folded, source=str(rclone_config_path))
-        if not parser.sections():
-            self.prompt.print(f"No profiles found in {rclone_config_path}")
-            return None
-        return parser
-
-    @classmethod
-    def _fold_wrapped_values(cls, text: str) -> tuple[str, list[tuple[str, str]]]:
-        """Join config lines that continue a value into that value.
-
-        A line is a new logical line when it is a section header, a comment, a
-        blank line or a ``key = ...`` line; every other line is treated as a
-        continuation of the last ``key = ...`` line and appended (stripped, no
-        separator), which is how a wrapped value is reconstructed.
-
-        Returns the folded text plus a ``(section, key)`` entry for each value
-        that had lines folded into it, so the caller can warn about a config
-        that is not in the shape rclone writes.
-
-        Note: this is a heuristic.  A continuation chunk that itself looks like
-        ``key=`` (e.g. base64 ending in ``==``) is still treated as a key;
-        rclone tokens do not contain ``=``, so that case does not arise in
-        practice.
-        """
-        folded: list[str] = []
-        wrapped: list[tuple[str, str]] = []
-        section = ""
-        last_key_index: int | None = None
-
-        for line in text.splitlines():
-            if cls._SECTION_RE.match(line):
-                section = line.strip()[1:-1].strip()
-                folded.append(line)
-                last_key_index = None
-            elif cls._KEY_RE.match(line):
-                folded.append(line)
-                last_key_index = len(folded) - 1
-            elif line.strip() == "" or cls._COMMENT_RE.match(line):
-                folded.append(line)
-                last_key_index = None
-            elif last_key_index is not None:
-                folded[last_key_index] += line.strip()
-                key = folded[last_key_index].split("=", 1)[0].strip()
-                note = (section or "?", key)
-                if note not in wrapped:
-                    wrapped.append(note)
-            else:
-                folded.append(line)
-
-        return "\n".join(folded), wrapped
-
-    def _find_importable_profiles(self, rclone_profile_names: list[str]) -> list[str]:
-        """Return rclone profile names that are not yet in the profiles table."""
-        existing_names = {
-            profile.get("name", "") for profile in self.sqlite_handler.get_profiles()
-        }
-        return [name for name in rclone_profile_names if name not in existing_names]
-
-    def _confirm_profile_import(self, profiles_to_import: list[str]) -> bool:
-        """Print the import list and ask the legacy all-or-nothing Y/n question."""
-        self.prompt.print("\n")
-        self.prompt.print("=" * 60)
-        self.prompt.print("Please confirm to import the following profiles from Rclone")
-        self.prompt.print("This increases performance and reduces dependencies")
-        self.prompt.print("The profiles are:")
-        for i, profile_name in enumerate(profiles_to_import, start=1):
-            self.prompt.print(f"{i}. {profile_name}")
-
-        self.prompt.print("Ok to import profiles? (Y/n)")
-        self.prompt.print("Y: Yes is default value, press Enter to accept")
-        self.prompt.print("N: No")
-        return self.prompt.prompt_yes_no("Import Rclone profiles (Y/n)\n", default=True)
-
-    def _import_profiles(
-        self, parser: configparser.ConfigParser, profile_names: list[str]
-    ) -> None:
-        """Convert the selected rclone sections into MonitorHub profiles."""
-        # Some Rclone attribute names differ from those in MonitorHub.
-        config_attribute_map = {
-            "provider": "provider_name",
-            "access_key_secret": "access_key_secret",
-        }
-        config_attribute_map_keys = config_attribute_map.keys()
-
-        for profile_name in profile_names:
-            rclone_profile = dict(parser[profile_name]) if profile_name in parser else {}
-            profile_type = ""
-            profile_config = {}
-            # Store each attribute with their corresponding name in profile_config
-            for key in rclone_profile:
-                if key == "type":
-                    profile_type = rclone_profile[key]
-                elif not rclone_env.is_valid_option_name(key):
-                    # Not an rclone option name: a mangled config line would
-                    # only add a bogus property, so skip it and say so.
-                    self.prompt.print(
-                        f"Warning: skipping unexpected key '{key}' in rclone "
-                        f"profile '{profile_name}'"
-                    )
-                elif key in config_attribute_map_keys:
-                    profile_config[config_attribute_map[key]] = rclone_profile[key]
-                else:
-                    profile_config[key] = rclone_profile[key]
-
-            # MonitorHub owns the profile configuration: the display hints of
-            # the rclone-import era (``comment``/``important``) are no longer
-            # written, and existing ones are ignored when the rclone environment
-            # is built.  Imported profiles are still rclone-managed, so they are
-            # routed through rclone even when their type has a native handler.
-            profile_config[reference_data.CONFIG_REMOTE_HANDLER] = (
-                reference_data.RCLONE_REMOTE_HANDLER
-            )
-            # Add profile to database
-            if self.sqlite_handler.add_profile(
-                name=profile_name,
-                profile_type=profile_type,
-                config=profile_config,
-            ):
-                self.prompt.print(f"Profile name: {profile_name} imported to profiles")
-            else:
-                self.prompt.print(f"Profile name: {profile_name} not imported to profiles")
-
-    
     def check_app_env(self) -> bool:
         """
         Checks the environment setup, including Python version, and dependencies.

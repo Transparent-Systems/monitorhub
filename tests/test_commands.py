@@ -62,6 +62,7 @@ class TestCommands(unittest.TestCase):
         inputs: list[str],
         diagnostic_util: mock.Mock | None = None,
         dependency_log_level: str | None = None,
+        profile_importer: mock.Mock | None = None,
     ) -> tuple[Commands, MockPromptService]:
         """Build a wired ``Commands`` bundle around a scripted mock prompt."""
         mock_prompt = MockPromptService(inputs=inputs)
@@ -71,6 +72,7 @@ class TestCommands(unittest.TestCase):
             prompt=mock_prompt,
             diagnostic_util=diagnostic_util,
             dependency_log_level=dependency_log_level,
+            profile_importer=profile_importer,
         )
         self._commands = commands
         return commands, mock_prompt
@@ -937,12 +939,12 @@ class TestCommands(unittest.TestCase):
         self.assertFalse(result)
         self.assertIn("Profile with name='non-existent-profile' not found.", mock_prompt2.output_text)
 
-    def test_profile_import_uses_interactive_selection(self):
-        """``profile import`` must ask the diagnostic util for selection mode."""
-        diagnostic_util = mock.Mock()
-        commands, _ = self._make_commands([], diagnostic_util=diagnostic_util)
+    def test_profile_import_delegates_to_profile_importer(self):
+        """``profile import`` must delegate to the shared ProfileImporter."""
+        profile_importer = mock.Mock()
+        commands, _ = self._make_commands([], profile_importer=profile_importer)
         commands.profile.import_profiles()
-        diagnostic_util.check_profile_import.assert_called_once_with(select=True)
+        profile_importer.import_profiles.assert_called_once_with()
 
     def test_version(self):
         commands, mock_prompt = self._make_commands([])
@@ -1324,7 +1326,7 @@ class TestCommandProfileValidation(unittest.TestCase):
         commands = ProfileCommands(
             sqlite_handler=mock.Mock(),
             logger=self.logger,
-            diagnostic_util=mock.Mock(),
+            profile_importer=mock.Mock(),
             prompt=prompt,
         )
         return commands, prompt

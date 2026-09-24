@@ -113,6 +113,7 @@ classDiagram
     diagnostic_util
     monitor
     profile
+    profile_importer
     prompt
     sqlite_handler
   }
@@ -131,12 +132,12 @@ classDiagram
     check_profile_import_result : bool
     check_rclone_dependency_result : bool
     logger
+    profile_importer
     prompt
-    selector : ProfileImportSelector
     sqlite_handler
     check_app_env() bool
     check_monitor_config(monitor_id: int | None) bool
-    check_profile_import(select: bool, rclone_config_path: Path | None)
+    check_profile_import(rclone_config_path: Path | None) bool
     check_rclone_dependency() bool
     print_overview()
   }
@@ -159,9 +160,9 @@ classDiagram
     test(monitor_id: int | None, monitor_name: str | None)
   }
   class ProfileCommands {
-    diagnostic_util
     editor : ProfileEditor
     logger : Logger
+    profile_importer
     prompt
     selector : ProfileSelector
     sqlite_handler
@@ -171,6 +172,15 @@ classDiagram
     new()
     show(profile_id: int | None, profile_name: str | None)
     test(profile_id: int | None, profile_name: str | None, live: bool) bool
+  }
+  class ProfileImporter {
+    logger
+    prompt
+    selector : ProfileImportSelector
+    sqlite_handler
+    default_rclone_config_path() Path
+    find_importable_profiles(rclone_config_path: Path | None) list[str]
+    import_profiles(rclone_config_path: Path | None) list[str]
   }
   class PromptService {
     input(prompt: str) str
@@ -220,11 +230,14 @@ classDiagram
   Commands --> DiagnosticUtil : diagnostic_util
   Commands --> MonitorCommands : monitor
   Commands --> ProfileCommands : profile
+  Commands --> ProfileImporter : profile_importer
   Commands --> PromptService : prompt
   DiagnosticUtil --> PromptService : prompt
+  ProfileImporter --> PromptService : prompt
   Commands --> SQLiteHandler : sqlite_handler
   DiagnosticUtil --o AppCommands : diagnostic_util
-  DiagnosticUtil --o ProfileCommands : diagnostic_util
+  ProfileImporter --o DiagnosticUtil : profile_importer
+  ProfileImporter --o ProfileCommands : profile_importer
   PromptService --o AppCommands : prompt
   PromptService --o DatabaseCommands : prompt
   PromptService --o MonitorCommands : prompt
@@ -233,6 +246,7 @@ classDiagram
   SQLiteHandler --o DiagnosticUtil : sqlite_handler
   SQLiteHandler --o MonitorCommands : sqlite_handler
   SQLiteHandler --o ProfileCommands : sqlite_handler
+  SQLiteHandler --o ProfileImporter : sqlite_handler
 ```
 <!-- COMMANDS_MERMAID_END -->
 

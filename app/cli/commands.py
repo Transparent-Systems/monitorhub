@@ -21,6 +21,7 @@ from app.cli.database_commands import DatabaseCommands
 from app.cli.diagnostic_util import DiagnosticUtil
 from app.cli.monitor_commands import MonitorCommands
 from app.cli.profile_commands import ProfileCommands
+from app.cli.profile_importer import ProfileImporter
 from app.cli.prompt_service import PromptService
 from app.utils.sqlite_handler import SQLiteHandler
 from version import VERSION_STRING
@@ -64,6 +65,7 @@ class Commands:
     prompt: PromptService
     diagnostic_util: DiagnosticUtil
     sqlite_handler: SQLiteHandler
+    profile_importer: ProfileImporter
 
 
 def build_commands(
@@ -75,12 +77,13 @@ def build_commands(
     prompt: PromptService | None = None,
     diagnostic_util: DiagnosticUtil | None = None,
     sqlite_handler: SQLiteHandler | None = None,
+    profile_importer: ProfileImporter | None = None,
 ) -> Commands:
     """Wire together all CLI command handlers into a :class:`Commands` bundle.
 
-    ``prompt``, ``diagnostic_util``, and ``sqlite_handler`` are injectable so
-    tests can substitute fakes/mocks without touching the database or the
-    filesystem.
+    ``prompt``, ``diagnostic_util``, ``sqlite_handler``, and
+    ``profile_importer`` are injectable so tests can substitute fakes/mocks
+    without touching the database or the filesystem.
 
     This factory has no log side effects: console-policy (silencing
     ``boto3``/``botocore``/``s3transfer``/``urllib3``) is owned by
@@ -92,14 +95,22 @@ def build_commands(
     """
     prompt = prompt or PromptService()
     sqlite_handler = sqlite_handler or SQLiteHandler(logger=logger, db_dir=db_dir)
+    # One importer instance is shared by the diagnostic check and the CLI import
+    # action, so both see the same rclone.conf reading/folding rules.
+    profile_importer = profile_importer or ProfileImporter(
+        sqlite_handler=sqlite_handler,
+        logger=logger,
+        prompt=prompt,
+    )
     diagnostic_util = diagnostic_util or DiagnosticUtil(
         sqlite_handler=sqlite_handler,
+        profile_importer=profile_importer,
         logger=logger,
         prompt=prompt,
     )
 
     database = DatabaseCommands(sqlite_handler, prompt)
-    profile = ProfileCommands(sqlite_handler, logger, diagnostic_util, prompt)
+    profile = ProfileCommands(sqlite_handler, logger, profile_importer, prompt)
     monitor = MonitorCommands(
         sqlite_handler,
         logger,
@@ -119,4 +130,5 @@ def build_commands(
         prompt=prompt,
         diagnostic_util=diagnostic_util,
         sqlite_handler=sqlite_handler,
+        profile_importer=profile_importer,
     )

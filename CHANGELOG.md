@@ -3,13 +3,21 @@
 ## [Unreleased]
 
 - ``profile import`` is now robust to an rclone config value that is wrapped
-  across lines.  ``DiagnosticUtil`` folds a continued line back into its value
+  across lines.  ``ProfileImporter`` folds a continued line back into its value
   instead of letting ``configparser`` turn each extra line into a bogus key
   (which once corrupted an imported ``google-drive`` profile) and prints a
   warning naming the section and key; the config is parsed with
   ``interpolation=None`` and ``=``-only delimiters so a ``%`` or ``:`` in a
   value is left untouched.  A key that is not an rclone option name is skipped
   with a warning instead of being imported as a bogus property.
+
+- Importing rclone profiles moved out of ``DiagnosticUtil`` into the new
+  ``app.cli.profile_importer.ProfileImporter``; ``mhub profile import`` now
+  delegates to it.  ``config test`` no longer offers an import: its
+  ``check_profile_import`` only reports, logging an ``INFO`` line naming the
+  rclone profiles that are not imported yet and telling the user to run
+  ``mhub profile import``.  The importer instance is shared, so the check and
+  the import cannot disagree on the rclone.conf reading rules.
 
 - Secret profile values are now masked (``********``) in every profile display:
   ``profile show``, the ``s3`` edit wizard (the current access key secret) and

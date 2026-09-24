@@ -5,8 +5,8 @@ import shlex
 from typing import Any
 
 from app.cli import profile_display
-from app.cli.diagnostic_util import DiagnosticUtil
 from app.cli.profile_editor import ProfileEditor
+from app.cli.profile_importer import ProfileImporter
 from app.cli.prompt_service import PromptService
 from app.cli.selectors import ProfileSelector
 from app.monitor.rclone_handler import RcloneHandler
@@ -27,12 +27,12 @@ class ProfileCommands:
         self,
         sqlite_handler: SQLiteHandler,
         logger: logging.Logger,
-        diagnostic_util: DiagnosticUtil,
+        profile_importer: ProfileImporter,
         prompt: PromptService,
     ) -> None:
         self.sqlite_handler = sqlite_handler
         self.logger = logger
-        self.diagnostic_util = diagnostic_util
+        self.profile_importer = profile_importer
         self.prompt = prompt
         # Interactive list selection is delegated to a focused collaborator.
         self.selector = ProfileSelector(sqlite_handler=sqlite_handler, prompt=prompt)
@@ -453,4 +453,4 @@ class ProfileCommands:
         enter 0 to select all, or enter a profile number to add single entries
         one at a time until pressing Enter stops the selection.
         """
-        self.diagnostic_util.check_profile_import(select=True)
+        self.profile_importer.import_profiles()
