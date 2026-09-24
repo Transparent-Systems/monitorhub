@@ -4,6 +4,7 @@ import logging
 import shlex
 from typing import Any
 
+from app.cli import profile_display
 from app.cli.diagnostic_util import DiagnosticUtil
 from app.cli.profile_editor import ProfileEditor
 from app.cli.prompt_service import PromptService
@@ -440,7 +441,9 @@ class ProfileCommands:
             self.prompt.print(f"Profile type: {profile.get('profile_type', 'N/A')}")
             config = profile.get("config", {})
             for key in config:
-                self.prompt.print(f"   {key}: {config[key]}")
+                self.prompt.print(
+                    f"   {key}: {profile_display.format_value(key, config[key])}"
+                )
 
     def import_profiles(self):
         """

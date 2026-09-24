@@ -512,6 +512,69 @@ class TestCommands(unittest.TestCase):
         commands.profile.show(profile_id=target["id"], profile_name=target["name"])
         self.assertIn("Cannot specify both --profile-id and --profile-name.", mock_prompt.output_text)
 
+    def _set_profile_config_value(self, profile_name: str, key: str, value) -> int:
+        """Set one config value on a profile, returning its id."""
+        profile = self.database_test_data.sqlite_handler.get_profile(
+            profile_name=profile_name
+        )
+        config = dict(profile["config"])
+        config[key] = value
+        self.database_test_data.sqlite_handler.update_profile(
+            profile_id=profile["id"],
+            name=profile["name"],
+            profile_type=profile["profile_type"],
+            config=config,
+        )
+        return profile["id"]
+
+    def test_profile_show_masks_secret_values(self):
+        self._set_profile_config_value("ftp-test", "pass", "super-secret-pass")
+        commands, mock_prompt = self._make_commands([])
+        commands.profile.show(profile_name="ftp-test")
+        text = mock_prompt.output_text
+        self.assertIn("pass: ********", text)
+        self.assertNotIn("super-secret-pass", text)
+        # Non-secret properties stay visible.
+        self.assertIn("host:", text)
+
+    def test_profile_edit_s3_masks_current_secret(self):
+        profile = self.database_test_data.sqlite_handler.get_profile(
+            profile_name="s3-test"
+        )
+        config = dict(profile["config"])
+        config["access_key_id"] = "AKIA-VISIBLE-ID"
+        config["access_key_secret"] = "super-secret-key"
+        self.database_test_data.sqlite_handler.update_profile(
+            profile_id=profile["id"],
+            name=profile["name"],
+            profile_type=profile["profile_type"],
+            config=config,
+        )
+        commands, mock_prompt = self._make_commands(
+            [str(profile["id"]), "", "", "", "n"]
+        )
+        commands.profile.edit()
+        text = mock_prompt.output_text
+        # The access key id is an identifier and stays visible; the secret is masked.
+        self.assertIn("AKIA-VISIBLE-ID", text)
+        self.assertIn("S3 access key secret: ********", text)
+        self.assertNotIn("super-secret-key", text)
+
+    def test_profile_edit_rclone_masks_secret_properties(self):
+        profile_id = self._set_profile_config_value(
+            "ftp-test", "pass", "super-secret-pass"
+        )
+        commands, mock_prompt = self._make_commands(
+            [str(profile_id), "", "", "", ""]
+        )
+        commands.profile.edit()
+        text = mock_prompt.output_text
+        self.assertIn("pass: ********", text)
+        self.assertNotIn("super-secret-pass", text)
+        # Masking is display-only: the stored secret is untouched.
+        profile = commands.sqlite_handler.get_profile(profile_id=profile_id)
+        self.assertEqual(profile["config"]["pass"], "super-secret-pass")
+
     def test_profile_new_command(self):
         commands, _ = self._make_commands(
             ["2", "my-cmd-profile", "echo hello", "", "", "", "", "n"]

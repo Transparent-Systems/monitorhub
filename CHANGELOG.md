@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+- Secret profile values are now masked (``********``) in every profile display:
+  ``profile show``, the ``s3`` edit wizard (the current access key secret) and
+  the rclone property/``rclone_options`` listing of ``profile edit``.  The new
+  ``app.cli.profile_display`` owns the rule (``pass``/``password``, anything
+  containing ``secret``/``token``/``passw``/``credential``, and keys ending in
+  ``_key``/``_pem``), so ``access_key_id`` and ``client_id`` stay visible while
+  secrets no longer reach the terminal scrollback.  Masking is display-only:
+  pressing Enter keeps the stored value and typed secrets are never echoed.
+
 - ``profile edit`` now edits every remote profile, not only ``s3`` and
   ``event_command``.  An ``s3`` profile using the built-in S3Handler keeps its
   provider/credentials/region wizard, while every rclone-routed profile -- an

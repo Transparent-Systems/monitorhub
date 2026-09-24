@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.cli import profile_display
 from app.cli.prompt_service import PromptService
 from app.monitor import rclone_env
 from app.utils import reference_data
@@ -181,9 +182,12 @@ class ProfileEditor:
             # Store access key in profile_config
             profile_config["access_key_id"] = input_access_key_id
 
-        # Show current secret key
-        current_secret_key = profile_config.get("access_key_secret", "N/A")
-        self.prompt.print(f"Press Enter to continue with S3 access key secret: {current_secret_key}")
+        # Show current secret key (masked; the access key id above stays visible)
+        current_secret_key = profile_config.get("access_key_secret", "")
+        self.prompt.print(
+            "Press Enter to continue with S3 access key secret: "
+            f"{profile_display.masked_value('access_key_secret', current_secret_key) or 'N/A'}"
+        )
         # Prompt user for secret key
         input_access_key_id_secret = self.prompt.input("Please enter secret key: ")
         if input_access_key_id_secret.strip() != "":
@@ -273,9 +277,11 @@ class ProfileEditor:
                 f"Editing rclone profile '{profile_name}' "
                 f"(type: {profile.get('profile_type', 'N/A')})"
             )
-            self.prompt.print("Current properties:")
+            self.prompt.print("Current properties (secrets are hidden):")
             for key in backend_keys:
-                self.prompt.print(f"   {key}: {profile_config[key]}")
+                self.prompt.print(
+                    f"   {key}: {profile_display.format_value(key, profile_config[key])}"
+                )
             self.prompt.print(
                 "Press Enter to keep the current value of a property."
             )
@@ -350,7 +356,10 @@ class ProfileEditor:
         if isinstance(current_options, dict) and current_options:
             self.prompt.print(
                 "Current rclone options: "
-                + ", ".join(f"{k}={v}" for k, v in current_options.items())
+                + ", ".join(
+                    f"{k}={profile_display.masked_value(k, v)}"
+                    for k, v in current_options.items()
+                )
             )
         else:
             self.prompt.print("Current rclone options: none")
