@@ -93,13 +93,14 @@ class ProfileImporter:
     def _read_rclone_config(
         self, rclone_config_path: Path, notify: bool
     ) -> configparser.ConfigParser | None:
-        """Read the rclone config file, returning None when it has no sections.
+        """Read the rclone config file, returning None when it cannot be used.
 
-        rclone stores every value on a single line, but a hand-edited or pasted
-        config can wrap one across lines.  ``configparser`` only treats
-        *indented* lines as a continuation, so an unindented wrap would become
-        extra keys (this corrupted an imported ``google-drive`` profile once).
-        The text is therefore folded first and every joined value is reported.
+        MonitorHub does not repair a broken ``rclone.conf``.  rclone writes one
+        ``key = value`` per line, so any line that is not a section header, a
+        comment, a blank line or a ``key = value`` line is corruption (e.g. a
+        value wrapped across lines).  Such a config is refused as a whole: the
+        offending lines are reported and ``None`` is returned so no profile is
+        imported.
 
         Warnings are always logged; they are additionally printed to the user
         only when ``notify`` is True (the interactive import), so the diagnostic
@@ -122,21 +123,38 @@ class ProfileImporter:
                 self.prompt.print(f"No profiles found in {rclone_config_path}")
             return None
 
-        folded, wrapped = self._fold_wrapped_values(text)
-        for section, key in wrapped:
-            message = (
-                "rclone config value is wrapped across lines "
-                f"([{section}] {key}); MonitorHub joined it. Please check that "
-                f"profile in {rclone_config_path}."
-            )
-            self.logger.warning(message)
+        corrupt_lines = self._find_corrupt_lines(text)
+        if corrupt_lines:
+            for line_number, section, line in corrupt_lines:
+                message = (
+                    f"Corrupt rclone config {rclone_config_path}: line "
+                    f"{line_number} in [{section or '?'}] does not start with a "
+                    f"key: {line!r}. MonitorHub refuses to import a corrupt "
+                    "config; fix rclone.conf and run the import again."
+                )
+                self.logger.warning(message)
+                if notify:
+                    self.prompt.print(f"Error: {message}")
             if notify:
-                self.prompt.print(f"Warning: {message}")
+                self.prompt.print(f"No profiles imported from {rclone_config_path}")
+            return None
 
         # rclone.conf uses ``=`` only and has no configparser interpolation; the
         # defaults would treat ``:`` as a delimiter and expand ``%`` in a value.
         parser = configparser.ConfigParser(interpolation=None, delimiters=("=",))
-        parser.read_string(folded, source=str(rclone_config_path))
+        try:
+            parser.read_string(text, source=str(rclone_config_path))
+        except configparser.Error as error:
+            message = (
+                f"Corrupt rclone config {rclone_config_path}: {error}. MonitorHub "
+                "refuses to import a corrupt config; fix rclone.conf and run the "
+                "import again."
+            )
+            self.logger.warning(message)
+            if notify:
+                self.prompt.print(f"Error: {message}")
+                self.prompt.print(f"No profiles imported from {rclone_config_path}")
+            return None
         if not parser.sections():
             if notify:
                 self.prompt.print(f"No profiles found in {rclone_config_path}")
@@ -146,49 +164,34 @@ class ProfileImporter:
         return parser
 
     @classmethod
-    def _fold_wrapped_values(cls, text: str) -> tuple[str, list[tuple[str, str]]]:
-        """Join config lines that continue a value into that value.
+    def _find_corrupt_lines(cls, text: str) -> list[tuple[int, str, str]]:
+        """Return the config lines that are not valid rclone config syntax.
 
-        A line is a new logical line when it is a section header, a comment, a
-        blank line or a ``key = ...`` line; every other line is treated as a
-        continuation of the last ``key = ...`` line and appended (stripped, no
-        separator), which is how a wrapped value is reconstructed.
+        rclone writes one ``key = value`` per line, so a line is valid only when
+        it is a section header, a comment, a blank line or a ``key = value``
+        line.  Anything else -- a value wrapped onto its own line, stray text --
+        is corruption.  This is reported, never repaired.
 
-        Returns the folded text plus a ``(section, key)`` entry for each value
-        that had lines folded into it, so the caller can warn about a config
-        that is not in the shape rclone writes.
-
-        Note: this is a heuristic.  A continuation chunk that itself looks like
-        ``key=`` (e.g. base64 ending in ``==``) is still treated as a key;
-        rclone tokens do not contain ``=``, so that case does not arise in
-        practice.
+        Returns ``(line_number, section, line)`` for every offending line, where
+        ``line_number`` is one-based and ``section`` is the enclosing section
+        name (or ``""`` when the line precedes any section).
         """
-        folded: list[str] = []
-        wrapped: list[tuple[str, str]] = []
+        corrupt: list[tuple[int, str, str]] = []
         section = ""
-        last_key_index: int | None = None
 
-        for line in text.splitlines():
+        for line_number, line in enumerate(text.splitlines(), start=1):
             if cls._SECTION_RE.match(line):
                 section = line.strip()[1:-1].strip()
-                folded.append(line)
-                last_key_index = None
-            elif cls._KEY_RE.match(line):
-                folded.append(line)
-                last_key_index = len(folded) - 1
-            elif line.strip() == "" or cls._COMMENT_RE.match(line):
-                folded.append(line)
-                last_key_index = None
-            elif last_key_index is not None:
-                folded[last_key_index] += line.strip()
-                key = folded[last_key_index].split("=", 1)[0].strip()
-                note = (section or "?", key)
-                if note not in wrapped:
-                    wrapped.append(note)
+            elif (
+                line.strip() == ""
+                or cls._COMMENT_RE.match(line)
+                or cls._KEY_RE.match(line)
+            ):
+                continue
             else:
-                folded.append(line)
+                corrupt.append((line_number, section, line))
 
-        return "\n".join(folded), wrapped
+        return corrupt
 
     def _find_importable_profiles(self, rclone_profile_names: list[str]) -> list[str]:
         """Return rclone profile names that are not yet in the profiles table."""

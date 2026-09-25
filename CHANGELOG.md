@@ -2,14 +2,18 @@
 
 ## [Unreleased]
 
-- ``profile import`` is now robust to an rclone config value that is wrapped
-  across lines.  ``ProfileImporter`` folds a continued line back into its value
-  instead of letting ``configparser`` turn each extra line into a bogus key
-  (which once corrupted an imported ``google-drive`` profile) and prints a
-  warning naming the section and key; the config is parsed with
+- ``profile import`` now detects a corrupt ``rclone.conf`` instead of trying to
+  work around it.  rclone writes one ``key = value`` per line, so a line that is
+  not a section header, a comment, a blank line or a ``key = value`` line is
+  corruption (for example a value wrapped across lines).  ``ProfileImporter``
+  reports every offending line with its section and one-based line number and
+  refuses the import as a whole -- nothing is written to the profiles table until
+  the user fixes the file.  The prior behaviour folded such a wrapped line back
+  into the previous value, which silently imported a mangled profile (a doubled
+  ``google-drive`` token).  Clean configs are still parsed with
   ``interpolation=None`` and ``=``-only delimiters so a ``%`` or ``:`` in a
-  value is left untouched.  A key that is not an rclone option name is skipped
-  with a warning instead of being imported as a bogus property.
+  value is left untouched, and a key that is not an rclone option name is
+  skipped with a warning instead of being imported as a bogus property.
 
 - Importing rclone profiles moved out of ``DiagnosticUtil`` into the new
   ``app.cli.profile_importer.ProfileImporter``; ``mhub profile import`` now

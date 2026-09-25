@@ -213,6 +213,20 @@ class DiagnosticUtilCheckProfileImportTest(unittest.TestCase):
         logger.info.assert_not_called()
         self.assertEqual(prompt.outputs, [])
 
+    def test_corrupt_config_offers_nothing_to_import(self):
+        corrupt = Path(self._tmpdir.name) / "corrupt.conf"
+        corrupt.write_text(
+            '[alpha]\ntype = drive\ntoken = {"a":"1"}\n{"a":"2"}\n',
+            encoding="utf-8",
+        )
+        util, sqlite_handler, prompt, logger = self._make()
+
+        self.assertTrue(util.check_profile_import(rclone_config_path=corrupt))
+
+        sqlite_handler.add_profile.assert_not_called()
+        logger.info.assert_not_called()
+        self.assertEqual(prompt.outputs, [])
+
 
 
 

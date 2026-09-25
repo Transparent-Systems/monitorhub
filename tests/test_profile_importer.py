@@ -1,8 +1,9 @@
 """Unit tests for :mod:`app.cli.profile_importer`.
 
 Covers the rclone -> MonitorHub import: which profiles are found, the
-interactive selection, the config folding that guards against wrapped values,
-and the quiet read-only lookup used by the diagnostic check.
+interactive selection, the corruption detection that refuses a malformed
+rclone.conf instead of repairing it, and the quiet read-only lookup used by the
+diagnostic check.
 """
 
 import tempfile
@@ -15,53 +16,51 @@ from app.utils import reference_data
 from tests.mock_prompt_service import MockPromptService
 
 
-class TestFoldWrappedValues(unittest.TestCase):
-    """``_fold_wrapped_values`` joins wrapped config lines into their value."""
+class TestFindCorruptLines(unittest.TestCase):
+    """``_find_corrupt_lines`` flags lines that do not start with a key."""
 
-    def test_unindented_wrap_is_folded(self):
+    def test_wrapped_value_line_is_corrupt(self):
         text = (
             "[gamma]\n"
             "type = drive\n"
-            'token = {"access_token":"AAA",\n'
-            '"token_type":"Bearer",\n'
-            '"expiry":"2026-01-01"}\n'
+            'token = {"access_token":"AAA"}\n'
+            '{"access_token":"BBB","token_type":"Bearer"}\n'
             "scope = drive\n"
         )
 
-        folded, wrapped = ProfileImporter._fold_wrapped_values(text)
+        corrupt = ProfileImporter._find_corrupt_lines(text)
 
         self.assertEqual(
-            folded,
-            "[gamma]\n"
-            "type = drive\n"
-            'token = {"access_token":"AAA","token_type":"Bearer","expiry":"2026-01-01"}\n'
-            "scope = drive",
+            corrupt,
+            [(4, "gamma", '{"access_token":"BBB","token_type":"Bearer"}')],
         )
-        self.assertEqual(wrapped, [("gamma", "token")])
 
-    def test_indented_wrap_is_folded(self):
-        text = '[a]\ntoken = {"x":"1",\n  "y":"2"}\n'
+    def test_stray_line_without_key_is_corrupt(self):
+        text = "[a]\nhost = example.com\nnot a key line\n"
 
-        folded, wrapped = ProfileImporter._fold_wrapped_values(text)
+        self.assertEqual(
+            ProfileImporter._find_corrupt_lines(text), [(3, "a", "not a key line")]
+        )
 
-        self.assertEqual(folded, '[a]\ntoken = {"x":"1","y":"2"}')
-        self.assertEqual(wrapped, [("a", "token")])
+    def test_keyless_line_before_any_section_reports_empty_section(self):
+        text = "orphan line\n[a]\nhost = example.com\n"
 
-    def test_sections_blanks_and_comments_are_preserved(self):
-        text = "[a]\n# comment\n\n[b]\nhost = example.com\n"
+        self.assertEqual(
+            ProfileImporter._find_corrupt_lines(text), [(1, "", "orphan line")]
+        )
 
-        folded, wrapped = ProfileImporter._fold_wrapped_values(text)
+    def test_sections_blanks_and_comments_are_valid(self):
+        text = "# comment\n\n[a]\ntype = ftp\nhost = example.com\n"
 
-        self.assertEqual(folded.splitlines(), text.splitlines())
-        self.assertEqual(wrapped, [])
+        self.assertEqual(ProfileImporter._find_corrupt_lines(text), [])
 
-    def test_each_wrapped_value_is_reported_once(self):
-        text = '[a]\ntoken = {"x":"1",\n"y":"2"}\nsecret = ab\ncd\n'
+    def test_every_offending_line_is_reported(self):
+        text = "[a]\nbad one\nhost = x\nbad two\n"
 
-        folded, wrapped = ProfileImporter._fold_wrapped_values(text)
-
-        self.assertEqual(wrapped, [("a", "token"), ("a", "secret")])
-        self.assertIn("secret = abcd", folded)
+        self.assertEqual(
+            ProfileImporter._find_corrupt_lines(text),
+            [(2, "a", "bad one"), (4, "a", "bad two")],
+        )
 
 
 class ProfileImporterImportTest(unittest.TestCase):
@@ -77,14 +76,13 @@ class ProfileImporterImportTest(unittest.TestCase):
         "host = example.com\n"
     )
 
-    # A token wrapped across unindented lines: configparser would turn the
-    # extra lines into bogus keys before the folding fix.
-    WRAPPED_RCLONE_CONF = (
+    # A token wrapped across unindented lines: the continuation line has no key,
+    # so the config is corrupt and must not be imported (never repaired).
+    CORRUPT_RCLONE_CONF = (
         "[gamma]\n"
         "type = drive\n"
-        'token = {"access_token":"AAA",\n'
-        '"token_type":"Bearer",\n'
-        '"expiry":"2026-01-01"}\n'
+        'token = {"access_token":"AAA"}\n'
+        '{"access_token":"BBB","token_type":"Bearer"}\n'
         "scope = drive\n"
     )
 
@@ -179,34 +177,26 @@ class ProfileImporterImportTest(unittest.TestCase):
     def _first_imported_config(self, sqlite_handler) -> dict:
         return sqlite_handler.add_profile.call_args_list[0].kwargs["config"]
 
-    def test_wrapped_value_is_folded_into_one_key(self):
-        importer, sqlite_handler, _ = self._make(["1"])
+    def test_corrupt_config_imports_nothing(self):
+        importer, sqlite_handler, prompt = self._make(["0"])
 
-        importer.import_profiles(
-            rclone_config_path=self._write_rclone_conf(self.WRAPPED_RCLONE_CONF)
+        imported = importer.import_profiles(
+            rclone_config_path=self._write_rclone_conf(self.CORRUPT_RCLONE_CONF)
         )
 
-        call = sqlite_handler.add_profile.call_args_list[0]
-        config = call.kwargs["config"]
-        # ``type`` becomes the profile type, not a config key.
-        self.assertEqual(call.kwargs["profile_type"], "drive")
-        self.assertEqual(
-            config["token"],
-            '{"access_token":"AAA","token_type":"Bearer","expiry":"2026-01-01"}',
-        )
-        self.assertEqual(config["scope"], "drive")
-        # The wrapped lines must not become bogus keys.
-        self.assertNotIn('{"access_token"', config)
-        self.assertNotIn('"token_type"', config)
+        self.assertEqual(imported, [])
+        sqlite_handler.add_profile.assert_not_called()
+        self.assertIn("Corrupt rclone config", prompt.output_text)
+        self.assertIn("No profiles imported", prompt.output_text)
 
-    def test_wrapped_value_warning_is_printed(self):
+    def test_corrupt_config_warning_names_section_and_line(self):
         importer, _, prompt = self._make(["1"])
 
         importer.import_profiles(
-            rclone_config_path=self._write_rclone_conf(self.WRAPPED_RCLONE_CONF)
+            rclone_config_path=self._write_rclone_conf(self.CORRUPT_RCLONE_CONF)
         )
 
-        self.assertIn("wrapped across lines", prompt.output_text)
+        self.assertIn("line 4", prompt.output_text)
         self.assertIn("[gamma]", prompt.output_text)
 
     def test_percent_in_value_is_kept_literal(self):
