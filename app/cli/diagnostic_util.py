@@ -24,7 +24,7 @@ class DiagnosticUtil:
     def __init__(
         self,
         sqlite_handler: SQLiteHandler,
-        profile_importer: ProfileImporter,
+        profile_importer: ProfileImporter | None = None,
         logger: logging.Logger | None = None,
         prompt: PromptService | None = None,
     ) -> None:
@@ -33,7 +33,9 @@ class DiagnosticUtil:
         self.prompt = prompt or PromptService()
         # The rclone profile import machinery is shared, not duplicated: the
         # diagnostic check asks the importer which profiles are available, and
-        # the CLI import action is invoked through it too.
+        # the CLI import action is invoked through it too. It is optional
+        # because ``monitor test`` only needs the monitor-config check and must
+        # not be forced to construct an importer it never uses.
         self.profile_importer = profile_importer
         self.check_app_env_result = False
         self.check_profile_import_result = False
@@ -61,6 +63,11 @@ class DiagnosticUtil:
         prompting to import here.
         """
         self.check_profile_import_result = True
+
+        if self.profile_importer is None:
+            # ``monitor test`` builds a DiagnosticUtil without an importer; the
+            # import check is only meaningful for ``config test``.
+            return True
 
         importable = self.profile_importer.find_importable_profiles(rclone_config_path)
         if not importable:

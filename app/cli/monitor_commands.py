@@ -125,8 +125,16 @@ class MonitorCommands:
                     f"is {age:.0f}s old. Forcing stop and restart..."
                 )
 
-            if pid:
-                self.processes.force_kill(pid, monitor_name)
+            if pid and not self.processes.force_kill(pid, monitor_name):
+                # The process is still alive (e.g. permission denied). Clearing
+                # the stored pid here would make the following start() launch a
+                # second observer for the same monitor, so leave the record as
+                # it is and skip the restart.
+                self.prompt.print(
+                    f"Monitor '{monitor_name}' (id={monitor_id_val}) is still "
+                    f"running (pid={pid}) and could not be killed; skipping restart."
+                )
+                continue
 
             self.sqlite_handler.update_monitor_status(monitor_id=monitor_id_val, status=MONITOR_STATUS_STOPPED)
             self.sqlite_handler.update_monitor_pid(monitor_id=monitor_id_val, pid=0)

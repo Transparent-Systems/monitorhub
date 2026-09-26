@@ -246,6 +246,19 @@ class TestCommands(unittest.TestCase):
         commands.monitor.show(monitor_id=target["id"], monitor_name=target["name"])
         self.assertIn("Cannot specify both --monitor-id and --monitor-name.", mock_prompt.output_text)
 
+    def test_monitor_test_does_not_require_a_profile_importer(self):
+        """Regression: ``monitor test`` built DiagnosticUtil without the
+        ``profile_importer`` argument and always raised TypeError."""
+        commands, mock_prompt = self._make_commands([])
+        monitor = commands.sqlite_handler.get_monitors()[0]
+        with mock.patch(
+            "app.cli.monitor_commands.DiagnosticUtil.check_monitor_config",
+            return_value=True,
+        ) as check_monitor_config:
+            commands.monitor.test(monitor_id=monitor["id"])
+        check_monitor_config.assert_called_once()
+        self.assertIn("Monitor test completed", mock_prompt.output_text)
+
     def test_monitor_new(self):
         commands, _ = self._make_commands(
             ["my-monitor", "/tmp/source", "remote:dest", "1", "", ""]
@@ -1310,6 +1323,33 @@ class TestCommands(unittest.TestCase):
         stale = commands.monitor._cleanup_stale_monitors([stale_monitor])
         self.assertEqual(len(stale), 1)
         self.assertIn("Forcing stop and restart", mock_prompt.output_text)
+
+    def test_cleanup_stale_monitors_skips_restart_when_kill_fails(self):
+        """A stale monitor whose process cannot be killed must not be restarted.
+
+        Clearing its status/pid while the process is still alive would let the
+        following ``monitor start`` launch a duplicate observer (regression).
+        """
+        commands, mock_prompt = self._make_commands([])
+        parsed = parse_timestamp(utc_timestamp_now())
+        self.assertIsNotNone(parsed)
+        old_timestamp = (
+            parsed - datetime.timedelta(seconds=STALE_HEARTBEAT_SECONDS + 30)
+        ).strftime(TIMESTAMP_FORMAT)
+        stale_monitor = {
+            "id": 424244,
+            "name": "unkillable-monitor",
+            "status": MONITOR_STATUS_RUNNING,
+            "pid": 987654,
+            "last_heartbeat": old_timestamp,
+        }
+        with mock.patch.object(
+            commands.monitor.processes, "force_kill", return_value=False
+        ) as force_kill:
+            stale = commands.monitor._cleanup_stale_monitors([stale_monitor])
+        force_kill.assert_called_once()
+        self.assertEqual(stale, [])
+        self.assertIn("could not be killed", mock_prompt.output_text)
 
 
 class TestCommandProfileValidation(unittest.TestCase):
