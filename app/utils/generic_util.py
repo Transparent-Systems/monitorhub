@@ -43,6 +43,28 @@ class BoundedLRUDict(OrderedDict):
         except KeyError:
             return default
 
+    def setdefault(self, key: Any, default: Any = None) -> Any:
+        """Return ``key``'s value, inserting ``default`` through ``__setitem__``.
+
+        ``dict.setdefault`` bypasses ``__setitem__`` on subclasses, so without
+        this override an inserted default would escape the size cap and would
+        not become the most-recently used entry.
+        """
+        if key in self:
+            return self[key]
+        self[key] = default
+        return default
+
+    def update(self, *args: Any, **kwargs: Any) -> None:
+        """Insert mappings through ``__setitem__`` so ``maxsize`` always applies.
+
+        ``dict.update`` does not call ``__setitem__`` on subclasses, so the
+        inherited implementation would let the dict grow past ``maxsize`` and
+        would not track recency.
+        """
+        for key, value in dict(*args, **kwargs).items():
+            self[key] = value
+
 
 def is_interval_valid(interval: str | None) -> bool:
     """Check if interval string is a valid non-negative interval (e.g. 0, 10, 10s, 10m, 10h, 10d)."""

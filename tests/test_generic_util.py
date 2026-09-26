@@ -47,6 +47,24 @@ class TestBoundedLRUDict(unittest.TestCase):
         d["e"] = 5
         self.assertEqual(list(d.keys()), ["d", "b", "e"])
 
+    def test_update_respects_maxsize(self):
+        """update() must insert through __setitem__ so the cap still applies."""
+        d = BoundedLRUDict(maxsize=2)
+        d.update({"a": 1, "b": 2, "c": 3})
+        self.assertEqual(list(d.keys()), ["b", "c"])
+
+    def test_setdefault_inserts_through_setitem(self):
+        """setdefault() must insert through __setitem__ and track recency."""
+        d = BoundedLRUDict(maxsize=2)
+        d["a"] = 1
+        d["b"] = 2
+        # New key: inserted and capped (evicts the least recently used, "a").
+        self.assertEqual(d.setdefault("c", 3), 3)
+        self.assertEqual(list(d.keys()), ["b", "c"])
+        # Existing key: returns the stored value and refreshes recency.
+        self.assertEqual(d.setdefault("b", 99), 2)
+        self.assertEqual(list(d.keys()), ["c", "b"])
+
 
 class TestGenericUtilFunctions(unittest.TestCase):
     """Tests for convert_to_seconds and find_by_id."""
