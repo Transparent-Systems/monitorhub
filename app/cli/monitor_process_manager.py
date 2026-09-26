@@ -25,6 +25,12 @@ from pathlib import Path
 from app.cli.prompt_service import PromptService
 from app.utils.generic_util import is_process_alive
 
+# ``signal.SIGKILL`` is POSIX-only; accessing it on Windows raises
+# ``AttributeError``. On Windows ``os.kill(pid, signal.SIGTERM)`` terminates the
+# process unconditionally (the TerminateProcess API), so it is the force-kill
+# signal there. Resolving it once here keeps force_kill platform-safe.
+_FORCE_KILL_SIGNAL = getattr(signal, "SIGKILL", signal.SIGTERM)
+
 
 class MonitorProcessManager:
     """Launch, track, and stop detached monitor child processes."""
@@ -66,21 +72,29 @@ class MonitorProcessManager:
         return str(venv_python) if venv_python.exists() else sys.executable
 
     def force_kill(self, pid: int, name: str) -> bool:
-        """Send SIGKILL to a process and return whether it is now dead.
+        """Force-terminate a process and return whether it is now dead.
 
-        Returns True if the process was killed or was already gone.
+        Uses SIGKILL on POSIX and SIGTERM (an unconditional terminate) on
+        Windows. Returns True if the process was killed or was already gone.
         Returns False on PermissionError (process still alive).
         """
         try:
-            os.kill(pid, signal.SIGKILL)
-            self.prompt.print(f"Sent SIGKILL to monitor '{name}' (pid={pid}).")
+            os.kill(pid, _FORCE_KILL_SIGNAL)
+            self.prompt.print(f"Sent force-kill signal to monitor '{name}' (pid={pid}).")
             return True
         except ProcessLookupError:
             self.prompt.print(f"Monitor '{name}' process (pid={pid}) not found — may have already exited.")
             return True
         except PermissionError:
-            self.prompt.print(f"Permission denied when sending SIGKILL to monitor '{name}' (pid={pid}).")
+            self.prompt.print(f"Permission denied when force-killing monitor '{name}' (pid={pid}).")
             return False
+        except OSError as error:
+            # Windows raises a plain OSError (not ProcessLookupError) when the
+            # process cannot be opened, e.g. because it has already exited.
+            self.prompt.print(
+                f"Could not force-kill monitor '{name}' (pid={pid}): {error}"
+            )
+            return not is_process_alive(pid)
 
     def reap(self, monitor_id: int | None) -> None:
         """Reap a monitor child launched by this instance, if one is tracked.
@@ -139,7 +153,7 @@ class MonitorProcessManager:
         """Escalate a graceful stop that has not taken effect.
 
         Sends SIGTERM (which triggers the monitor's own graceful shutdown
-        handler on POSIX), waits briefly, then falls back to SIGKILL.
+        handler on POSIX), waits briefly, then falls back to a force-kill.
         """
         if not pid:
             return
@@ -151,6 +165,12 @@ class MonitorProcessManager:
         except PermissionError:
             self.prompt.print(
                 f"Permission denied sending SIGTERM to monitor '{name}' (pid={pid})."
+            )
+            return
+        except OSError as error:
+            # Windows raises a plain OSError when the process cannot be opened.
+            self.prompt.print(
+                f"Could not escalate stop for monitor '{name}' (pid={pid}): {error}"
             )
             return
 
