@@ -35,8 +35,9 @@ class TestSchemaVersioning(unittest.TestCase):
         self.assertEqual(classify("9.0.0", "10.0.0"), "older")
         self.assertEqual(classify("10.0.0", "9.0.0"), "newer")
 
-    def test_registry_has_single_baseline_entry(self):
-        # The current codebase has a single schema change: the initial schema.
+    def test_registry_baseline_is_first_and_supported_is_last(self):
+        # The initial schema stays the first entry; the supported schema version
+        # is always the newest (last) entry in the registry.
         self.assertEqual(SCHEMA_MIGRATIONS[0], ("1.0.0", "Initial schema", None))
         self.assertEqual(DATABASE_SCHEMA_VERSION, SCHEMA_MIGRATIONS[-1][0])
 

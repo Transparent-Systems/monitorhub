@@ -11,6 +11,7 @@ import sqlite3
 import tempfile
 import unittest
 
+from app.utils.schema_versioning import DATABASE_SCHEMA_VERSION, SCHEMA_MIGRATIONS
 from app.utils.sqlite_handler import SQLiteHandler
 from tests.base_test_class import BaseTestClass
 
@@ -78,18 +79,22 @@ class TestSqliteHandler(BaseTestClass):
                 handler.close()
 
     def test_01_03_schema_version_recorded_with_description(self):
-        """create_schema should record the baseline schema version with a description."""
+        """create_schema should record every schema version with a description."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             handler = SQLiteHandler(logger=self.logger, db_dir=tmp_dir)
             try:
                 handler.create_schema()
 
                 versions = handler.get_schema_versions()
-                self.assertEqual(len(versions), 1)
+                # create_schema applies (and records) the whole migration
+                # registry, so the history holds one row per migration.
+                self.assertEqual(len(versions), len(SCHEMA_MIGRATIONS))
                 self.assertEqual(versions[0]["version"], "1.0.0")
                 self.assertEqual(versions[0]["description"], "Initial schema")
 
-                self.assertEqual(handler.get_current_schema_version(), "1.0.0")
+                self.assertEqual(
+                    handler.get_current_schema_version(), DATABASE_SCHEMA_VERSION
+                )
 
                 # Applying migrations again must be a no-op.
                 self.assertEqual(handler.apply_pending_migrations(), [])
@@ -315,7 +320,7 @@ class TestSqliteHandler(BaseTestClass):
         self.logger.info(f"Monitor added with ID: {monitor_id}")
 
         profile_id = self.sqlite_handler.add_profile(
-            name="test_profile",
+            name="map_monitor_profile",
             profile_type="aws",
             config={
                 "access_key_id": "AKIA_UPDATED...",
@@ -641,6 +646,24 @@ class TestSqliteHandlerLifecycle(BaseTestClass):
             self.assertTrue(handler.is_closed())
             handler.close()  # idempotent
             self.assertTrue(handler.is_closed())
+
+    def test_unique_profile_name_index_rejects_duplicates(self):
+        """Migration 1.1.0 must reject a duplicate profile name.
+
+        Profile names are used as identifiers (lookup/delete by name), so two
+        profiles must not share a name.
+        """
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            handler = SQLiteHandler(logger=self.logger, db_dir=tmp_dir)
+            try:
+                handler.create_schema()
+                self.assertIsNotNone(
+                    handler.add_profile(name="dup-profile", profile_type="s3", config={})
+                )
+                with self.assertRaises(sqlite3.IntegrityError):
+                    handler.add_profile(name="dup-profile", profile_type="s3", config={})
+            finally:
+                handler.close()
 
 
 if __name__ == "__main__":
