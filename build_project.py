@@ -35,9 +35,11 @@ def build_executable():
     build_cmd = ["pyinstaller", "--onefile", "--name", output_name]
 
     # Ensure the monitor-runner module is packaged inside the binary.
-    # app/monitor/run_monitor.py is a separate entry point reached via a file path
-    # (not an import), so PyInstaller's static analysis cannot discover it.
-    build_cmd.append("--hidden-import=scripts.run_monitor")
+    # mhub.py imports app.monitor.run_monitor inside its ``run-monitor``
+    # dispatch branch to re-execute itself as a monitor child; declaring it as a
+    # hidden import guarantees it is bundled even if static analysis ever misses
+    # that conditional import.
+    build_cmd.append("--hidden-import=app.monitor.run_monitor")
 
     # Platform Specifics
     if sys.platform == "win32":

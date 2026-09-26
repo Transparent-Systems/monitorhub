@@ -1,6 +1,6 @@
 """Scripted PromptService for unit tests.
 
-Implements the same interface as :class:`scripts.prompt_service.PromptService`
+Implements the same interface as :class:`app.cli.prompt_service.PromptService`
 but supplies ``input()`` responses from a queue and records ``print()`` output,
 so tests can drive interactive command flows and assert on the output without a
 human or monkey-patching builtins.
