@@ -225,7 +225,7 @@ class RcloneHandler(RemoteHandler):
             disable the timeout for this call.
         """
 
-        if self.rclone_path is None:
+        if not self.rclone_path:
             self.logger.error("rclone executable not found in the system's PATH.")
             return RemoteResult.failure("rclone executable not found in the system's PATH.", code=1)
 

@@ -174,9 +174,29 @@ class TestRcloneRunCommand(unittest.TestCase):
         self.assertFalse(result.retryable)
 
     def test_missing_rclone_reports_failure(self):
-        handler = _make_handler()
-        handler.rclone_path = None
+        """A missing rclone binary must return a failure, never raise.
 
+        Regression: ``get_rclone_path`` returns ``""`` (not ``None``) when
+        rclone is absent, so the handler must treat an empty path as
+        "not found"; otherwise ``Popen([""])`` raises instead of reporting.
+        """
+        logger = logging.getLogger("tests.test_rclone_handler")
+        logger.setLevel(logging.CRITICAL)
+        logger.propagate = False
+
+        previous = RcloneHandler.rclone_path
+        RcloneHandler.rclone_path = None
+        self.addCleanup(setattr, RcloneHandler, "rclone_path", previous)
+        with mock.patch.object(shutil, "which", return_value=None):
+            handler = RcloneHandler(
+                base_monitor_path="/tmp",
+                base_remote_path="remote:path",
+                profile_name="remote",
+                logger=logger,
+                command_timeout=0,
+            )
+
+        self.assertEqual(handler.rclone_path, "")
         result = handler.run_command(["ls", "remote:path"])
 
         self.assertFalse(result.ok)
