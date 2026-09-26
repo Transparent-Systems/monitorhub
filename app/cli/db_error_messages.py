@@ -14,6 +14,7 @@ import sqlite3
 # "UNIQUE constraint failed: monitor_profile_map.monitor_id, ...profile_id".
 _FIELD_MESSAGES: tuple[tuple[str, str], ...] = (
     ("monitors.name", "A monitor with that name already exists."),
+    ("profiles.name", "A profile with that name already exists."),
     ("monitor_profile_map", "That profile is already linked to this monitor."),
 )
 

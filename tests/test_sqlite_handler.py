@@ -647,8 +647,8 @@ class TestSqliteHandlerLifecycle(BaseTestClass):
             handler.close()  # idempotent
             self.assertTrue(handler.is_closed())
 
-    def test_unique_profile_name_index_rejects_duplicates(self):
-        """Migration 1.1.0 must reject a duplicate profile name.
+    def test_unique_profile_name_constraint_rejects_duplicates(self):
+        """``profiles.name`` is UNIQUE, matching the ``monitors`` table.
 
         Profile names are used as identifiers (lookup/delete by name), so two
         profiles must not share a name.
@@ -657,6 +657,16 @@ class TestSqliteHandlerLifecycle(BaseTestClass):
             handler = SQLiteHandler(logger=self.logger, db_dir=tmp_dir)
             try:
                 handler.create_schema()
+
+                # The constraint is declared inline in the table definition
+                # (regression: ``profiles.name`` used to be a plain NOT NULL
+                # column with no uniqueness).
+                ddl = handler.connection.execute(
+                    "SELECT sql FROM sqlite_master "
+                    "WHERE type='table' AND name='profiles'"
+                ).fetchone()["sql"]
+                self.assertIn("UNIQUE", ddl.upper())
+
                 self.assertIsNotNone(
                     handler.add_profile(name="dup-profile", profile_type="s3", config={})
                 )

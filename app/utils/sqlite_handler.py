@@ -306,7 +306,7 @@ class SQLiteHandler:
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS profiles (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    name TEXT NOT NULL,
+                    name TEXT NOT NULL UNIQUE,
                     profile_type TEXT NOT NULL,
                     config JSON,
                     date_created DATETIME DEFAULT CURRENT_TIMESTAMP,

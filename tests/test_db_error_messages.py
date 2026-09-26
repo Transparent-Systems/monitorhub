@@ -28,6 +28,15 @@ class TestIntegrityErrorMessages(unittest.TestCase):
             "A monitor with that name already exists.",
         )
 
+    def test_duplicate_profile_name_without_context(self):
+        """A UNIQUE violation on profiles.name maps to a profile-specific message."""
+        error = self._unique_profile_name_error()
+
+        self.assertEqual(
+            integrity_error_message(error),
+            "A profile with that name already exists.",
+        )
+
     def test_duplicate_profile_map(self):
         error = sqlite3.IntegrityError(
             "UNIQUE constraint failed: monitor_profile_map.monitor_id, "
@@ -100,6 +109,21 @@ class TestIntegrityErrorMessages(unittest.TestCase):
                 except sqlite3.IntegrityError as error:
                     return error
                 self.fail("Expected a UNIQUE constraint violation on monitors.name")
+            finally:
+                handler.close()
+
+    def _unique_profile_name_error(self) -> sqlite3.IntegrityError:
+        """Produce a real duplicate-profile-name error from the handler."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            handler = SQLiteHandler(logger=logging.getLogger(__name__), db_dir=tmp_dir)
+            try:
+                handler.create_schema()
+                handler.add_profile(name="Daily sync", profile_type="s3", config={})
+                try:
+                    handler.add_profile(name="Daily sync", profile_type="s3", config={})
+                except sqlite3.IntegrityError as error:
+                    return error
+                self.fail("Expected a UNIQUE constraint violation on profiles.name")
             finally:
                 handler.close()
 

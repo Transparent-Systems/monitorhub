@@ -12,10 +12,6 @@ there is nothing to maintain on a per-release basis.
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from app.utils.sqlite_handler import SQLiteHandler
 
 # Ordered migration registry. Each entry is ``(db_schema_version, description,
 # apply_fn)`` where ``apply_fn`` receives the SQLiteHandler and performs the
@@ -24,26 +20,8 @@ if TYPE_CHECKING:
 # Migrations are applied in ascending version order.
 Migration = tuple[str, str, Callable | None]
 
-
-def _add_unique_profile_name_index(handler: "SQLiteHandler") -> None:
-    """Enforce unique profile names (a name identifies a profile).
-
-    MonitorHub validates profile names for uniqueness and looks profiles up and
-    deletes them by name, so duplicate names would make those operations
-    ambiguous. A unique index closes that gap for existing databases; fresh
-    databases get it from the same migration because ``create_schema`` runs the
-    pending migrations after creating the baseline tables.
-    """
-    with handler.transaction() as cur:
-        cur.execute(
-            "CREATE UNIQUE INDEX IF NOT EXISTS profiles_name_unique "
-            "ON profiles (name)"
-        )
-
-
 SCHEMA_MIGRATIONS: list[Migration] = [
     ("1.0.0", "Initial schema", None),
-    ("1.1.0", "Enforce unique profile names", _add_unique_profile_name_index),
 ]
 
 # The schema version this application creates and supports. Always the most
