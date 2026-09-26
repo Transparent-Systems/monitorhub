@@ -63,6 +63,33 @@ class _FakeS3Client:
         return {}
 
 
+class _ListedPaginator:
+    """Paginator that yields a single page containing the supplied objects."""
+
+    def __init__(self, objects: list[dict]) -> None:
+        self._objects = objects
+
+    def paginate(self, **kwargs):
+        yield {"Contents": self._objects}
+
+
+class _ListedS3Client:
+    """Fake S3 client that lists the supplied objects and records uploads."""
+
+    def __init__(self, objects: list[dict]) -> None:
+        self._objects = objects
+        self.uploaded: list[tuple[str, str, str]] = []
+
+    def get_paginator(self, name: str):
+        return _ListedPaginator(self._objects)
+
+    def head_object(self, **kwargs):
+        raise ClientError({"Error": {"Code": "404"}}, "HeadObject")
+
+    def upload_file(self, filename, bucket, key, **kwargs):
+        self.uploaded.append((filename, bucket, key))
+
+
 class _FakeHttpResponse:
     """Minimal stand-in for botocore's ``AWSResponse`` (status only)."""
 
@@ -124,6 +151,66 @@ class TestS3HandlerListingFailure(unittest.TestCase):
             self.assertEqual(len(fake.uploaded), 1)
             self.assertEqual(len(captured.output), 1)
             self.assertIn("Could not list remote objects at s3://bucket/prefix/", captured.output[0])
+
+
+class TestS3HandlerCopyFolderMetadataRace(unittest.TestCase):
+    """A file that vanishes or becomes unreadable must not abort the backup.
+
+    Regression: ``copy_folder`` compared metadata with an unguarded
+    ``stat()``/``_calculate_md5()``. An ``OSError`` there escaped ``copy_folder``
+    and killed the scheduled backup worker thread, silently stopping every
+    subsequent run for that monitor.
+    """
+
+    def test_missing_file_is_recorded_and_other_files_still_upload(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "present.txt").write_text("hello", encoding="utf-8")
+            fake = _ListedS3Client(
+                [{"Key": "prefix/ghost.txt", "Size": 1, "ETag": '"etag"'}]
+            )
+            handler = _make_handler(fake, base_monitor_path=tmp)
+
+            def fake_walk(_path):
+                # ghost.txt is listed remotely but no longer exists on disk.
+                yield (tmp, [], ["present.txt", "ghost.txt"])
+
+            with mock.patch("app.monitor.s3_handler.os.walk", side_effect=fake_walk):
+                with self.assertLogs(LOGGER, level="ERROR") as captured:
+                    result = handler.copy_folder(tmp)
+
+            self.assertFalse(result.ok)
+            self.assertIn("ghost.txt", result.message)
+            uploaded_keys = [key for _, _, key in fake.uploaded]
+            self.assertIn("prefix/present.txt", uploaded_keys)
+            self.assertNotIn("prefix/ghost.txt", uploaded_keys)
+            self.assertTrue(
+                any("Skipping" in line for line in captured.output)
+            )
+
+    def test_unreadable_file_is_recorded_and_other_files_still_upload(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "a.txt").write_text("hello", encoding="utf-8")
+            (Path(tmp) / "b.txt").write_text("world", encoding="utf-8")
+            fake = _ListedS3Client(
+                [{"Key": "prefix/a.txt", "Size": 5, "ETag": '"deadbeef"'}]
+            )
+            handler = _make_handler(fake, base_monitor_path=tmp)
+
+            def failing_md5(_path):
+                raise OSError("cannot read")
+
+            with mock.patch.object(
+                S3Handler, "_calculate_md5", side_effect=failing_md5
+            ):
+                with self.assertLogs(LOGGER, level="ERROR") as captured:
+                    result = handler.copy_folder(tmp)
+
+            self.assertFalse(result.ok)
+            self.assertIn("cannot read", result.message)
+            uploaded_keys = [key for _, _, key in fake.uploaded]
+            self.assertIn("prefix/b.txt", uploaded_keys)
+            self.assertNotIn("prefix/a.txt", uploaded_keys)
+            self.assertTrue(any("Skipping" in line for line in captured.output))
 
 
 class TestS3ErrorClassification(unittest.TestCase):

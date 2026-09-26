@@ -335,7 +335,16 @@ class S3Handler(RemoteHandler):
                     should_copy = True
                 else:
                     remote_obj = remote_objects_map[key]
-                    local_size = local_file_path.stat().st_size
+                    # A file can disappear (or become unreadable) between the
+                    # directory walk and this metadata check. Record it and keep
+                    # uploading the other files: letting the OSError escape here
+                    # would kill the scheduled backup worker thread.
+                    try:
+                        local_size = local_file_path.stat().st_size
+                    except OSError as e:
+                        self.logger.error(f"Skipping {local_file_path}: {e}")
+                        errors.append(str(e))
+                        continue
                     remote_size = remote_obj['Size']
                     remote_etag = remote_obj.get('ETag', '').strip('"')
                     
@@ -343,7 +352,12 @@ class S3Handler(RemoteHandler):
                     if local_size == remote_size:
                         # If ETag contains '-', it is a multipart upload and cannot be verified by simple MD5
                         if '-' not in remote_etag:
-                            local_md5 = self._calculate_md5(str(local_file_path))
+                            try:
+                                local_md5 = self._calculate_md5(str(local_file_path))
+                            except OSError as e:
+                                self.logger.error(f"Skipping {local_file_path}: {e}")
+                                errors.append(str(e))
+                                continue
                             should_copy = local_md5 != remote_etag
                         else:
                             # Fallback for multipart files: assume size match is enough
