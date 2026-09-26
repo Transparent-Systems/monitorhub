@@ -6,6 +6,7 @@ import time
 import unittest
 from unittest.mock import MagicMock, patch
 
+from app.monitor.remote_result import RemoteResult
 from app.monitor.scheduled_monitor_handler import ScheduledMonitorHandler, _OneOffWorker
 from app.monitor.worker import PeriodicWorker
 from app.utils.constants import MONITOR_TYPE_BACKUP, MONITOR_TYPE_RESTORE
@@ -234,6 +235,34 @@ class TestScheduledMonitorHandler(unittest.TestCase):
         # Should not raise even when a profile produced no handler.
         handler.stop()
         self.assertEqual(handler.command_handlers, {})
+
+
+    def test_perform_operation_skips_unbuildable_remote_profile(self):
+        """One unbuildable remote handler must not abort the other profiles."""
+        profiles = [
+            {"name": "bad", "profile_type": "s3", "config": {}},
+            {"name": "good", "profile_type": "s3", "config": {}},
+        ]
+        handler = ScheduledMonitorHandler(
+            monitor=self.mock_monitor,
+            profiles=profiles,
+            log_config=self.mock_log_config,
+            direction=MONITOR_TYPE_BACKUP,
+        )
+        good_handler = MagicMock()
+        good_handler.copy_folder.return_value = RemoteResult.success()
+
+        def get_handler(**kwargs):
+            return None if kwargs["profile"]["name"] == "bad" else good_handler
+
+        with patch(
+            "app.monitor.scheduled_monitor_handler.get_remote_handler",
+            side_effect=get_handler,
+        ):
+            handler._perform_operation(reason="test")
+
+        # The "good" profile is still processed despite the "bad" one failing.
+        good_handler.copy_folder.assert_called_once()
 
 
 if __name__ == "__main__":

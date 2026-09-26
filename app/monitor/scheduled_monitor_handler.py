@@ -195,11 +195,14 @@ class ScheduledMonitorHandler(MonitorHandler):
                     exclude_patterns=self.exclude_patterns,
                 )
 
+                # Defensive: get_remote_handler currently never returns None (it
+                # falls back to rclone). Skip only this profile so a single
+                # unbuildable handler cannot abort the whole backup/restore.
                 if remote_handler is None:
                     self.logger.error(
                         f"[{monitor_name}] Could not instantiate handler for {self.direction}."
                     )
-                    return
+                    continue
 
                 if self.direction == MONITOR_TYPE_BACKUP:
                     result = remote_handler.copy_folder(monitor_path=monitor_path)
