@@ -14,8 +14,10 @@ from app.utils.constants import TIMESTAMP_FORMAT
 
 class BoundedLRUDict(OrderedDict):
     """
-    A dictionary with a maximum size that evicts the least recently accessed
-    item when its capacity is reached.
+    A dictionary with a maximum size that evicts the least recently used item
+    when its capacity is reached. Recency is updated on both access (``[]`` /
+    ``get``) and assignment, so a frequently read entry is not evicted while
+    colder ones survive.
     """
     def __init__(self, maxsize: int = 1000, *args: Any, **kwargs: Any) -> None:
         if maxsize < 1:
@@ -28,6 +30,18 @@ class BoundedLRUDict(OrderedDict):
         self.move_to_end(key)
         if len(self) > self.maxsize:
             self.popitem(last=False)
+
+    def __getitem__(self, key: Any) -> Any:
+        value = super().__getitem__(key)
+        self.move_to_end(key)
+        return value
+
+    def get(self, key: Any, default: Any = None) -> Any:
+        """Return the value for ``key``, refreshing its recency when present."""
+        try:
+            return self[key]
+        except KeyError:
+            return default
 
 
 def is_interval_valid(interval: str | None) -> bool:
