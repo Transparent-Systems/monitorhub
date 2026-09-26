@@ -204,10 +204,10 @@ class ProfileImporter:
         self, parser: configparser.ConfigParser, profile_names: list[str]
     ) -> list[str]:
         """Convert the selected rclone sections into MonitorHub profiles."""
-        # Some Rclone attribute names differ from those in MonitorHub.
+        # Some Rclone attribute names differ from those in MonitorHub.  Keys not
+        # listed here are stored unchanged, so an identity entry is unnecessary.
         config_attribute_map = {
             "provider": "provider_name",
-            "access_key_secret": "access_key_secret",
         }
         config_attribute_map_keys = config_attribute_map.keys()
 
