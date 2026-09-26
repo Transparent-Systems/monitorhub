@@ -230,5 +230,55 @@ class DiagnosticUtilCheckProfileImportTest(unittest.TestCase):
 
 
 
+class DiagnosticUtilRunPathChecksTest(unittest.TestCase):
+    """``_run_path_checks`` cleanup must not reference loop-local state.
+
+    Regression: the local-temp-file cleanup handler reported the per-profile
+    remote file name, which is only assigned inside the profiles loop. A monitor
+    with no remote profiles therefore raised ``NameError`` while reporting a
+    cleanup failure, masking the original ``OSError``.
+    """
+
+    def _make(self, profiles):
+        sqlite_handler = mock.Mock()
+        sqlite_handler.get_profiles_for_monitor.return_value = profiles
+        prompt = MockPromptService(inputs=[])
+        logger = logging.getLogger("tests.diagnostic_util.run_path_checks")
+        logger.setLevel(logging.CRITICAL)
+        logger.propagate = False
+        util = DiagnosticUtil(
+            sqlite_handler=sqlite_handler,
+            profile_importer=ProfileImporter(
+                sqlite_handler=sqlite_handler, logger=logger
+            ),
+            logger=logger,
+            prompt=prompt,
+        )
+        return util, logger
+
+    def test_cleanup_failure_without_remote_profiles_is_logged_not_raised(self):
+        util, logger = self._make(profiles=[])
+        monitor = {
+            "id": 1,
+            "name": "no-remote-profiles",
+            "monitor_path": tempfile.gettempdir(),
+            "remote_path": "bucket/prefix",
+        }
+
+        with mock.patch(
+            "app.cli.diagnostic_util.os.unlink",
+            side_effect=OSError("permission denied"),
+        ):
+            with self.assertLogs(logger, level="WARNING") as captured:
+                result = util._run_path_checks(monitor)
+
+        # The monitor-path check passed; only the cleanup failed and it must be
+        # reported, not raised.
+        self.assertEqual(result.failure_count, 0)
+        self.assertTrue(
+            any("Failed to delete local temp file" in line for line in captured.output)
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

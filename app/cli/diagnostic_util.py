@@ -306,6 +306,9 @@ class DiagnosticUtil:
                 profile=profile,
             )
 
+            # Defensive: get_remote_handler currently never returns None (it
+            # falls back to rclone), but the monitor runtime treats a missing
+            # handler as a test failure rather than an attribute error.
             if remote_handler is None:
                 process_test_result.process(test_case_name=testname, test_ok=False, test_output=f"Could not get remote_handler for remote_profile: {profile_name}")
                 continue
@@ -338,7 +341,10 @@ class DiagnosticUtil:
             if temp_file_path.exists():
                 os.unlink(temp_file_path)
         except OSError as e:
-            self.logger.warning(f"Failed to delete local temp file {temp_remote_file_name}: {e}")
+            # Report against the actual temporary file path: the per-profile
+            # remote file name above is only assigned inside the loop and is
+            # unbound when a monitor has no remote profiles.
+            self.logger.warning(f"Failed to delete local temp file {temp_file_path}: {e}")
 
         return process_test_result
 
