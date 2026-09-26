@@ -223,10 +223,17 @@ class S3Handler(RemoteHandler):
             remote_path = self.get_remote_path(monitor_path=monitor_path)
 
         bucket, key = self._get_bucket_and_key(remote_path)
-        
-        # Get file modification time to store as metadata
-        mtime = str(int(Path(monitor_path).stat().st_mtime))
-        extra_args = {'Metadata': {'mtime': mtime}}
+
+        # Get file modification time to store as metadata. A local stat failure
+        # (e.g. the file was removed between the event and this copy) is a failed
+        # copy, not an exception escaping into the watch loop.
+        try:
+            local_stat = Path(monitor_path).stat()
+        except OSError as e:
+            self.logger.error(f"Error reading file {monitor_path}: {e}")
+            return self._failure_from_exception(e)
+
+        extra_args = {'Metadata': {'mtime': str(int(local_stat.st_mtime))}}
 
         # Get metadata of object bucket and prefix
         try:
@@ -238,17 +245,18 @@ class S3Handler(RemoteHandler):
             remote_mtime = meta_data.get('mtime')
 
             # We may have stored mtime in metadata during a previous upload
-            if remote_mtime and remote_mtime == str(int(Path(monitor_path).stat().st_mtime)):
+            if remote_mtime and remote_mtime == str(int(local_stat.st_mtime)):
                 return RemoteResult.success()
 
             # Is size and etag same as the monitor file, then return
-            if size == Path(monitor_path).stat().st_size:
+            if size == local_stat.st_size:
                 md5 = self._calculate_md5(monitor_path)
                 if etag == md5:
                     return RemoteResult.success()
-        except ClientError:
-            # 404 (object absent remotely) or another head failure means we cannot
-            # skip the upload; fall through to the upload attempt below.
+        except Exception:  # noqa: BLE001 - absent object or a failed check; upload anyway
+            # 404 (object absent remotely), or a transient network/credential
+            # failure, means we cannot prove the file is up to date; fall through
+            # to the upload attempt below rather than letting the error escape.
             pass
                
         try:
