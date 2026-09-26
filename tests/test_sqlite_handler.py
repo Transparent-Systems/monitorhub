@@ -197,7 +197,7 @@ class TestSqliteHandler(BaseTestClass):
             profile_type="aws",
             config={
                 "access_key_id": "AKIA...",
-                "access_key_secret": "SECRET...",
+                "secret_access_key": "SECRET...",
                 "default_region": "us-east-1",
                 "end_point": "my-endpoint"
             }
@@ -259,7 +259,7 @@ class TestSqliteHandler(BaseTestClass):
             profile_type="aws",
             config={
                 "access_key_id": "AKIA_UPDATED...",
-                "access_key_secret": "SECRET_UPDATED...",
+                "secret_access_key": "SECRET_UPDATED...",
                 "default_region": "us-west-2",
                 "end_point": "my-endpoint"
                 }
@@ -324,7 +324,7 @@ class TestSqliteHandler(BaseTestClass):
             profile_type="aws",
             config={
                 "access_key_id": "AKIA_UPDATED...",
-                "access_key_secret": "SECRET_UPDATED...",
+                "secret_access_key": "SECRET_UPDATED...",
                 "default_region": "us-west-2",
                 "end_point": "my-endpoint"
                 }

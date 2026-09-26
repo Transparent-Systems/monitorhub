@@ -291,7 +291,7 @@ class TestS3FactoryProviderDetection(unittest.TestCase):
             {
                 "provider_name": "Amazon AWS S3",
                 "access_key_id": "key",
-                "access_key_secret": "secret",
+                "secret_access_key": "secret",
                 "region": "us-east-1",
             }
         )
@@ -303,7 +303,7 @@ class TestS3FactoryProviderDetection(unittest.TestCase):
             {
                 "provider_name": "AWS",
                 "access_key_id": "key",
-                "access_key_secret": "secret",
+                "secret_access_key": "secret",
                 "region": "eu-west-1",
             }
         )
@@ -314,11 +314,27 @@ class TestS3FactoryProviderDetection(unittest.TestCase):
             {
                 "provider_name": "IDrive",
                 "access_key_id": "key",
-                "access_key_secret": "secret",
+                "secret_access_key": "secret",
                 "endpoint": "example.invalid",
             }
         )
         self.assertIn("endpoint_url", kwargs)
+
+    def test_secret_access_key_is_passed_to_client(self):
+        # An rclone-imported profile stores the secret under rclone's own key
+        # name; the built-in handler reads that same key.  Regression: it read
+        # ``access_key_secret`` only, so switching an imported profile from
+        # rclone to the built-in handler failed with PartialCredentialsError.
+        kwargs = self._client_kwargs(
+            {
+                "provider_name": "AWS",
+                "access_key_id": "key",
+                "secret_access_key": "secret",
+                "region": "us-east-1",
+            }
+        )
+        self.assertEqual(kwargs["aws_secret_access_key"], "secret")
+        self.assertEqual(kwargs["aws_access_key_id"], "key")
 
 
 class TestS3FactoryRetryLogging(unittest.TestCase):
@@ -421,7 +437,7 @@ class TestS3FactoryRetryLogging(unittest.TestCase):
             {
                 "provider_name": "Amazon AWS S3",
                 "access_key_id": "key",
-                "access_key_secret": "secret",
+                "secret_access_key": "secret",
                 "region": "us-east-1",
             }
         )

@@ -182,17 +182,19 @@ class ProfileEditor:
             # Store access key in profile_config
             profile_config["access_key_id"] = input_access_key_id
 
-        # Show current secret key (masked; the access key id above stays visible)
-        current_secret_key = profile_config.get("access_key_secret", "")
+        # Show current secret key (masked; the access key id above stays visible).
+        # The key is rclone's ``secret_access_key`` so a profile can be switched
+        # between the built-in handler and rclone without renaming it.
+        current_secret_key = profile_config.get("secret_access_key", "")
         self.prompt.print(
             "Press Enter to continue with S3 access key secret: "
-            f"{profile_display.masked_value('access_key_secret', current_secret_key) or 'N/A'}"
+            f"{profile_display.masked_value('secret_access_key', current_secret_key) or 'N/A'}"
         )
         # Prompt user for secret key
         input_access_key_id_secret = self.prompt.input("Please enter secret key: ")
         if input_access_key_id_secret.strip() != "":
             # Store secret key in profile_config
-            profile_config["access_key_secret"] = input_access_key_id_secret
+            profile_config["secret_access_key"] = input_access_key_id_secret
 
         # Prompt user for region
         # For Amazon we need the region
@@ -705,7 +707,9 @@ class ProfileEditor:
         profile_config = {
             "provider_name": input_provider_name,
             "access_key_id": input_access_key_id,
-            "access_key_secret": input_access_key_id_secret,
+            # rclone's option name, so the built-in handler and rclone read the
+            # same key and the route can be switched without renaming it.
+            "secret_access_key": input_access_key_id_secret,
             # Store the route explicitly so it never has to be re-derived.
             # "profile edit" can switch it to rclone later.
             reference_data.CONFIG_REMOTE_HANDLER: reference_data.default_remote_handler_key(

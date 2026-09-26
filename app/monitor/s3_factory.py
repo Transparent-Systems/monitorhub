@@ -152,7 +152,7 @@ class S3Factory:
         endpoint_url = endpoint if 'https://' in endpoint else f"https://{endpoint}"
         
         access_key_id = profile_config.get('access_key_id')
-        access_key_secret = profile_config.get('access_key_secret')
+        secret_access_key = profile_config.get('secret_access_key')
         region = profile_config.get('region')
         provider_name = profile_config.get('provider_name')
 
@@ -177,7 +177,7 @@ class S3Factory:
             client = boto3.client(
                 service_name='s3',
                 aws_access_key_id=access_key_id,
-                aws_secret_access_key=access_key_secret,
+                aws_secret_access_key=secret_access_key,
                 region_name=region,
                 config=common_config
                 )
@@ -189,7 +189,7 @@ class S3Factory:
             client = boto3.client(
                 service_name='s3',
                 aws_access_key_id=access_key_id,
-                aws_secret_access_key=access_key_secret,
+                aws_secret_access_key=secret_access_key,
                 endpoint_url=endpoint_url,
                 region_name=region,
                 config=common_config

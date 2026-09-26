@@ -594,7 +594,7 @@ class TestCommands(unittest.TestCase):
         )
         config = dict(profile["config"])
         config["access_key_id"] = "AKIA-VISIBLE-ID"
-        config["access_key_secret"] = "super-secret-key"
+        config["secret_access_key"] = "super-secret-key"
         self.database_test_data.sqlite_handler.update_profile(
             profile_id=profile["id"],
             name=profile["name"],
@@ -677,6 +677,11 @@ class TestCommands(unittest.TestCase):
         self.assertEqual(profile["profile_type"], "s3")
         self.assertEqual(
             profile["config"][reference_data.CONFIG_REMOTE_HANDLER], "s3"
+        )
+        # The secret is stored under rclone's key name, so the route can be
+        # switched to rclone (and back) without renaming it.
+        self.assertEqual(
+            profile["config"]["secret_access_key"], "FAKE_ACCESS_KEY_SECRET"
         )
 
     def test_profile_new_aws_provider_stores_region(self):
@@ -799,7 +804,7 @@ class TestCommands(unittest.TestCase):
         # An s3 profile routed through rclone uses the property editor and can
         # switch back to the built-in handler.
         profile_id = self._route_s3_profile_through_rclone("s3-test")
-        # Properties: provider_name, access_key_id, access_key_secret, endpoint;
+        # Properties: provider_name, access_key_id, secret_access_key, endpoint;
         # then rclone options; then the handler question (answer "n").
         commands, _ = self._make_commands(
             [
@@ -817,6 +822,10 @@ class TestCommands(unittest.TestCase):
         self.assertEqual(profile["config"]["endpoint"], "https://example.invalid")
         self.assertEqual(profile["config"]["provider_name"], "IDrive")
         self.assertEqual(profile["config"][reference_data.CONFIG_REMOTE_HANDLER], "s3")
+        # Switching from rclone to the built-in handler keeps the secret under
+        # the canonical key the S3Factory reads.
+        self.assertIn("secret_access_key", profile["config"])
+        self.assertNotIn("access_key_secret", profile["config"])
 
     def test_profile_edit_s3_rclone_profile_keeps_rclone_route(self):
         profile_id = self._route_s3_profile_through_rclone("s3-test")
@@ -842,6 +851,9 @@ class TestCommands(unittest.TestCase):
         self.assertTrue(result)
         native_test.assert_called_once()
         rclone_test.assert_not_called()
+        # The native handler receives the secret under the key S3Factory reads.
+        passed_config = native_test.call_args.kwargs["profile_config"]
+        self.assertIn("secret_access_key", passed_config)
 
     def test_profile_test_rclone_profile_uses_rclone_handler(self):
         commands, _ = self._make_commands([])

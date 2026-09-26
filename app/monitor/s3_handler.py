@@ -10,7 +10,7 @@ Description:
 Requirements:
 - boto3 must be installed.
 - S3 credentials and configuration should be set via environment variables
-  (access_key_id, access_key_secret, S3_DEFAULT_REGION) or ~/.aws/ files.
+  (access_key_id, secret_access_key, S3_DEFAULT_REGION) or ~/.aws/ files.
 - For non-S3 compatible providers, set endpoint_url environment variable.
 
 See: 

@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+- The S3 access key secret is now stored under rclone's own option name,
+  ``secret_access_key``, instead of MonitorHub's ``access_key_secret``.  An
+  rclone-imported profile keeps rclone's keys verbatim, so switching such a
+  profile from ``remote_handler=rclone`` to the built-in ``s3`` handler left the
+  secret under a name ``S3Factory`` did not read: boto3 received an access key
+  id without a secret and failed with ``PartialCredentialsError``.  ``profile
+  new`` now writes the rclone-compatible key and ``S3Factory`` reads it, so a
+  profile can be switched between the built-in handler and rclone without
+  renaming its credentials; the ``access_key_secret`` -> ``SECRET_ACCESS_KEY``
+  entry in ``app.monitor.rclone_env`` is gone because the key now uppercases to
+  the rclone option by identity.  Profiles created before this change still
+  carry ``access_key_secret`` and must be re-created or re-imported.
+
 - ``profile import`` now detects a corrupt ``rclone.conf`` instead of trying to
   work around it.  rclone writes one ``key = value`` per line, so a line that is
   not a section header, a comment, a blank line or a ``key = value`` line is

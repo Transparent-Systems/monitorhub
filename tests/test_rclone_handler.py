@@ -242,7 +242,7 @@ class TestRcloneProfileEnvironment(unittest.TestCase):
             "provider_name": "Other",
             "endpoint": "https://example.invalid",
             "access_key_id": "MYKEY",
-            "access_key_secret": "MYSECRET",
+            "secret_access_key": "MYSECRET",
             "remote_handler": "rclone",
             "rclone_options": {"transfers": 8},
         },
@@ -349,7 +349,7 @@ class TestRcloneEnvAgainstRealBinary(unittest.TestCase):
             "provider_name": "Other",
             "endpoint": "http://127.0.0.1:1",
             "access_key_id": "KEYID",
-            "access_key_secret": "SECRETVALUE",
+            "secret_access_key": "SECRETVALUE",
             # Fail after one attempt instead of retrying for a minute.
             "rclone_options": {"retries": 1, "low_level_retries": 1},
         },

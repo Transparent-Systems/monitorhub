@@ -56,10 +56,11 @@ MONITORHUB_ONLY_KEYS = frozenset(
 
 # MonitorHub config key -> rclone backend option name.  Keys absent from this
 # table keep their own name (uppercased), which is what rclone-imported profiles
-# already use (host, user, pass, ...).
+# already use (host, user, pass, ...).  The S3 credentials are stored under
+# rclone's own names (``access_key_id``, ``secret_access_key``), so only the
+# provider name -- which MonitorHub calls ``provider_name`` -- needs a mapping.
 CONFIG_KEY_TO_RCLONE_OPTION: dict[str, str] = {
     "provider_name": "PROVIDER",
-    "access_key_secret": "SECRET_ACCESS_KEY",
 }
 
 # Config key holding extra rclone options for the profile, e.g.

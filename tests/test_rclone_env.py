@@ -42,7 +42,7 @@ class TestBuildRcloneEnv(unittest.TestCase):
                 "provider_name": "Other",
                 "endpoint": "https://example.invalid",
                 "access_key_id": "MYKEY",
-                "access_key_secret": "MYSECRET",
+                "secret_access_key": "MYSECRET",
                 "region": "us-east-1",
             },
         )
@@ -251,7 +251,7 @@ class TestBuildEnvironment(unittest.TestCase):
             "provider_name": "Other",
             "endpoint": "https://example.invalid",
             "access_key_id": "MYKEY",
-            "access_key_secret": "MYSECRET",
+            "secret_access_key": "MYSECRET",
             "remote_handler": "rclone",
         },
     }

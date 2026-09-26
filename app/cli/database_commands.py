@@ -177,7 +177,7 @@ class DatabaseCommands:
         profile_config = {
             "provider_name": "Other",
             "access_key_id": "FAKE_ACCESS_KEY_ID",
-            "access_key_secret": "FAKE_ACCESS_KEY_SECRET",
+            "secret_access_key": "FAKE_ACCESS_KEY_SECRET",
             "endpoint": "https://example.invalid",
             reference_data.CONFIG_REMOTE_HANDLER: reference_data.default_remote_handler_key(
                 "s3"
