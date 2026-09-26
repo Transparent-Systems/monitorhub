@@ -288,7 +288,7 @@ class MonitorCommands:
         """Edit the interval config for backup/restore monitor types."""
         monitor_type = monitor.get("monitor_type", "N/A")
         if monitor_type in (MONITOR_TYPE_BACKUP, MONITOR_TYPE_RESTORE):
-            config = monitor.get("config", {})
+            config = monitor.get("config") or {}
             if "interval" in config:
                 current_interval = config.get("interval", "N/A")
                 monitor["config"]["interval"] = self._prompt_interval(
@@ -520,7 +520,7 @@ class MonitorCommands:
                 monitor_path=monitor.get("monitor_path", "N/A"),
                 remote_path=monitor.get("remote_path", "N/A"),
                 monitor_type=monitor.get("monitor_type", "N/A"),
-                config=monitor.get("config", {}),
+                config=monitor.get("config") or {},
                 status=monitor.get("status", MONITOR_STATUS_STOPPED),
                 # Preserve the stored pid: update_monitor defaults pid to 0, so
                 # omitting it here would clear a running monitor's pid while
@@ -713,7 +713,7 @@ class MonitorCommands:
             self.prompt.print(f"Monitor path: {monitor.get('monitor_path', 'N/A')}")
             self.prompt.print(f"Remote path: {monitor.get('remote_path', 'N/A')}")
             self.prompt.print(f"Status: {monitor.get('status', 'N/A')}")
-            config = monitor.get("config", {})
+            config = monitor.get("config") or {}
             for key in config:
                 self.prompt.print(f"\t{key}: {config.get(key, 'N/A')}")
             self.prompt.print("Profile list:")

@@ -246,6 +246,27 @@ class TestCommands(unittest.TestCase):
         commands.monitor.show(monitor_id=target["id"], monitor_name=target["name"])
         self.assertIn("Cannot specify both --monitor-id and --monitor-name.", mock_prompt.output_text)
 
+    def test_monitor_show_tolerates_null_config(self):
+        """A NULL config column must not break ``monitor show``."""
+        commands, mock_prompt = self._make_commands([])
+        monitor = {
+            "id": 1,
+            "name": "null-config-monitor",
+            "monitor_type": "instant",
+            "monitor_path": "/tmp",
+            "remote_path": "dest",
+            "status": "stopped",
+            "pid": 0,
+            "config": None,
+        }
+        with mock.patch.object(
+            commands.sqlite_handler, "get_monitor", return_value=monitor
+        ), mock.patch.object(
+            commands.sqlite_handler, "get_profiles_for_monitor", return_value=[]
+        ):
+            commands.monitor.show(monitor_id=1)
+        self.assertIn("null-config-monitor", mock_prompt.output_text)
+
     def test_monitor_test_does_not_require_a_profile_importer(self):
         """Regression: ``monitor test`` built DiagnosticUtil without the
         ``profile_importer`` argument and always raised TypeError."""
@@ -526,6 +547,21 @@ class TestCommands(unittest.TestCase):
         target = profiles[0]
         commands.profile.show(profile_id=target["id"], profile_name=target["name"])
         self.assertIn("Cannot specify both --profile-id and --profile-name.", mock_prompt.output_text)
+
+    def test_profile_show_tolerates_null_config(self):
+        """A NULL config column must not break ``profile show``."""
+        commands, mock_prompt = self._make_commands([])
+        profile = {
+            "id": 1,
+            "name": "null-config-profile",
+            "profile_type": "s3",
+            "config": None,
+        }
+        with mock.patch.object(
+            commands.sqlite_handler, "get_profile", return_value=profile
+        ):
+            commands.profile.show(profile_id=1)
+        self.assertIn("null-config-profile", mock_prompt.output_text)
 
     def _set_profile_config_value(self, profile_name: str, key: str, value) -> int:
         """Set one config value on a profile, returning its id."""

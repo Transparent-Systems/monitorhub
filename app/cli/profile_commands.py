@@ -79,7 +79,7 @@ class ProfileCommands:
         self.prompt.print(f"You selected profile id: {profile_id}")
         self.prompt.print(f"Profile name: {profile.get('name', 'N/A')}")
 
-        config = profile.get("config", {})
+        config = profile.get("config") or {}
         profile_type = profile.get("profile_type")
 
         if not profile_type:
@@ -439,7 +439,7 @@ class ProfileCommands:
             self.prompt.print(f"Profile id: {profile.get('id', 'N/A')}")
             self.prompt.print(f"Profile name: {profile.get('name', 'N/A')}")
             self.prompt.print(f"Profile type: {profile.get('profile_type', 'N/A')}")
-            config = profile.get("config", {})
+            config = profile.get("config") or {}
             for key in config:
                 self.prompt.print(
                     f"   {key}: {profile_display.format_value(key, config[key])}"

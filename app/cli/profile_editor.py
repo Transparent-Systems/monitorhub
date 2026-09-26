@@ -111,7 +111,7 @@ class ProfileEditor:
         """
         Handles profile edit for profiles with category "command". See lookup table profile_types.
         """
-        profile_config = profile.get("config", {})
+        profile_config = profile.get("config") or {}
 
         # Prompt for updated command configuration, pre-populated with current values
         command_config = self._prompt_command_config(existing=profile_config)
@@ -163,7 +163,7 @@ class ProfileEditor:
         routed through rclone instead.
         """
         # Lookup current provider from code-defined reference data
-        profile_config = profile.get("config", {})
+        profile_config = profile.get("config") or {}
         current_provider_name = profile_config.get("provider_name", "")
         current_provider = reference_data.get_provider(current_provider_name)
         if current_provider is None:
@@ -444,7 +444,7 @@ class ProfileEditor:
         self.prompt.print()
         prompt_text = "Please enter command to run"
         if current_command:
-            prompt_text += f" (current: {current_command}))"
+            prompt_text += f" (current: {current_command})"
             prompt_text += "\nEnter to keep"
         prompt_text += ": "
         command = self.prompt.prompt_required(
