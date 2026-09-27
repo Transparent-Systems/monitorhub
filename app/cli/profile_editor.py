@@ -8,6 +8,7 @@ and ``profile edit``.
 
 from __future__ import annotations
 
+import shutil
 from typing import Any
 
 from app.cli import profile_display
@@ -299,7 +300,9 @@ class ProfileEditor:
                 f"Profile '{profile_name}' has no backend properties to edit."
             )
 
-        self._prompt_rclone_options(profile_config)
+        self._prompt_rclone_options(
+            profile_config, profile_type=str(profile.get("profile_type") or "")
+        )
         self._prompt_remote_handler(profile=profile, profile_config=profile_config)
 
         if self.sqlite_handler.update_profile(
@@ -343,17 +346,25 @@ class ProfileEditor:
             reference_data.RCLONE_REMOTE_HANDLER if use_rclone else native_handler_key
         )
 
-    def _prompt_rclone_options(self, profile_config: dict) -> None:
+    def _prompt_rclone_options(
+        self, profile_config: dict, profile_type: str = ""
+    ) -> None:
         """
-        Prompt for the profile's ``rclone_options`` (rclone flag variables).
+        Prompt for the profile's ``rclone_options`` (rclone.conf style).
 
-        The options are entered as ``key=value`` pairs separated by commas.
-        Pressing Enter keeps the current options and ``none`` removes them.
+        Backend properties are entered under their bare name (``no_check_bucket``,
+        ``chunk_size``); the backend is implied by the profile type, so the
+        ``s3_`` prefix is optional.  Global session flags (``transfers``) are also
+        accepted.  The options are entered as ``key=value`` pairs separated by
+        commas; pressing Enter keeps the current options and ``none`` removes
+        them.
         """
         current_options = profile_config.get(rclone_env.RCLONE_OPTIONS_KEY)
         self.prompt.print(
-            "rclone options tune the rclone transfer (for example "
-            "transfers=8, s3_chunk_size=16M)."
+            "rclone options tune the transfer and the backend. Enter backend "
+            "properties as in rclone.conf (for example no_check_bucket=true, "
+            "chunk_size=16M; the backend prefix is optional) or global flags "
+            "(for example transfers=8)."
         )
         if isinstance(current_options, dict) and current_options:
             self.prompt.print(
@@ -373,20 +384,40 @@ class ProfileEditor:
         value = self.prompt.prompt_required(
             "Enter rclone options (Enter to keep): ",
             allow_cancel=True,
-            validator=self._validate_rclone_options,
+            validator=lambda entry: self._validate_rclone_options(entry, profile_type),
         )
         if value is None:
             return
         if value.strip().lower() in ("none", "-"):
             profile_config.pop(rclone_env.RCLONE_OPTIONS_KEY, None)
             return
-        profile_config[rclone_env.RCLONE_OPTIONS_KEY] = self._parse_rclone_options(value)
+        profile_config[rclone_env.RCLONE_OPTIONS_KEY] = self._parse_rclone_options(
+            value, profile_type
+        )
 
     @staticmethod
-    def _validate_rclone_options(value: str) -> str | None:
-        """Return an error message when the rclone options entry is invalid."""
+    def _rclone_known_flags() -> frozenset[str] | None:
+        """Flags of the installed rclone, or None when it is unavailable.
+
+        Used to validate option names while they are entered, so a typo is caught
+        immediately instead of being reported (and ignored) at transfer time.
+        """
+        return rclone_env.known_rclone_flags(shutil.which("rclone") or "")
+
+    @staticmethod
+    def _validate_rclone_options(
+        value: str,
+        profile_type: str = "",
+    ) -> str | None:
+        """Return an error message when the rclone options entry is invalid.
+
+        When the installed rclone can be probed, a name must resolve to a backend
+        property of ``profile_type`` or to a global flag, so a typo is rejected
+        before it is stored.  The flag check is skipped when rclone is absent.
+        """
         if value.strip().lower() in ("none", "-"):
             return None
+        known_flags = ProfileEditor._rclone_known_flags()
         for pair in value.split(","):
             pair = pair.strip()
             if not pair:
@@ -394,25 +425,41 @@ class ProfileEditor:
             if "=" not in pair:
                 return f"Invalid rclone option '{pair}': expected key=value."
             key, option_value = pair.split("=", 1)
-            if not rclone_env.is_valid_option_name(key.strip()):
+            option_name = key.strip()
+            if not rclone_env.is_valid_option_name(option_name):
                 return (
-                    f"Invalid rclone option name '{key.strip()}': option names "
+                    f"Invalid rclone option name '{option_name}': option names "
                     "must be lowercase letters, digits and underscores."
                 )
             if option_value.strip() == "":
                 return f"Invalid rclone option '{pair}': value cannot be empty."
+            if known_flags is not None and rclone_env.resolve_option_env_name(
+                option_name, profile_type, known_flags
+            ) is None:
+                return (
+                    f"Unknown rclone option '{option_name}': not a global flag or "
+                    f"a '{profile_type}' backend property."
+                )
         return None
 
     @staticmethod
-    def _parse_rclone_options(value: str) -> dict[str, str]:
-        """Parse ``key=value, key=value`` into an rclone options mapping."""
+    def _parse_rclone_options(value: str, profile_type: str = "") -> dict[str, str]:
+        """Parse ``key=value, key=value`` into an rclone options mapping.
+
+        A backend prefix is stripped so the stored name matches the bare
+        ``rclone.conf`` property (``s3_no_check_bucket`` -> ``no_check_bucket``).
+        """
         options: dict[str, str] = {}
+        prefix = f"{profile_type.strip().lower()}_" if profile_type else ""
         for pair in value.split(","):
             pair = pair.strip()
             if not pair:
                 continue
             key, option_value = pair.split("=", 1)
-            options[key.strip()] = option_value.strip()
+            option_name = key.strip()
+            if prefix and option_name.lower().startswith(prefix):
+                option_name = option_name[len(prefix):]
+            options[option_name] = option_value.strip()
         return options
 
     def _prompt_command_config(self, existing: dict | None = None) -> dict:

@@ -177,7 +177,7 @@ S3Handler:
 * `remote_handler: rclone` - the profile is delegated to rclone.
 
 Use the rclone route when you want rclone's transfer tuning for S3, for example
-`transfers`, `s3_chunk_size`, `s3_storage_class` or `s3_object_lock_mode`.
+`transfers`, `chunk_size`, `storage_class` or `object_lock_mode`.
 
 **MonitorHub owns the profile configuration.** An rclone-routed profile does not
 need a section in `rclone.conf`: MonitorHub passes the profile's settings to the
@@ -194,32 +194,43 @@ belongs to that profile: other monitors, other rclone runs and your shell are
 unaffected, and secrets never appear on the command line. If an `rclone.conf`
 section with the same name exists, the MonitorHub settings win.
 
-Per-profile rclone options live in the profile config as `rclone_options` and
-become rclone flag variables:
+Per-profile rclone options live in the profile config as `rclone_options`. They
+mirror an `rclone.conf` section: backend properties use their bare rclone name
+(the backend is implied by the profile type), while global session flags keep
+their own name:
 
     "rclone_options": {
       "transfers": 8,
-      "s3_chunk_size": "16M",
-      "s3_upload_concurrency": 8,
-      "s3_storage_class": "STANDARD",
-      "s3_object_lock_mode": "GOVERNANCE",
-      "s3_object_lock_legal_hold_status": "ON",
-      "s3_object_lock_retain_until_date": "2030-01-01T00:00:00Z",
-      "s3_bucket_object_lock_enabled": true
+      "chunk_size": "16M",
+      "upload_concurrency": 8,
+      "storage_class": "STANDARD",
+      "object_lock_mode": "GOVERNANCE",
+      "object_lock_legal_hold_status": "ON",
+      "object_lock_retain_until_date": "2030-01-01T00:00:00Z",
+      "bucket_object_lock_enabled": true
     }
+
+A backend property becomes `RCLONE_<BACKEND>_<OPTION>` (`no_check_bucket` ->
+`RCLONE_S3_NO_CHECK_BUCKET`) and a global flag becomes `RCLONE_<OPTION>`
+(`transfers` -> `RCLONE_TRANSFERS`). The `s3_` prefix is accepted but optional;
+`profile edit` strips it so the stored name matches `rclone.conf`, and a name
+that is already prefixed (`s3_chunk_size`) keeps working because MonitorHub
+resolves each option against the installed rclone's flags.
 
 Object lock needs an rclone that supports it (1.7x; check with
 `rclone help flags | grep object-lock`). rclone silently ignores options it does
 not know, so MonitorHub logs a warning naming any configured option the installed
-rclone cannot apply.
+rclone cannot apply, and `profile edit` rejects an unknown name as it is typed
+(the check is skipped when rclone is not installed).
 
 `mhub profile edit` edits every remote profile. An `s3` profile using the
 built-in S3Handler keeps its provider/credentials/region wizard, while any
 rclone-routed profile -- an imported `ftp`/`sftp`/`drive`/... remote, or an `s3`
 profile switched to rclone -- is edited property by property: each backend
 option is shown with its current value and pressing Enter keeps it. The
-profile's `rclone_options` are entered as `key=value` pairs (enter `none` to
-remove them). Switch a profile between the built-in handler and rclone by
+profile's `rclone_options` are entered as `key=value` pairs using the bare
+rclone property name (enter `none` to remove them). Switch a profile between the
+built-in handler and rclone by
 answering the rclone question, or by setting `remote_handler` in the profile
 configuration (`mhub profile show` displays it). `mhub profile import` reads
 profiles out of `rclone.conf` once; from then on MonitorHub is the source of

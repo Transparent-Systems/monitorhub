@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+- ``rclone_options`` now mirrors an ``rclone.conf`` section: backend properties
+  are entered under their bare rclone name (``no_check_bucket``, ``chunk_size``)
+  and the backend is implied by the profile type, so the ``s3_`` prefix is no
+  longer needed (and is stripped when given).  ``app.monitor.rclone_env``
+  resolves each option against the installed rclone's flags -- a backend
+  property becomes ``RCLONE_<BACKEND>_<OPTION>`` (``no_check_bucket`` ->
+  ``RCLONE_S3_NO_CHECK_BUCKET``) and a global session flag stays
+  ``RCLONE_<OPTION>`` (``transfers`` -> ``RCLONE_TRANSFERS``) -- so
+  ``no_check_bucket`` no longer trips the "rclone does not support" warning.
+  The existing prefixed form (``s3_chunk_size``) and the legacy
+  ``RCLONE_<OPTION>`` mapping (when rclone cannot be probed) keep working, and
+  ``profile edit`` now rejects an unknown option name as it is typed (skipped
+  when rclone is not installed).
+
 - The S3 access key secret is now stored under rclone's own option name,
   ``secret_access_key``, instead of MonitorHub's ``access_key_secret``.  An
   rclone-imported profile keeps rclone's keys verbatim, so switching such a

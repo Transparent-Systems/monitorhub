@@ -136,6 +136,22 @@ class TestBuildRcloneEnv(unittest.TestCase):
         self.assertEqual(env["RCLONE_S3_OBJECT_LOCK_MODE"], "GOVERNANCE")
         self.assertNotIn("RCLONE_CONFIG_MYDEST_RCLONE_OPTIONS", env)
 
+    def test_backend_property_becomes_backend_flag_variable(self):
+        """A bare rclone.conf property is routed to RCLONE_<BACKEND>_<OPTION>."""
+        flags = frozenset({"transfers", "s3-no-check-bucket"})
+        with mock.patch.object(rclone_env, "known_rclone_flags", return_value=flags):
+            env = rclone_env.build_rclone_env(
+                remote_name="mydest",
+                profile_type="s3",
+                profile_config={
+                    "rclone_options": {"no_check_bucket": "true", "transfers": 8}
+                },
+                rclone_path="rclone",
+            )
+        self.assertEqual(env["RCLONE_S3_NO_CHECK_BUCKET"], "true")
+        self.assertEqual(env["RCLONE_TRANSFERS"], "8")
+        self.assertNotIn("RCLONE_NO_CHECK_BUCKET", env)
+
     def test_invalid_rclone_options_are_reported_and_ignored(self):
         logger = mock.Mock()
         env = rclone_env.build_rclone_env(
@@ -160,6 +176,44 @@ class TestBuildRcloneEnv(unittest.TestCase):
         logger.warning.assert_called_once()
 
 
+class TestResolveOptionEnvName(unittest.TestCase):
+    """A bare rclone.conf property resolves against the profile's backend."""
+
+    FLAGS = frozenset(
+        {"transfers", "s3-chunk-size", "s3-no-check-bucket", "s3-env-auth"}
+    )
+
+    def test_backend_property_uses_the_backend_qualified_variable(self):
+        self.assertEqual(
+            rclone_env.resolve_option_env_name("no_check_bucket", "s3", self.FLAGS),
+            "RCLONE_S3_NO_CHECK_BUCKET",
+        )
+        self.assertEqual(
+            rclone_env.resolve_option_env_name("chunk_size", "s3", self.FLAGS),
+            "RCLONE_S3_CHUNK_SIZE",
+        )
+
+    def test_backend_prefixed_name_still_resolves(self):
+        self.assertEqual(
+            rclone_env.resolve_option_env_name("s3_chunk_size", "s3", self.FLAGS),
+            "RCLONE_S3_CHUNK_SIZE",
+        )
+
+    def test_global_flag_uses_its_own_variable(self):
+        self.assertEqual(
+            rclone_env.resolve_option_env_name("transfers", "s3", self.FLAGS),
+            "RCLONE_TRANSFERS",
+        )
+
+    def test_unknown_option_returns_none(self):
+        self.assertIsNone(
+            rclone_env.resolve_option_env_name("no_check_buckets", "s3", self.FLAGS)
+        )
+
+    def test_without_flags_nothing_resolves(self):
+        self.assertIsNone(rclone_env.resolve_option_env_name("transfers", "s3", None))
+
+
 class TestUnknownRcloneOptions(unittest.TestCase):
     """Options the installed rclone does not support must be reported.
 
@@ -170,6 +224,7 @@ class TestUnknownRcloneOptions(unittest.TestCase):
     FLAGS_OUTPUT = (
         "      --transfers int            Number of file transfers to run in parallel\n"
         "      --s3-chunk-size SizeSuffix  Chunk size to use for uploading\n"
+        "      --s3-no-check-bucket       If set, don't attempt to check the bucket\n"
         "      --s3-object-lock-mode string  Object Lock mode\n"
     )
 
@@ -200,6 +255,22 @@ class TestUnknownRcloneOptions(unittest.TestCase):
                     {"s3_object_lock_mod": "GOVERNANCE", "transfers": 8}, "rclone"
                 ),
                 ["s3_object_lock_mod"],
+            )
+
+    def test_backend_property_is_not_reported(self):
+        with mock.patch.object(rclone_env, "_KNOWN_FLAGS_CACHE", {}), self._flags_probe():
+            self.assertEqual(
+                rclone_env.unknown_rclone_options(
+                    {"no_check_bucket": "true"}, "rclone", profile_type="s3"
+                ),
+                [],
+            )
+
+    def test_backend_property_without_profile_type_is_reported(self):
+        with mock.patch.object(rclone_env, "_KNOWN_FLAGS_CACHE", {}), self._flags_probe():
+            self.assertEqual(
+                rclone_env.unknown_rclone_options({"no_check_bucket": "true"}, "rclone"),
+                ["no_check_bucket"],
             )
 
     def test_flags_are_probed_once_per_binary(self):
@@ -295,8 +366,11 @@ class TestBuildEnvironment(unittest.TestCase):
                 "rclone_options": {"s3_object_lock_mod": "GOVERNANCE"},
             },
         )
-        with mock.patch.object(
-            rclone_env, "unknown_rclone_options", return_value=["s3_object_lock_mod"]
+        with (
+            mock.patch.object(
+                rclone_env, "unknown_rclone_options", return_value=["s3_object_lock_mod"]
+            ),
+            mock.patch.object(rclone_env, "known_rclone_flags", return_value=frozenset()),
         ):
             environment = rclone_env.build_environment(
                 profile, rclone_path="rclone", logger=logger
@@ -305,6 +379,25 @@ class TestBuildEnvironment(unittest.TestCase):
         self.assertEqual(environment.unsupported_options, ("s3_object_lock_mod",))
         logger.warning.assert_called_once()
         self.assertIn("s3_object_lock_mod", logger.warning.call_args.args[0])
+
+    def test_backend_property_is_resolved_and_not_warned(self):
+        logger = mock.Mock()
+        profile = dict(
+            self.PROFILE,
+            config={
+                **self.PROFILE["config"],
+                "rclone_options": {"no_check_bucket": "true"},
+            },
+        )
+        flags = frozenset({"s3-no-check-bucket"})
+        with mock.patch.object(rclone_env, "known_rclone_flags", return_value=flags):
+            environment = rclone_env.build_environment(
+                profile, rclone_path="rclone", logger=logger
+            )
+
+        self.assertEqual(environment.variables["RCLONE_S3_NO_CHECK_BUCKET"], "true")
+        self.assertEqual(environment.unsupported_options, ())
+        logger.warning.assert_not_called()
 
     def test_options_are_not_validated_without_an_rclone_path(self):
         with mock.patch.object(rclone_env, "unknown_rclone_options") as unknown:

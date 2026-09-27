@@ -27,6 +27,12 @@ technical restriction of the environment-variable channel -- rclone itself
 handles names with dashes perfectly well -- so :func:`env_remote_name` normalises
 such names (``s3-test`` -> ``s3_test``) and the mapping is logged at DEBUG level.
 
+A profile's ``rclone_options`` mirrors an ``rclone.conf`` section: a backend
+property is stored under its bare name (``no_check_bucket``, ``chunk_size``) and
+becomes ``RCLONE_<BACKEND>_<OPTION>`` (``RCLONE_S3_NO_CHECK_BUCKET``), while a
+global session flag (``transfers``) becomes ``RCLONE_<OPTION>``.  See
+:func:`resolve_option_env_name`.
+
 :func:`build_environment` is the entry point for a handler: it returns the remote
 name together with the variables, so the handler never has to know how the name
 is derived.
@@ -64,8 +70,11 @@ CONFIG_KEY_TO_RCLONE_OPTION: dict[str, str] = {
 }
 
 # Config key holding extra rclone options for the profile, e.g.
-# ``{"transfers": 8, "s3_chunk_size": "16M"}``.  Each entry becomes a global
-# rclone flag variable (``RCLONE_TRANSFERS``, ``RCLONE_S3_CHUNK_SIZE``).
+# ``{"transfers": 8, "no_check_bucket": "true", "chunk_size": "16M"}``.
+# Backend properties are stored under their bare ``rclone.conf`` name and become
+# ``RCLONE_<BACKEND>_<OPTION>`` (``RCLONE_S3_NO_CHECK_BUCKET``); global flags
+# become ``RCLONE_<OPTION>`` (``RCLONE_TRANSFERS``).  See
+# :func:`resolve_option_env_name`.
 RCLONE_OPTIONS_KEY = "rclone_options"
 
 _ENV_SAFE_NAME_RE = re.compile(r"^[A-Za-z0-9_]+$")
@@ -115,6 +124,7 @@ def build_rclone_env(
     remote_name: str,
     profile_type: str,
     profile_config: dict | None = None,
+    rclone_path: str = "",
     logger: logging.Logger | None = None,
 ) -> dict[str, str]:
     """Build the rclone environment for one profile.
@@ -127,6 +137,9 @@ def build_rclone_env(
     :param remote_name: Remote name rclone resolves, from :func:`env_remote_name`
     :param profile_type: rclone backend type (the profile's ``profile_type``)
     :param profile_config: Profile configuration dict
+    :param rclone_path: rclone binary used to resolve ``rclone_options`` (a bare
+        backend property becomes ``RCLONE_<BACKEND>_<OPTION>``); when empty the
+        legacy ``RCLONE_<OPTION>`` form is used
     :param logger: Optional logger for warnings
     """
     env: dict[str, str] = {}
@@ -157,16 +170,31 @@ def build_rclone_env(
         option = CONFIG_KEY_TO_RCLONE_OPTION.get(key, str(key).upper())
         env[f"{env_prefix}{option}"] = str(value)
 
-    _add_rclone_options(env, config.get(RCLONE_OPTIONS_KEY), logger=logger)
+    _add_rclone_options(
+        env,
+        config.get(RCLONE_OPTIONS_KEY),
+        profile_type=profile_type,
+        known_flags=known_rclone_flags(rclone_path, logger=logger),
+        logger=logger,
+    )
     return env
 
 
 def _add_rclone_options(
     env: dict[str, str],
     options: object,
+    profile_type: str = "",
+    known_flags: frozenset[str] | None = None,
     logger: logging.Logger | None = None,
 ) -> None:
-    """Add per-profile rclone options as ``RCLONE_<OPTION>`` flag variables."""
+    """Add per-profile rclone options as ``RCLONE_*`` variables.
+
+    A backend property is stored under its bare ``rclone.conf`` name and becomes
+    ``RCLONE_<BACKEND>_<NAME>``; a global flag becomes ``RCLONE_<NAME>``.  See
+    :func:`resolve_option_env_name`.  When the installed rclone could not be
+    probed (``known_flags`` is None) the legacy ``RCLONE_<NAME>`` form is used,
+    so an option is never silently dropped.
+    """
     if options is None:
         return
     if not isinstance(options, dict):
@@ -188,7 +216,15 @@ def _add_rclone_options(
             continue
         if value is None or value == "":
             continue
-        env[f"RCLONE_{option_name.upper()}"] = str(value)
+        env_name = resolve_option_env_name(option_name, profile_type, known_flags)
+        if env_name is None:
+            if known_flags is None:
+                # No probe available: keep the legacy global-flag form.
+                env_name = f"RCLONE_{option_name.upper()}"
+            else:
+                # Reported by unknown_rclone_options; do not emit a dead variable.
+                continue
+        env[env_name] = str(value)
 
 
 def is_valid_option_name(name: str) -> bool:
@@ -200,6 +236,39 @@ def is_valid_option_name(name: str) -> bool:
     the user for without duplicating the rule.
     """
     return bool(_OPTION_NAME_RE.match(str(name)))
+
+
+def resolve_option_env_name(
+    option_name: str,
+    profile_type: str = "",
+    known_flags: frozenset[str] | None = None,
+) -> str | None:
+    """Return the ``RCLONE_*`` variable name an option maps to, or None.
+
+    ``rclone_options`` mirrors an ``rclone.conf`` section: backend properties are
+    stored under their bare name (``no_check_bucket``, ``chunk_size``) and the
+    backend is implied by ``profile_type``.  A bare name is therefore tried as
+    ``<profile_type>-<name>`` first -- the backend property, emitted as
+    ``RCLONE_<BACKEND>_<NAME>`` -- and only then as a global flag
+    (``RCLONE_<NAME>``).  A backend-qualified name (``s3_chunk_size``) still
+    resolves because its bare form matches the backend flag.
+
+    Returns None when the name is neither a backend property of ``profile_type``
+    nor a global flag, and when ``known_flags`` is None (no rclone probe).
+    """
+    if known_flags is None:
+        return None
+    name = str(option_name).strip()
+    if not name:
+        return None
+
+    dashed = name.replace("_", "-")
+    backend = str(profile_type or "").strip().lower()
+    if backend and f"{backend}-{dashed}" in known_flags:
+        return f"RCLONE_{backend.upper()}_{name.upper()}"
+    if dashed in known_flags:
+        return f"RCLONE_{name.upper()}"
+    return None
 
 
 def known_rclone_flags(
@@ -238,13 +307,15 @@ def known_rclone_flags(
 def unknown_rclone_options(
     options: object,
     rclone_path: str,
+    profile_type: str = "",
     logger: logging.Logger | None = None,
 ) -> list[str]:
     """Return the configured rclone options the installed rclone does not know.
 
-    rclone silently ignores ``RCLONE_<OPTION>`` variables for flags it does not
-    have, so a typo or a machine with an older rclone would otherwise apply
-    nothing without saying so (an unsupported object lock mode, for example).
+    An option is known when it is either a backend property of ``profile_type``
+    (stored under its bare ``rclone.conf`` name) or a global flag.  rclone
+    silently ignores variables for flags it does not have, so a typo or a machine
+    with an older rclone would otherwise apply nothing without saying so.
     Returns an empty list when the options are unknown or the flags cannot be
     read.
     """
@@ -260,7 +331,7 @@ def unknown_rclone_options(
         option_name = str(name).strip()
         if not _OPTION_NAME_RE.match(option_name):
             continue  # already reported by _add_rclone_options
-        if option_name.replace("_", "-") not in known:
+        if resolve_option_env_name(option_name, profile_type, known) is None:
             unknown.append(option_name)
     return sorted(unknown)
 
@@ -278,7 +349,9 @@ def build_environment(
     * the remote name (normalised for the environment-variable channel, reported
       at DEBUG when it changes);
     * the ``RCLONE_CONFIG_<NAME>_*`` variables for the profile's backend options;
-    * the ``RCLONE_<OPTION>`` flag variables for the profile's ``rclone_options``;
+    * the ``RCLONE_<BACKEND>_<OPTION>`` / ``RCLONE_<OPTION>`` variables for the
+      profile's ``rclone_options`` (backend properties are stored under their
+      bare ``rclone.conf`` name, global flags under their own name);
     * the options the installed rclone does not support (reported as a warning,
       because rclone ignores unknown values silently).
 
@@ -298,23 +371,34 @@ def build_environment(
 
     config = profile.get("config")
     profile_config = config if isinstance(config, dict) else {}
+    profile_type = str(profile.get("profile_type") or "")
     variables = build_rclone_env(
         remote_name=remote_name,
-        profile_type=str(profile.get("profile_type") or ""),
+        profile_type=profile_type,
         profile_config=profile_config,
+        rclone_path=rclone_path,
         logger=logger,
     )
 
     unsupported: tuple[str, ...] = ()
     if rclone_path:
         unknown = unknown_rclone_options(
-            profile_config.get(RCLONE_OPTIONS_KEY), rclone_path, logger=logger
+            profile_config.get(RCLONE_OPTIONS_KEY),
+            rclone_path,
+            profile_type,
+            logger=logger,
         )
         if unknown:
             if logger is not None:
+                scope = (
+                    f"a '{profile_type}' backend property"
+                    if profile_type
+                    else "a backend property"
+                )
                 logger.warning(
                     f"Profile '{profile_name or remote_name}': rclone does not "
-                    f"support {', '.join(unknown)}; these settings are ignored"
+                    f"support {', '.join(unknown)} as a global flag or {scope}; "
+                    f"these settings are ignored"
                 )
             unsupported = tuple(unknown)
 

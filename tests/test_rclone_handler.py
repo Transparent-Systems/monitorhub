@@ -312,6 +312,34 @@ class TestRcloneProfileEnvironment(unittest.TestCase):
             any("s3_object_lock_mod" in message for message in messages), messages
         )
 
+    def test_backend_property_is_not_warned_about(self):
+        """A bare rclone.conf property resolves to RCLONE_<BACKEND>_<OPTION>."""
+        logger = mock.Mock()
+        profile = {
+            "id": 6,
+            "name": "mh_backend_live",
+            "profile_type": "s3",
+            "config": {"rclone_options": {"no_check_bucket": "true"}},
+        }
+        flags = frozenset({"s3-no-check-bucket"})
+        with (
+            mock.patch.object(RcloneHandler, "get_rclone_path", return_value="rclone"),
+            mock.patch.object(rclone_env, "known_rclone_flags", return_value=flags),
+        ):
+            handler = RcloneHandler(
+                base_monitor_path="/tmp",
+                base_remote_path="bucket/prefix",
+                profile_name="mh_backend_live",
+                logger=logger,
+                profile=profile,
+            )
+        self.assertEqual(handler.rclone_env["RCLONE_S3_NO_CHECK_BUCKET"], "true")
+        self.assertNotIn("RCLONE_NO_CHECK_BUCKET", handler.rclone_env)
+        messages = [call.args[0] for call in logger.warning.call_args_list]
+        self.assertFalse(
+            any("no_check_bucket" in message for message in messages), messages
+        )
+
     def test_test_connection_uses_the_profile_environment(self):
         prompt = mock.Mock()
 

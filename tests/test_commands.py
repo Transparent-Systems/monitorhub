@@ -777,10 +777,16 @@ class TestCommands(unittest.TestCase):
         profile_id = self.database_test_data.sqlite_handler.get_profile(
             profile_name="ftp-test"
         )["id"]
-        commands, _ = self._make_commands(
-            [str(profile_id), "", "", "", "transfers=8, s3_chunk_size=16M"]
-        )
-        commands.profile.edit()
+        # Flag validation is disabled here (no rclone probe); parsing is what this
+        # test covers.
+        with mock.patch(
+            "app.cli.profile_editor.ProfileEditor._rclone_known_flags",
+            return_value=None,
+        ):
+            commands, _ = self._make_commands(
+                [str(profile_id), "", "", "", "transfers=8, s3_chunk_size=16M"]
+            )
+            commands.profile.edit()
         profile = commands.sqlite_handler.get_profile(profile_id=profile_id)
         self.assertEqual(
             profile["config"]["rclone_options"],
@@ -792,10 +798,14 @@ class TestCommands(unittest.TestCase):
             profile_name="ftp-test"
         )["id"]
         # "transfers" (no value) is rejected and re-asked.
-        commands, mock_prompt = self._make_commands(
-            [str(profile_id), "", "", "", "transfers", "transfers=8"]
-        )
-        commands.profile.edit()
+        with mock.patch(
+            "app.cli.profile_editor.ProfileEditor._rclone_known_flags",
+            return_value=None,
+        ):
+            commands, mock_prompt = self._make_commands(
+                [str(profile_id), "", "", "", "transfers", "transfers=8"]
+            )
+            commands.profile.edit()
         self.assertIn("Invalid rclone option", mock_prompt.output_text)
         profile = commands.sqlite_handler.get_profile(profile_id=profile_id)
         self.assertEqual(profile["config"]["rclone_options"], {"transfers": "8"})
@@ -838,6 +848,56 @@ class TestCommands(unittest.TestCase):
             profile["config"][reference_data.CONFIG_REMOTE_HANDLER],
             reference_data.RCLONE_REMOTE_HANDLER,
         )
+
+    def test_profile_edit_s3_rclone_strips_backend_prefix(self):
+        # "s3_no_check_bucket" is stored under its bare rclone.conf name; the
+        # backend prefix is dropped because profile_type already says "s3".
+        profile_id = self._route_s3_profile_through_rclone("s3-test")
+        flags = frozenset({"s3-no-check-bucket"})
+        with mock.patch(
+            "app.cli.profile_editor.ProfileEditor._rclone_known_flags",
+            return_value=flags,
+        ):
+            commands, _ = self._make_commands(
+                [
+                    str(profile_id),
+                    "",  # provider_name
+                    "",  # access_key_id
+                    "",  # secret_access_key
+                    "",  # endpoint
+                    "s3_no_check_bucket=true",  # rclone options (prefixed)
+                    "",  # keep the rclone route
+                ]
+            )
+            commands.profile.edit()
+        profile = commands.sqlite_handler.get_profile(profile_id=profile_id)
+        self.assertEqual(
+            profile["config"]["rclone_options"], {"no_check_bucket": "true"}
+        )
+
+    def test_profile_edit_rejects_unknown_rclone_option(self):
+        profile_id = self.database_test_data.sqlite_handler.get_profile(
+            profile_name="ftp-test"
+        )["id"]
+        flags = frozenset({"transfers"})
+        with mock.patch(
+            "app.cli.profile_editor.ProfileEditor._rclone_known_flags",
+            return_value=flags,
+        ):
+            commands, mock_prompt = self._make_commands(
+                [
+                    str(profile_id),
+                    "",
+                    "",
+                    "",
+                    "no_check_buckets=true",  # not a flag for ftp -> rejected
+                    "transfers=8",  # accepted on the retry
+                ]
+            )
+            commands.profile.edit()
+        self.assertIn("Unknown rclone option", mock_prompt.output_text)
+        profile = commands.sqlite_handler.get_profile(profile_id=profile_id)
+        self.assertEqual(profile["config"]["rclone_options"], {"transfers": "8"})
 
     def test_profile_test_s3_profile_uses_native_handler(self):
         commands, _ = self._make_commands([])
