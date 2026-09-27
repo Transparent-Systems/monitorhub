@@ -94,4 +94,25 @@ Consequences for placement decisions:
   registry moved the other way (from `app/cli/schema_versioning.py` to `app/utils/schema_versioning.py`)
   so that `app/utils/sqlite_handler.py` could use it without importing `app.cli`.
 
+## Rclone ENV variables
+The application creates ENV variable before running Rclone.  
+The ENV format is documented in the code.  
+At the same time it is possible for an Rclone profile to have credentials read from the environment as well.  
+This does not change anything for the applicaiton though.  
+The setting in Rclone profile is: env_auth = true
+
+Rclone gets the setting from:
+- The credentials configured in rclone.conf
+  The app will put these values in environment variables
+- Environment variables
+  This is normmaly done by an end-user. Obsolete when using this app
+- Put the credentials in ~/.aws/config using a profile.
+  Example profile:
+    [profile aws-monitorhub]
+    aws_access_key_id = AKIA...
+    aws_secret_access_key = GsRi...
+
+These methods works for all S3 providers.
+
+
 
