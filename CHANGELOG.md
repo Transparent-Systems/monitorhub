@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+- The S3 provider config key is now ``provider`` (rclone's own key) instead of
+  ``provider_name``.  ``profile new``/``profile edit``, ``profile import``,
+  ``S3Factory`` and the rclone environment all read and write ``provider``, so a
+  profile's configuration matches the ``rclone.conf`` section it would otherwise
+  need.  Existing database records still holding ``provider_name`` must be
+  updated manually (no migration is applied).
+
 - ``profile edit`` accepts rclone option names in any case and in the flag
   spelling (``no-check-upload``, ``--ftp-no-check-upload``).  It normalises them
   to the lowercase underscore ``rclone.conf`` form before storing, and rewrites

@@ -58,7 +58,7 @@ class DatabaseTestData:
                 "name": "s3-test",
                 "type": "s3",
                 "config": {
-                    "provider_name" : "IDrive",
+                    "provider" : "IDrive",
                     "access_key_id" : f"{S3_TEST_ACCESS_KEY_ID}",
                     "secret_access_key" : f"{S3_TEST_ACCESS_KEY_SECRET}",
                     "endpoint" : f"{S3_TEST_ENDPOINT}",

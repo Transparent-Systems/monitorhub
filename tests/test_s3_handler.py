@@ -289,7 +289,7 @@ class TestS3FactoryProviderDetection(unittest.TestCase):
     def test_amazon_provider_omits_endpoint_url(self):
         kwargs = self._client_kwargs(
             {
-                "provider_name": "Amazon AWS S3",
+                "provider": "Amazon AWS S3",
                 "access_key_id": "key",
                 "secret_access_key": "secret",
                 "region": "us-east-1",
@@ -301,7 +301,7 @@ class TestS3FactoryProviderDetection(unittest.TestCase):
     def test_bare_aws_rclone_key_omits_endpoint_url(self):
         kwargs = self._client_kwargs(
             {
-                "provider_name": "AWS",
+                "provider": "AWS",
                 "access_key_id": "key",
                 "secret_access_key": "secret",
                 "region": "eu-west-1",
@@ -312,7 +312,7 @@ class TestS3FactoryProviderDetection(unittest.TestCase):
     def test_non_amazon_provider_uses_endpoint_url(self):
         kwargs = self._client_kwargs(
             {
-                "provider_name": "IDrive",
+                "provider": "IDrive",
                 "access_key_id": "key",
                 "secret_access_key": "secret",
                 "endpoint": "example.invalid",
@@ -327,7 +327,7 @@ class TestS3FactoryProviderDetection(unittest.TestCase):
         # rclone to the built-in handler failed with PartialCredentialsError.
         kwargs = self._client_kwargs(
             {
-                "provider_name": "AWS",
+                "provider": "AWS",
                 "access_key_id": "key",
                 "secret_access_key": "secret",
                 "region": "us-east-1",
@@ -435,7 +435,7 @@ class TestS3FactoryRetryLogging(unittest.TestCase):
         """
         client = S3Factory(logger=LOGGER).get_s3_client(
             {
-                "provider_name": "Amazon AWS S3",
+                "provider": "Amazon AWS S3",
                 "access_key_id": "key",
                 "secret_access_key": "secret",
                 "region": "us-east-1",

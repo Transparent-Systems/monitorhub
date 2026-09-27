@@ -60,14 +60,11 @@ MONITORHUB_ONLY_KEYS = frozenset(
     }
 )
 
-# MonitorHub config key -> rclone backend option name.  Keys absent from this
-# table keep their own name (uppercased), which is what rclone-imported profiles
-# already use (host, user, pass, ...).  The S3 credentials are stored under
-# rclone's own names (``access_key_id``, ``secret_access_key``), so only the
-# provider name -- which MonitorHub calls ``provider_name`` -- needs a mapping.
-CONFIG_KEY_TO_RCLONE_OPTION: dict[str, str] = {
-    "provider_name": "PROVIDER",
-}
+# rclone's config option name is the profile key uppercased, which is what
+# rclone-imported profiles already use (``host``, ``user``, ``pass``, ...).  The
+# S3 credentials are stored under rclone's own names (``access_key_id``,
+# ``secret_access_key``) and the provider under ``provider``, so ``provider``
+# uppercases to ``PROVIDER`` with no mapping needed.
 
 # Config key holding extra rclone options for the profile, e.g.
 # ``{"transfers": 8, "no_check_bucket": "true", "chunk_size": "16M"}``.
@@ -167,7 +164,7 @@ def build_rclone_env(
             continue
         if value is None or value == "":
             continue
-        option = CONFIG_KEY_TO_RCLONE_OPTION.get(key, str(key).upper())
+        option = str(key).upper()
         env[f"{env_prefix}{option}"] = str(value)
 
     _add_rclone_options(

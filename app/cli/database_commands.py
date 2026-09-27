@@ -175,7 +175,7 @@ class DatabaseCommands:
             return
 
         profile_config = {
-            "provider_name": "Other",
+            "provider": "Other",
             "access_key_id": "FAKE_ACCESS_KEY_ID",
             "secret_access_key": "FAKE_ACCESS_KEY_SECRET",
             "endpoint": "https://example.invalid",

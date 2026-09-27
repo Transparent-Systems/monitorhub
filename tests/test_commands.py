@@ -700,7 +700,7 @@ class TestCommands(unittest.TestCase):
         commands.profile.new()
         profile = commands.sqlite_handler.get_profile(profile_name="my-aws-profile")
         self.assertTrue(profile)
-        self.assertEqual(profile["config"]["provider_name"], "AWS")
+        self.assertEqual(profile["config"]["provider"], "AWS")
         self.assertEqual(profile["config"]["region"], "eu-west-1")
         self.assertEqual(profile["config"]["env_auth"], "false")
         self.assertNotIn("endpoint", profile["config"])
@@ -814,7 +814,7 @@ class TestCommands(unittest.TestCase):
         # An s3 profile routed through rclone uses the property editor and can
         # switch back to the built-in handler.
         profile_id = self._route_s3_profile_through_rclone("s3-test")
-        # Properties: provider_name, access_key_id, secret_access_key, endpoint;
+        # Properties: provider, access_key_id, secret_access_key, endpoint;
         # then rclone options; then the handler question (answer "n").
         commands, _ = self._make_commands(
             [
@@ -830,7 +830,7 @@ class TestCommands(unittest.TestCase):
         commands.profile.edit()
         profile = commands.sqlite_handler.get_profile(profile_id=profile_id)
         self.assertEqual(profile["config"]["endpoint"], "https://example.invalid")
-        self.assertEqual(profile["config"]["provider_name"], "IDrive")
+        self.assertEqual(profile["config"]["provider"], "IDrive")
         self.assertEqual(profile["config"][reference_data.CONFIG_REMOTE_HANDLER], "s3")
         # Switching from rclone to the built-in handler keeps the secret under
         # the canonical key the S3Factory reads.
@@ -861,7 +861,7 @@ class TestCommands(unittest.TestCase):
             commands, _ = self._make_commands(
                 [
                     str(profile_id),
-                    "",  # provider_name
+                    "",  # provider
                     "",  # access_key_id
                     "",  # secret_access_key
                     "",  # endpoint

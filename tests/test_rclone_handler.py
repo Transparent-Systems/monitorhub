@@ -239,7 +239,7 @@ class TestRcloneProfileEnvironment(unittest.TestCase):
         "name": "my-dest",
         "profile_type": "s3",
         "config": {
-            "provider_name": "Other",
+            "provider": "Other",
             "endpoint": "https://example.invalid",
             "access_key_id": "MYKEY",
             "secret_access_key": "MYSECRET",
@@ -374,7 +374,7 @@ class TestRcloneEnvAgainstRealBinary(unittest.TestCase):
         "name": "mh_env_live",
         "profile_type": "s3",
         "config": {
-            "provider_name": "Other",
+            "provider": "Other",
             "endpoint": "http://127.0.0.1:1",
             "access_key_id": "KEYID",
             "secret_access_key": "SECRETVALUE",

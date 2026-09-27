@@ -165,13 +165,13 @@ class ProfileEditor:
         """
         # Lookup current provider from code-defined reference data
         profile_config = profile.get("config") or {}
-        current_provider_name = profile_config.get("provider_name", "")
+        current_provider_name = profile_config.get("provider", "")
         current_provider = reference_data.get_provider(current_provider_name)
         if current_provider is None:
             self.prompt.print(f"Provider not found for profile: {profile_name}")
             return
 
-        # At this point the profile type is s3 and we have a provider_name.
+        # At this point the profile type is s3 and we have a provider.
         # A future native remote type adds its own _edit_<type> method, called
         # from _edit_remote above.
         # Show current access key
@@ -199,7 +199,7 @@ class ProfileEditor:
 
         # Prompt user for region
         # For Amazon we need the region
-        provider_name = profile_config.get("provider_name", "N/A")
+        provider_name = profile_config.get("provider", "N/A")
         if reference_data.is_aws_provider(provider_name):
             profile_config["env_auth"] = "false"
             profile_region = profile_config.get("region", None)
@@ -239,7 +239,7 @@ class ProfileEditor:
         # and rclone.
         self._prompt_remote_handler(profile=profile, profile_config=profile_config)
 
-        # Profile_config has already been populated with provider_name, access_key_id etc
+        # Profile_config has already been populated with provider, access_key_id etc
         # Now update profile
         if self.sqlite_handler.update_profile(
             profile_id=profile["id"],
@@ -775,7 +775,7 @@ class ProfileEditor:
 
         # Create profile
         profile_config = {
-            "provider_name": input_provider_name,
+            "provider": input_provider_name,
             "access_key_id": input_access_key_id,
             # rclone's option name, so the built-in handler and rclone read the
             # same key and the route can be switched without renaming it.

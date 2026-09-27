@@ -30,7 +30,7 @@ class TestIsSecretKey(unittest.TestCase):
         for key in (
             "access_key_id",
             "client_id",
-            "provider_name",
+            "provider",
             "endpoint",
             "region",
             "scope",

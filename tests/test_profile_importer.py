@@ -163,7 +163,7 @@ class ProfileImporterImportTest(unittest.TestCase):
 
         first_call = sqlite_handler.add_profile.call_args_list[0]
         self.assertEqual(first_call.kwargs["profile_type"], "s3")
-        self.assertEqual(first_call.kwargs["config"]["provider_name"], "AWS")
+        self.assertEqual(first_call.kwargs["config"]["provider"], "AWS")
         # MonitorHub owns the profile config now: no rclone.conf display hints.
         self.assertNotIn("comment", first_call.kwargs["config"])
         self.assertNotIn("important", first_call.kwargs["config"])

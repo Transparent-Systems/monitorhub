@@ -154,7 +154,7 @@ class S3Factory:
         access_key_id = profile_config.get('access_key_id')
         secret_access_key = profile_config.get('secret_access_key')
         region = profile_config.get('region')
-        provider_name = profile_config.get('provider_name')
+        provider = profile_config.get('provider')
 
         # Define common client settings once
         common_config = Config(
@@ -170,9 +170,9 @@ class S3Factory:
         # (reference_data.is_aws_provider): the built-in provider is "AWS" (the
         # rclone key) and any name containing "amazon" is treated the same, so
         # native-AWS profiles take the region path.
-        provider_key = (provider_name or "").strip().lower()
+        provider_key = (provider or "").strip().lower()
 
-        if reference_data.is_aws_provider(provider_name):
+        if reference_data.is_aws_provider(provider):
             self.logger.debug("Provider is AWS")
             client = boto3.client(
                 service_name='s3',

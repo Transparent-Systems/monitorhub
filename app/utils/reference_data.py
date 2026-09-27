@@ -48,10 +48,10 @@ PROVIDERS: tuple[Provider, ...] = (
 )
 
 
-def get_provider(provider_name: str) -> Provider | None:
+def get_provider(provider: str) -> Provider | None:
     """Look up a provider by exact name (case-sensitive)."""
     for p in PROVIDERS:
-        if p.name == provider_name:
+        if p.name == provider:
             return p
     return None
 
@@ -61,7 +61,7 @@ def get_providers() -> tuple[Provider, ...]:
     return PROVIDERS
 
 
-def is_aws_provider(provider_name: str) -> bool:
+def is_aws_provider(provider: str) -> bool:
     """Return True when a provider name refers to Amazon AWS S3.
 
     The built-in provider is named ``AWS`` (matching the rclone remote key) and
@@ -70,7 +70,7 @@ def is_aws_provider(provider_name: str) -> bool:
     of an endpoint, so this rule is shared by the CLI wizard and the S3 client
     factory.
     """
-    provider_key = (provider_name or "").strip().lower()
+    provider_key = (provider or "").strip().lower()
     return provider_key == "aws" or "amazon" in provider_key
 
 

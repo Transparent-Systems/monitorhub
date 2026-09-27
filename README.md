@@ -194,6 +194,10 @@ belongs to that profile: other monitors, other rclone runs and your shell are
 unaffected, and secrets never appear on the command line. If an `rclone.conf`
 section with the same name exists, the MonitorHub settings win.
 
+An S3 profile stores the provider under rclone's own `provider` key (for example
+`AWS` or `IDrive`), so its configuration matches the `rclone.conf` section it
+would otherwise need.
+
 Per-profile rclone options live in the profile config as `rclone_options`. They
 mirror an `rclone.conf` section: backend properties use their bare rclone name
 (the backend is implied by the profile type), while global session flags keep

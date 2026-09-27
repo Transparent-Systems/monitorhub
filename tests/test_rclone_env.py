@@ -39,7 +39,7 @@ class TestBuildRcloneEnv(unittest.TestCase):
             remote_name="mydest",
             profile_type="s3",
             profile_config={
-                "provider_name": "Other",
+                "provider": "Other",
                 "endpoint": "https://example.invalid",
                 "access_key_id": "MYKEY",
                 "secret_access_key": "MYSECRET",
@@ -371,7 +371,7 @@ class TestBuildEnvironment(unittest.TestCase):
         "name": "s3-test",
         "profile_type": "s3",
         "config": {
-            "provider_name": "Other",
+            "provider": "Other",
             "endpoint": "https://example.invalid",
             "access_key_id": "MYKEY",
             "secret_access_key": "MYSECRET",

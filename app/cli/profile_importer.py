@@ -204,19 +204,12 @@ class ProfileImporter:
         self, parser: configparser.ConfigParser, profile_names: list[str]
     ) -> list[str]:
         """Convert the selected rclone sections into MonitorHub profiles."""
-        # Some Rclone attribute names differ from those in MonitorHub.  Keys not
-        # listed here are stored unchanged, so an identity entry is unnecessary.
-        config_attribute_map = {
-            "provider": "provider_name",
-        }
-        config_attribute_map_keys = config_attribute_map.keys()
-
         imported: list[str] = []
         for profile_name in profile_names:
             rclone_profile = dict(parser[profile_name]) if profile_name in parser else {}
             profile_type = ""
             profile_config = {}
-            # Store each attribute with their corresponding name in profile_config
+            # Store each attribute under its own name in profile_config
             for key in rclone_profile:
                 if key == "type":
                     profile_type = rclone_profile[key]
@@ -227,8 +220,6 @@ class ProfileImporter:
                         f"Warning: skipping unexpected key '{key}' in rclone "
                         f"profile '{profile_name}'"
                     )
-                elif key in config_attribute_map_keys:
-                    profile_config[config_attribute_map[key]] = rclone_profile[key]
                 else:
                     profile_config[key] = rclone_profile[key]
 
