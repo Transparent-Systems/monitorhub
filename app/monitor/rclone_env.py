@@ -206,12 +206,13 @@ def _add_rclone_options(
         return
 
     for name, value in options.items():
-        option_name = str(name).strip()
+        option_name = normalize_option_name(name)
         if not _OPTION_NAME_RE.match(option_name):
             if logger is not None:
                 logger.warning(
                     f"Ignoring rclone option {name!r}: option names must be "
-                    "lowercase letters, digits and underscores"
+                    "letters, digits and underscores (dashes and capitals are "
+                    "normalised)"
                 )
             continue
         if value is None or value == "":
@@ -227,12 +228,25 @@ def _add_rclone_options(
         env[env_name] = str(value)
 
 
+def normalize_option_name(name: str) -> str:
+    """Return the canonical rclone config name for user input.
+
+    Users type the flag spelling (``no-check-upload``, ``--ftp-no-check-upload``)
+    or any capitalisation; the stored name is the lowercase underscore form used
+    by ``rclone.conf`` (``ftp_no_check_upload``).  A leading ``--``/``-`` is
+    dropped, so a name copied from ``rclone help flags`` can be pasted as-is.
+    """
+    return str(name).strip().lstrip("-").lower().replace("-", "_")
+
+
 def is_valid_option_name(name: str) -> bool:
     """Return True when ``name`` is a valid rclone option name.
 
     Option names become ``RCLONE_<OPTION>`` flag variables, so they are limited
     to lowercase letters, digits and underscores (``transfers``,
-    ``s3_chunk_size``).  Exposed so the CLI can validate the same names it asks
+    ``s3_chunk_size``).  Callers should pass a name through
+    :func:`normalize_option_name` first, which lowercases it and turns dashes
+    into underscores.  Exposed so the CLI can validate the same names it asks
     the user for without duplicating the rule.
     """
     return bool(_OPTION_NAME_RE.match(str(name)))
@@ -258,7 +272,7 @@ def resolve_option_env_name(
     """
     if known_flags is None:
         return None
-    name = str(option_name).strip()
+    name = normalize_option_name(option_name)
     if not name:
         return None
 
@@ -328,7 +342,7 @@ def unknown_rclone_options(
 
     unknown = []
     for name in options:
-        option_name = str(name).strip()
+        option_name = normalize_option_name(name)
         if not _OPTION_NAME_RE.match(option_name):
             continue  # already reported by _add_rclone_options
         if resolve_option_env_name(option_name, profile_type, known) is None:

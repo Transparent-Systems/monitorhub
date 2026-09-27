@@ -157,12 +157,27 @@ class TestBuildRcloneEnv(unittest.TestCase):
         env = rclone_env.build_rclone_env(
             remote_name="mydest",
             profile_type="s3",
-            profile_config={"rclone_options": {"--transfers": 8, "ok_option": "1"}},
+            profile_config={"rclone_options": {"bad option": 8, "ok_option": "1"}},
             logger=logger,
         )
         self.assertEqual(env["RCLONE_OK_OPTION"], "1")
-        self.assertNotIn("RCLONE_--TRANSFERS", env)
+        self.assertNotIn("RCLONE_BAD OPTION", env)
         logger.warning.assert_called_once()
+
+    def test_flag_spelling_is_normalised(self):
+        """A pasted flag name / capitals are stored as the config name."""
+        logger = mock.Mock()
+        env = rclone_env.build_rclone_env(
+            remote_name="mydest",
+            profile_type="ftp",
+            profile_config={
+                "rclone_options": {"--ftp-no-check-upload": "true", "DRY-RUN": "true"}
+            },
+            logger=logger,
+        )
+        self.assertEqual(env["RCLONE_FTP_NO_CHECK_UPLOAD"], "true")
+        self.assertEqual(env["RCLONE_DRY_RUN"], "true")
+        logger.warning.assert_not_called()
 
     def test_non_mapping_rclone_options_are_reported(self):
         logger = mock.Mock()
@@ -174,6 +189,32 @@ class TestBuildRcloneEnv(unittest.TestCase):
         )
         self.assertEqual(env, {"RCLONE_CONFIG_MYDEST_TYPE": "s3"})
         logger.warning.assert_called_once()
+
+
+class TestNormalizeOptionName(unittest.TestCase):
+    """User input is canonicalised to the rclone.conf spelling."""
+
+    def test_dashes_become_underscores(self):
+        self.assertEqual(
+            rclone_env.normalize_option_name("no-check-upload"), "no_check_upload"
+        )
+
+    def test_leading_dashes_are_dropped(self):
+        self.assertEqual(
+            rclone_env.normalize_option_name("--ftp-no-check-upload"),
+            "ftp_no_check_upload",
+        )
+
+    def test_capitals_are_lowercased(self):
+        self.assertEqual(
+            rclone_env.normalize_option_name("NO_CHECK_UPLOAD"), "no_check_upload"
+        )
+
+    def test_mixed_input_is_stripped_and_normalised(self):
+        self.assertEqual(
+            rclone_env.normalize_option_name("  FTP-No_Check-Upload  "),
+            "ftp_no_check_upload",
+        )
 
 
 class TestResolveOptionEnvName(unittest.TestCase):
@@ -208,6 +249,17 @@ class TestResolveOptionEnvName(unittest.TestCase):
     def test_unknown_option_returns_none(self):
         self.assertIsNone(
             rclone_env.resolve_option_env_name("no_check_buckets", "s3", self.FLAGS)
+        )
+
+    def test_flag_spelling_and_capitals_are_normalised(self):
+        flags = frozenset({"ftp-no-check-upload"})
+        self.assertEqual(
+            rclone_env.resolve_option_env_name("no-check-upload", "ftp", flags),
+            "RCLONE_FTP_NO_CHECK_UPLOAD",
+        )
+        self.assertEqual(
+            rclone_env.resolve_option_env_name("NO_CHECK_UPLOAD", "ftp", flags),
+            "RCLONE_FTP_NO_CHECK_UPLOAD",
         )
 
     def test_without_flags_nothing_resolves(self):

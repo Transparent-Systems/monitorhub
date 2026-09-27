@@ -359,14 +359,16 @@ class ProfileEditor:
         commas; pressing Enter keeps the current options and ``none`` removes
         them.
         """
-        current_options = profile_config.get(rclone_env.RCLONE_OPTIONS_KEY)
+        current_options = self._normalize_rclone_options(
+            profile_config.get(rclone_env.RCLONE_OPTIONS_KEY), profile_type
+        )
         self.prompt.print(
             "rclone options tune the transfer and the backend. Enter backend "
             "properties as in rclone.conf (for example no_check_bucket=true, "
             "chunk_size=16M; the backend prefix is optional) or global flags "
-            "(for example transfers=8)."
+            "(for example transfers=8). Dashes and capitals are accepted."
         )
-        if isinstance(current_options, dict) and current_options:
+        if current_options:
             self.prompt.print(
                 "Current rclone options: "
                 + ", ".join(
@@ -387,6 +389,9 @@ class ProfileEditor:
             validator=lambda entry: self._validate_rclone_options(entry, profile_type),
         )
         if value is None:
+            # Keep, but migrate legacy spellings to the canonical form.
+            if current_options:
+                profile_config[rclone_env.RCLONE_OPTIONS_KEY] = current_options
             return
         if value.strip().lower() in ("none", "-"):
             profile_config.pop(rclone_env.RCLONE_OPTIONS_KEY, None)
@@ -394,6 +399,25 @@ class ProfileEditor:
         profile_config[rclone_env.RCLONE_OPTIONS_KEY] = self._parse_rclone_options(
             value, profile_type
         )
+
+    @staticmethod
+    def _canonical_option_name(name: str, profile_type: str = "") -> str:
+        """Normalise ``name`` and drop a matching backend prefix."""
+        option_name = rclone_env.normalize_option_name(name)
+        prefix = f"{profile_type.strip().lower()}_" if profile_type else ""
+        if prefix and option_name.startswith(prefix):
+            option_name = option_name[len(prefix):]
+        return option_name
+
+    @staticmethod
+    def _normalize_rclone_options(options: object, profile_type: str = "") -> dict:
+        """Return stored rclone options under canonical, prefix-free names."""
+        if not isinstance(options, dict):
+            return {}
+        normalized: dict[str, str] = {}
+        for key, value in options.items():
+            normalized[ProfileEditor._canonical_option_name(key, profile_type)] = value
+        return normalized
 
     @staticmethod
     def _rclone_known_flags() -> frozenset[str] | None:
@@ -425,11 +449,12 @@ class ProfileEditor:
             if "=" not in pair:
                 return f"Invalid rclone option '{pair}': expected key=value."
             key, option_value = pair.split("=", 1)
-            option_name = key.strip()
+            option_name = rclone_env.normalize_option_name(key)
             if not rclone_env.is_valid_option_name(option_name):
                 return (
-                    f"Invalid rclone option name '{option_name}': option names "
-                    "must be lowercase letters, digits and underscores."
+                    f"Invalid rclone option name '{key.strip()}': option names "
+                    "must be letters, digits and underscores (dashes and capitals "
+                    "are normalised)."
                 )
             if option_value.strip() == "":
                 return f"Invalid rclone option '{pair}': value cannot be empty."
@@ -446,19 +471,17 @@ class ProfileEditor:
     def _parse_rclone_options(value: str, profile_type: str = "") -> dict[str, str]:
         """Parse ``key=value, key=value`` into an rclone options mapping.
 
-        A backend prefix is stripped so the stored name matches the bare
-        ``rclone.conf`` property (``s3_no_check_bucket`` -> ``no_check_bucket``).
+        Each name is normalised (dashes to underscores, lowercase) and a matching
+        backend prefix is stripped, so ``s3_no_check_bucket`` and
+        ``no-check-bucket`` both store ``no_check_bucket``.
         """
         options: dict[str, str] = {}
-        prefix = f"{profile_type.strip().lower()}_" if profile_type else ""
         for pair in value.split(","):
             pair = pair.strip()
             if not pair:
                 continue
             key, option_value = pair.split("=", 1)
-            option_name = key.strip()
-            if prefix and option_name.lower().startswith(prefix):
-                option_name = option_name[len(prefix):]
+            option_name = ProfileEditor._canonical_option_name(key, profile_type)
             options[option_name] = option_value.strip()
         return options
 

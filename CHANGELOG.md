@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+- ``profile edit`` accepts rclone option names in any case and in the flag
+  spelling (``no-check-upload``, ``--ftp-no-check-upload``).  It normalises them
+  to the lowercase underscore ``rclone.conf`` form before storing, and rewrites
+  the profile's existing options on save, so a legacy ``ftp_no_check_upload``
+  becomes ``no_check_upload``.  The "Current rclone options" line shows the
+  canonical names.
+
 - ``rclone_options`` now mirrors an ``rclone.conf`` section: backend properties
   are entered under their bare rclone name (``no_check_bucket``, ``chunk_size``)
   and the backend is implied by the profile type, so the ``s3_`` prefix is no

@@ -215,7 +215,12 @@ A backend property becomes `RCLONE_<BACKEND>_<OPTION>` (`no_check_bucket` ->
 (`transfers` -> `RCLONE_TRANSFERS`). The `s3_` prefix is accepted but optional;
 `profile edit` strips it so the stored name matches `rclone.conf`, and a name
 that is already prefixed (`s3_chunk_size`) keeps working because MonitorHub
-resolves each option against the installed rclone's flags.
+resolves each option against the installed rclone's flags. Option names are
+case-insensitive and accept the flag spelling (`no-check-upload`,
+`--ftp-no-check-upload`); `profile edit` normalises them to the lowercase
+underscore `rclone.conf` form (and rewrites the profile's existing options on
+save), so `no-check-upload`, `NO_CHECK_UPLOAD` and `no_check_upload` all store
+`no_check_upload`.
 
 Object lock needs an rclone that supports it (1.7x; check with
 `rclone help flags | grep object-lock`). rclone silently ignores options it does

@@ -899,6 +899,46 @@ class TestCommands(unittest.TestCase):
         profile = commands.sqlite_handler.get_profile(profile_id=profile_id)
         self.assertEqual(profile["config"]["rclone_options"], {"transfers": "8"})
 
+    def test_profile_edit_normalizes_rclone_option_input(self):
+        # Dashes and capitals are accepted and stored as the rclone.conf name;
+        # a matching backend prefix is dropped.
+        profile_id = self.database_test_data.sqlite_handler.get_profile(
+            profile_name="ftp-test"
+        )["id"]
+        flags = frozenset({"ftp-no-check-upload", "progress"})
+        with mock.patch(
+            "app.cli.profile_editor.ProfileEditor._rclone_known_flags",
+            return_value=flags,
+        ):
+            commands, _ = self._make_commands(
+                [
+                    str(profile_id),
+                    "",
+                    "",
+                    "",
+                    "no-check-upload=true, PROGRESS=true",
+                ]
+            )
+            commands.profile.edit()
+        profile = commands.sqlite_handler.get_profile(profile_id=profile_id)
+        self.assertEqual(
+            profile["config"]["rclone_options"],
+            {"no_check_upload": "true", "progress": "true"},
+        )
+
+    def test_profile_edit_migrates_legacy_rclone_options_on_keep(self):
+        # Pressing Enter keeps the options but rewrites them to the canonical
+        # form, so a legacy prefixed/dashed name is migrated.
+        profile_id = self._set_profile_config_value(
+            "ftp-test", "rclone_options", {"ftp_no_check_upload": "true"}
+        )
+        commands, _ = self._make_commands([str(profile_id), "", "", "", ""])
+        commands.profile.edit()
+        profile = commands.sqlite_handler.get_profile(profile_id=profile_id)
+        self.assertEqual(
+            profile["config"]["rclone_options"], {"no_check_upload": "true"}
+        )
+
     def test_profile_test_s3_profile_uses_native_handler(self):
         commands, _ = self._make_commands([])
         with (
