@@ -2,6 +2,33 @@
 
 ## [Unreleased]
 
+- ``mhub profile test`` no longer crashes on a command template containing an
+  unknown placeholder (``echo {unknown}``) or a literal brace
+  (``awk '{print $1}'``). ``str.format`` raises ``KeyError``/``ValueError`` for
+  these; the diagnostic now reports them as validation errors and fails the
+  test gracefully, matching how ``CommandActionHandler`` handles the same
+  templates at runtime. The unguarded ``assert`` in the dry-run path is gone.
+
+- ``pytest`` no longer collects the manual ``tests/thread_stress_test.py``
+  harness (and other ``*_test.py`` scripts): ``python_files`` is restricted to
+  ``test_*.py``, matching the Makefile's unittest discovery. Those scripts touch
+  a real database directory and are meant to be run by hand.
+
+- Removed dead code: ``RemoteHandler.normalize_path`` (unused; the ARCHITECTURE
+  diagram was updated), ``reference_data.MONITOR_STATUSES`` and the orphaned
+  ``constants.MONITOR_STATUS_ERROR`` (used only by that unused table), and the
+  unused ``build_project.get_app_version``.
+
+- ``HandlerFactory`` normalises a profile's ``command_events`` into a list, so a
+  legacy comma-separated string can no longer be matched by substring in
+  ``CommandActionHandler``. The unused return value of
+  ``MonitorCommands._cleanup_stale_monitors`` was dropped.
+
+- Documentation: the release checklist now points at ``requirements.txt`` and
+  ``.venv/bin/python mhub.py config test`` (the old text referenced a
+  non-existent ``requirements.in`` and a non-existent ``test`` command), and the
+  README uses the project interpreter path.
+
 - The S3 provider config key is now ``provider`` (rclone's own key) instead of
   ``provider_name``.  ``profile new``/``profile edit``, ``profile import``,
   ``S3Factory`` and the rclone environment all read and write ``provider``, so a

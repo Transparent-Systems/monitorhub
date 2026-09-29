@@ -9,12 +9,6 @@ APP_NAME = "mhub"
 ICON_FILE = "app_icon.ico"
 DIST_DIR = "dist"
 
-def get_app_version():
-    from version import __version__ as version
-    major, minor, build = version
-    version = f"{major}.{minor}.{build}"
-    return version
-
 def clean_previous_builds():
     """Removes old build and dist folders to ensure a fresh start."""
     for folder in [DIST_DIR, "build"]:

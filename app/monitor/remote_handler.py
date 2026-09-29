@@ -78,10 +78,3 @@ class RemoteHandler(ABC):
         """
         Delete objects in remote_path.
         """
-
-    @staticmethod
-    def normalize_path(path: str) -> str:
-        """
-        Shared utility: S3 and most cloud providers prefer forward slashes.
-        """
-        return path.replace('\\', '/').strip('/')

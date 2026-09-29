@@ -211,6 +211,30 @@ class TestHandlerFactory(unittest.TestCase):
         handler = HandlerFactory.get_handler(monitor=monitor, profile=profile)
         self.assertIsInstance(handler, CommandActionHandler)
 
+    def test_legacy_string_events_are_split_into_a_list(self):
+        """A legacy comma-separated string must not be used for substring match."""
+        monitor = {"name": "m", "monitor_path": "/tmp/m"}
+        profile = {
+            "name": "cmd-prof",
+            "profile_type": "event_command",
+            "config": {"command": "echo hi", "command_events": "created, modified"},
+        }
+        handler = HandlerFactory.get_handler(monitor=monitor, profile=profile)
+        self.assertIsInstance(handler, CommandActionHandler)
+        assert isinstance(handler, CommandActionHandler)
+        self.assertEqual(handler.events, ["created", "modified"])
+
+    def test_event_filter_normalization(self):
+        normalize = HandlerFactory._normalize_command_events
+        self.assertEqual(normalize("created,modified"), ["created", "modified"])
+        self.assertEqual(normalize(["created", "timer"]), ["created", "timer"])
+        self.assertEqual(normalize("timer"), ["timer"])
+        self.assertIsNone(normalize(""))
+        self.assertIsNone(normalize("  ,  "))
+        self.assertIsNone(normalize([]))
+        self.assertIsNone(normalize(None))
+        self.assertIsNone(normalize(123))
+
     def test_mapped_remote_profile_gets_remote_action_handler(self):
         with (
             mock.patch.object(reference_data, "NATIVE_PROFILE_TYPES", ("_fake",)),

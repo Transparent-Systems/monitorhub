@@ -4,6 +4,7 @@
 import logging
 import threading
 
+from app.utils.constants import MONITOR_TYPE_INSTANT
 from app.utils.sqlite_handler import SQLiteHandler
 
 
@@ -19,7 +20,7 @@ def test_sqlite_handler_thread_safety():
         name='thread_safety_monitor',
         monitor_path='/tmp/test',
         remote_path='remote:/test',
-        monitor_type='periodic_upload',
+        monitor_type=MONITOR_TYPE_INSTANT,
         config={},
         status='stopped',
     )

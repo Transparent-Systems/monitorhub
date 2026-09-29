@@ -23,8 +23,10 @@ dev = [
 pythonpath = ["."]
 # Automatically pass -s (show stdout/print calls)
 addopts = "-s"
-# Optionally tell pytest to collect files named *_stress_test.py
-python_files = ["test_*.py", "*_test.py"]
+# Collect only the unittest-style files the Makefile runs. Manual scripts
+# (e.g. tests/thread_stress_test.py, tests/simple_performance_test.py) must not
+# be picked up: they touch a real database directory and are run by hand.
+python_files = ["test_*.py"]
 
 # Lint rulesets consolidated here (the per-directory app/*/ruff.toml files were
 # removed). "I" (isort) and "BLE" (blind-except) are explicit so the quality bar

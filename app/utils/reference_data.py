@@ -75,23 +75,16 @@ def is_aws_provider(provider: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Monitor type / status reference data
+# Monitor type reference data
 # ---------------------------------------------------------------------------
 
 # (name, description) tuples — used for UI display in monitor commands.
 # The name element references the canonical value in ``app.utils.constants``,
-# so display keys can never drift from the status/type writer vocabulary.
+# so display keys can never drift from the type writer vocabulary.
 MONITOR_TYPES: tuple[tuple[str, str], ...] = (
     (constants.MONITOR_TYPE_INSTANT, "Instant upload of changed file to remote"),
     (constants.MONITOR_TYPE_BACKUP,  "Backup to remote"),
     (constants.MONITOR_TYPE_RESTORE, "Restore from remote"),
-)
-
-MONITOR_STATUSES: tuple[tuple[str, str], ...] = (
-    (constants.MONITOR_STATUS_RUNNING, "Monitor is running"),
-    (constants.MONITOR_STATUS_STOP,    "Monitor is about to stop"),
-    (constants.MONITOR_STATUS_STOPPED, "Monitor has stopped running"),
-    (constants.MONITOR_STATUS_ERROR,   "Monitor has an error state"),
 )
 
 

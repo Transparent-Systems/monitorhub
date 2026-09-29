@@ -11,6 +11,7 @@ import sqlite3
 import tempfile
 import unittest
 
+from app.utils.constants import MONITOR_TYPE_INSTANT
 from app.utils.schema_versioning import DATABASE_SCHEMA_VERSION, SCHEMA_MIGRATIONS
 from app.utils.sqlite_handler import SQLiteHandler
 from tests.base_test_class import BaseTestClass
@@ -133,7 +134,7 @@ class TestSqliteHandler(BaseTestClass):
             name="test_monitor",
             monitor_path="/tmp/test",
             remote_path="/remote/test",
-            monitor_type="periodic_upload",
+            monitor_type=MONITOR_TYPE_INSTANT,
             config={
                 "monitor_period": "10m",
                 "test": "value"},

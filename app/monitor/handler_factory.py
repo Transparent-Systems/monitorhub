@@ -156,6 +156,23 @@ class HandlerFactory:
             debounce_delay=debounce_delay,
         )
 
+    @staticmethod
+    def _normalize_command_events(value: object) -> list[str] | None:
+        """Return the event filter as a list, or ``None`` for "all events".
+
+        ``command_events`` may be a list (written by ``profile edit``) or a
+        legacy comma-separated string. A string handed straight to
+        ``CommandActionHandler`` would be matched by substring, so it is split
+        here; an empty result means "all events".
+        """
+        if isinstance(value, str):
+            events = [part.strip() for part in value.split(",") if part.strip()]
+            return events or None
+        if isinstance(value, (list, tuple)):
+            events = [str(part).strip() for part in value if str(part).strip()]
+            return events or None
+        return None
+
     @classmethod
     def _create_command_handler(
         cls,
@@ -176,7 +193,7 @@ class HandlerFactory:
             )
             return None
 
-        events = cfg.get("command_events", "")
+        events = cls._normalize_command_events(cfg.get("command_events"))
         cooldown = cfg.get("command_cooldown", "0s")
         shell = cfg.get("command_shell", False)
         # String default matches CommandActionHandler's declared contract. A

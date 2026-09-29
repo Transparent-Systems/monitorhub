@@ -66,7 +66,6 @@ classDiagram
     delete_folder(remote_path: str)* RemoteResult
     file_exists(remote_path: str)* RemoteResult
     get_remote_path(monitor_path: str)* str
-    normalize_path(path: str) str
     restore_folder(remote_path: str)* RemoteResult
   }
   class StoppableWorker {

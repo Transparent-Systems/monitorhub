@@ -153,7 +153,7 @@ It handles S3 compatible cloud storage providers, like:
 The S3Handler is a builtin file handler. It eliminates the need for Rclone when using S3 compatible cloud storage.  
 A builtin S3 handler makes it easier to use MonitorHub.
 You can import the rclone profiles with command:  
-python mhub.py profile import
+.venv/bin/python mhub.py profile import
 
 The import lets you choose which profiles to bring over: enter `0` to import
 all, a profile number to add individual profiles one at a time, or press Enter

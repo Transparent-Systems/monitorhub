@@ -1449,7 +1449,7 @@ class TestCommands(unittest.TestCase):
             "last_heartbeat": utc_timestamp_now(),
         }
         stale = commands.monitor._cleanup_stale_monitors([fresh_monitor])
-        self.assertEqual(stale, [])
+        self.assertIsNone(stale)
         self.assertNotIn("Forcing stop and restart", mock_prompt.output_text)
 
     def test_cleanup_stale_monitors_flags_old_heartbeat(self):
@@ -1469,7 +1469,7 @@ class TestCommands(unittest.TestCase):
             "last_heartbeat": old_timestamp,
         }
         stale = commands.monitor._cleanup_stale_monitors([stale_monitor])
-        self.assertEqual(len(stale), 1)
+        self.assertIsNone(stale)
         self.assertIn("Forcing stop and restart", mock_prompt.output_text)
 
     def test_cleanup_stale_monitors_skips_restart_when_kill_fails(self):
@@ -1494,9 +1494,9 @@ class TestCommands(unittest.TestCase):
         with mock.patch.object(
             commands.monitor.processes, "force_kill", return_value=False
         ) as force_kill:
-            stale = commands.monitor._cleanup_stale_monitors([stale_monitor])
+            result = commands.monitor._cleanup_stale_monitors([stale_monitor])
         force_kill.assert_called_once()
-        self.assertEqual(stale, [])
+        self.assertIsNone(result)
         self.assertIn("could not be killed", mock_prompt.output_text)
 
 
@@ -1545,6 +1545,57 @@ class TestCommandProfileValidation(unittest.TestCase):
         )
         self.assertTrue(ok)
         self.assertNotIn("Invalid event(s)", prompt.output_text)
+
+    def test_unknown_placeholder_is_reported_not_raised(self):
+        """An unknown placeholder must fail the test, not crash the CLI.
+
+        Regression: the dry-run called ``str.format`` unguarded, so a template
+        such as ``echo {unknown}`` raised ``KeyError`` out of ``profile test``.
+        """
+        commands, prompt = self._make()
+        ok = commands._test_command_profile(
+            "cmd-profile", {"command": "echo {unknown}"}
+        )
+        self.assertFalse(ok)
+        self.assertIn("Unknown placeholder", prompt.output_text)
+        self.assertIn("Test failed", prompt.output_text)
+
+    def test_literal_brace_is_reported_not_raised(self):
+        """A literal brace (e.g. an awk script) must be reported, not crash."""
+        commands, prompt = self._make()
+        ok = commands._test_command_profile(
+            "cmd-profile", {"command": "awk '{print $1}' file.txt"}
+        )
+        self.assertFalse(ok)
+        self.assertIn("VALIDATION ERRORS", prompt.output_text)
+        self.assertIn("Test failed", prompt.output_text)
+
+    def test_literal_brace_in_shell_template_is_reported_not_raised(self):
+        commands, prompt = self._make()
+        ok = commands._test_command_profile(
+            "cmd-profile",
+            {"command": "awk '{print $1}' file.txt", "command_shell": True},
+        )
+        self.assertFalse(ok)
+        self.assertIn("VALIDATION ERRORS", prompt.output_text)
+
+    def test_unbalanced_brace_is_reported_not_raised(self):
+        """An unbalanced brace raises ValueError from str.format."""
+        commands, prompt = self._make()
+        ok = commands._test_command_profile(
+            "cmd-profile", {"command": "echo {"}
+        )
+        self.assertFalse(ok)
+        self.assertIn("Invalid command template", prompt.output_text)
+
+    def test_placeholder_in_shell_template_is_substituted(self):
+        commands, prompt = self._make()
+        ok = commands._test_command_profile(
+            "cmd-profile",
+            {"command": "echo {src_path}", "command_shell": True},
+        )
+        self.assertTrue(ok)
+        self.assertIn("/path/to/example/file.txt", prompt.output_text)
 
 
 if __name__ == "__main__":

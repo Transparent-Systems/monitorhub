@@ -98,10 +98,8 @@ class MonitorCommands:
         now = datetime.datetime.now(datetime.UTC)
         return (now - heartbeat_dt).total_seconds()
 
-    def _cleanup_stale_monitors(self, monitors: list[dict]) -> list[dict]:
-        """Detect and stop stale/hung running monitors, returning them for restart."""
-        stale_monitors: list[dict] = []
-
+    def _cleanup_stale_monitors(self, monitors: list[dict]) -> None:
+        """Detect and stop stale/hung running monitors so they can be restarted."""
         for monitor in monitors:
             if monitor.get("status") != MONITOR_STATUS_RUNNING:
                 continue
@@ -139,9 +137,6 @@ class MonitorCommands:
             self.sqlite_handler.update_monitor_status(monitor_id=monitor_id_val, status=MONITOR_STATUS_STOPPED)
             self.sqlite_handler.update_monitor_pid(monitor_id=monitor_id_val, pid=0)
             self.processes.reap(monitor_id_val)
-            stale_monitors.append(monitor)
-
-        return stale_monitors
 
     def _prompt_interval(self, current_interval: str | None = None, monitor_type: str | None = None) -> str:
         """Prompt the user for a monitor interval and return the normalized value."""

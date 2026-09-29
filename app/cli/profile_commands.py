@@ -129,6 +129,32 @@ class ProfileCommands:
         self.prompt.print(f"Unknown or unsupported profile category '{category}' for profile type '{profile_type}'")
         return False
 
+    @staticmethod
+    def _resolve_command_template(
+        command: str, values: dict[str, str], shell: bool
+    ) -> tuple[str, list[str], str | None]:
+        """Substitute placeholders, reporting failures instead of raising.
+
+        ``str.format`` raises ``KeyError`` for an unknown placeholder and
+        ``ValueError`` for a literal brace (e.g. ``awk '{print $1}'``). Both are
+        user-input mistakes the diagnostic must report rather than let crash the
+        CLI, mirroring how ``CommandActionHandler`` handles the same templates at
+        runtime.
+
+        :return: ``(resolved_command, argv, error_message)``. ``argv`` is empty
+            for ``shell`` templates; ``error_message`` is ``None`` on success.
+        """
+        try:
+            if shell:
+                quoted = {k: shlex.quote(v) for k, v in values.items()}
+                return command.format(**quoted), [], None
+            parts = [token.format(**values) for token in shlex.split(command)]
+            return " ".join(parts), parts, None
+        except KeyError as error:
+            return "", [], f"Unknown placeholder {error} in command template"
+        except ValueError as error:
+            return "", [], f"Invalid command template: {error}"
+
     def _test_command_profile(
         self, profile_name: str, config: dict, live: bool = False
     ) -> bool:
@@ -211,13 +237,10 @@ class ProfileCommands:
             self.prompt.print("Test failed")
             return False
 
-        # command is guaranteed non-None here (validated above)
-        assert command is not None
+        # command is a non-empty string here (validated above).
+        command = str(command)
 
         # --- Dry-run: resolve placeholders with sample values ---
-        resolved_cmd: str = ""
-        resolved_parts: list[str] = []
-
         sample_values = {
             "monitor_name": "Example Monitor",
             "profile_name": profile_name,
@@ -230,27 +253,24 @@ class ProfileCommands:
         for placeholder, value in sample_values.items():
             self.prompt.print(f"  {{{placeholder}}}  -> {value}")
 
-        if shell:
-            import shlex as _shlex
-            quoted = {k: _shlex.quote(v) for k, v in sample_values.items()}
-            resolved_cmd = command.format(**quoted)
+        # Unknown placeholders and literal braces (e.g. ``awk '{print $1}'``)
+        # make str.format raise; report them instead of crashing the CLI.
+        resolved_cmd, resolved_parts, resolve_error = self._resolve_command_template(
+            command, sample_values, shell=shell
+        )
+        if resolve_error is not None:
             self.prompt.print("")
-            self.prompt.print("Resolved command (shell):")
-            self.prompt.print(f"  {resolved_cmd}")
-        else:
-            try:
-                tokens = shlex.split(command)
-            except ValueError:
-                # Already caught above
-                self.prompt.print("Test failed")
-                return False
-            resolved_parts: list[str] = []
-            for token in tokens:
-                resolved_parts.append(token.format(**sample_values))
-            resolved_cmd = " ".join(resolved_parts)
+            self.prompt.print("VALIDATION ERRORS:")
+            self.prompt.print(f"  - {resolve_error}")
             self.prompt.print("")
-            self.prompt.print("Resolved command (argv):")
-            self.prompt.print(f"  {resolved_cmd}")
+            self.prompt.print("Test failed")
+            return False
+
+        self.prompt.print("")
+        self.prompt.print(
+            "Resolved command (shell):" if shell else "Resolved command (argv):"
+        )
+        self.prompt.print(f"  {resolved_cmd}")
 
         self.prompt.print("=" * 50)
 
