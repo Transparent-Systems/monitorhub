@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+- ``build_project.py`` now invokes PyInstaller as ``sys.executable -m
+  PyInstaller`` instead of a bare ``pyinstaller``. The bare name required the
+  virtualenv to be activated / on ``PATH`` (it is not, when following the
+  documented ``.venv/bin/python build_project.py`` workflow, so the build failed
+  with ``FileNotFoundError``) and could otherwise resolve to a different
+  interpreter. Since PyInstaller embeds the interpreter that runs it, this
+  guarantees the frozen binary bundles the project interpreter -- the one
+  reported by ``mhub config python``.
+
 - New ``mhub config python`` command reports the running Python version and the
   interpreter path. The runtime value comes from ``sys.version_info`` /
   ``sys.executable``, so it also reports correctly inside the frozen PyInstaller

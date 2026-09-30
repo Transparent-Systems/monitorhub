@@ -25,8 +25,14 @@ def build_executable():
     clean_previous_builds()
 
     # Base PyInstaller command
+    # Invoke PyInstaller through the running interpreter (``sys.executable -m
+    # PyInstaller``) rather than a bare ``pyinstaller``: the bare name depends on
+    # the virtualenv being activated / present on PATH, and could resolve to a
+    # different interpreter. PyInstaller embeds the interpreter that runs it, so
+    # using ``sys.executable`` guarantees the frozen binary bundles the project
+    # interpreter (the one reported by ``mhub config python``).
     # --onefile: Bundles everything into one executable
-    build_cmd = ["pyinstaller", "--onefile", "--name", output_name]
+    build_cmd = [sys.executable, "-m", "PyInstaller", "--onefile", "--name", output_name]
 
     # Ensure the monitor-runner module is packaged inside the binary.
     # mhub.py imports app.monitor.run_monitor inside its ``run-monitor``
