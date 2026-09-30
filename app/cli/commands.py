@@ -17,6 +17,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
+from app.cli import python_version
 from app.cli.database_commands import DatabaseCommands
 from app.cli.diagnostic_util import DiagnosticUtil
 from app.cli.monitor_commands import MonitorCommands
@@ -52,6 +53,43 @@ class AppCommands:
             diagnostic_util.print_overview()
         finally:
             self.prompt.print("Exiting test mode now")
+
+    def config_python(self) -> None:
+        """Report the running Python version and the project's declared pin.
+
+        The runtime version comes from the interpreter actually executing (which
+        works inside the frozen executable too). The declared pin is read from
+        ``.python-version`` when a source checkout provides it, and is reported
+        as unavailable otherwise. This is an advisory report, not a gate: it
+        always completes without signalling failure.
+        """
+        runtime = python_version.runtime_python_version()
+        self.prompt.print(f"Python (runtime) : {runtime}")
+        self.prompt.print(f"Executable       : {python_version.runtime_executable()}")
+
+        pin_file = python_version.find_pin_file()
+        if pin_file is None:
+            self.prompt.print(
+                f"Declared pin     : not available "
+                f"(no {python_version.PIN_FILENAME} found)"
+            )
+            self.prompt.print("Status           : n/a")
+            return
+
+        pin = python_version.read_pinned_version(pin_file)
+        if pin is None:
+            self.prompt.print(f"Declared pin     : unreadable ({pin_file})")
+            self.prompt.print("Status           : n/a")
+            return
+
+        self.prompt.print(f"Declared pin     : {pin}  (from {pin_file})")
+        if python_version.pin_matches(pin, runtime):
+            self.prompt.print("Status           : OK - runtime matches the declared pin")
+        else:
+            self.prompt.print(
+                f"Status           : MISMATCH - runtime {runtime} "
+                f"does not match pin {pin}"
+            )
 
 
 @dataclass

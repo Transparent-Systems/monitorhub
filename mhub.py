@@ -6,7 +6,7 @@ Description:
     MonitorHub CLI — command-line interface for managing profiles,
     monitors, configuration, and diagnostics.
 Requirements:
-    1) Python 3.13.0 (https://www.python.org/downloads/)
+    1) Python (version pinned in .python-version; run 'mhub config python')
     2) Python modules in requirements.txt
 Usage:
     Run the following command to get help:
@@ -31,6 +31,7 @@ from app.utils.logger_setup import setup_logging
 _SUBCOMMAND_DISPATCH = {
     ("version", None): ("app", "version", lambda _: {}),
     ("config", "test"): ("app", "config_test", lambda _: {}),
+    ("config", "python"): ("app", "config_python", lambda _: {}),
     ("profile", "test"): (
         "profile",
         "test",
@@ -210,9 +211,13 @@ if __name__ == "__main__":
     subparsers.add_parser("version", help="Show version")
 
     # Config command
-    config_parser = subparsers.add_parser("config", help="Configuration commands (subcommands: test; enter 'config -h' for help)")
+    config_parser = subparsers.add_parser("config", help="Configuration commands (subcommands: test, python; enter 'config -h' for help)")
     config_subparsers = config_parser.add_subparsers(dest="config_subcommand", help="Config subcommands")
     config_test_parser = config_subparsers.add_parser("test", help="Run environment and configuration checks")
+    config_python_parser = config_subparsers.add_parser(
+        "python",
+        help="Show the Python version in use and the project's pinned version",
+    )
 
     # Profile command
     profile_parser = subparsers.add_parser("profile", help="Manage profiles (subcommands: show, new, ... ; enter 'profile -h' for help)")

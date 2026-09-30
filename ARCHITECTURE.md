@@ -103,6 +103,7 @@ classDiagram
   class AppCommands {
     diagnostic_util
     prompt
+    config_python() None
     config_test() None
     version() None
   }
@@ -131,7 +132,7 @@ classDiagram
     check_profile_import_result : bool
     check_rclone_dependency_result : bool
     logger
-    profile_importer
+    profile_importer : ProfileImporter | None
     prompt
     sqlite_handler
     check_app_env() bool
@@ -235,7 +236,6 @@ classDiagram
   ProfileImporter --> PromptService : prompt
   Commands --> SQLiteHandler : sqlite_handler
   DiagnosticUtil --o AppCommands : diagnostic_util
-  ProfileImporter --o DiagnosticUtil : profile_importer
   ProfileImporter --o ProfileCommands : profile_importer
   PromptService --o AppCommands : prompt
   PromptService --o DatabaseCommands : prompt

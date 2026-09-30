@@ -17,6 +17,9 @@ dependencies = [
 dev = [
     "pytest",
     "pip-tools",
+    # pyreverse ships with pylint and is required by
+    # ``make update-diagrams`` / utils/update_diagram.py.
+    "pylint",
 ]
 
 [tool.pytest.ini_options]

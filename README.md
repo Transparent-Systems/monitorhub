@@ -117,6 +117,17 @@
   mhub profile --help
   ```
 
+  Checking which Python interpreter is in use and the version the project is
+  pinned to:
+  ```bash
+  mhub config python
+  ```
+
+  This reports the runtime Python version and the interpreter path. Inside the
+  released `mhub`/`mhub.exe` binary the interpreter is bundled, so the runtime
+  version still reports correctly. When run from a source checkout it also reads
+  the `.python-version` pin and shows whether the running interpreter matches it.
+
 
 ## Monitor Hub
 

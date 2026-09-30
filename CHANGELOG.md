@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+- New ``mhub config python`` command reports the running Python version and the
+  interpreter path. The runtime value comes from ``sys.version_info`` /
+  ``sys.executable``, so it also reports correctly inside the frozen PyInstaller
+  executable (which bundles its own interpreter). When run from a source
+  checkout it additionally reads the ``.python-version`` pin and prints whether
+  the running interpreter matches it. The command is advisory: a mismatch is
+  reported but does not fail. The stale hardcoded Python version in the
+  ``mhub.py`` docstring now points at this command instead.
+
+- ``pylint`` was added to the ``dev`` optional dependencies (``pyreverse`` ships
+  with it) so ``make update-diagrams`` works from a fresh environment.
+
 - ``mhub profile test`` no longer crashes on a command template containing an
   unknown placeholder (``echo {unknown}``) or a literal brace
   (``awk '{print $1}'``). ``str.format`` raises ``KeyError``/``ValueError`` for

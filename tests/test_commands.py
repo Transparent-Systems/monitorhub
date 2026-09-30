@@ -1165,6 +1165,72 @@ class TestCommands(unittest.TestCase):
         diagnostic_util.check_rclone_dependency.assert_called_once()
 
     # ------------------------------------------------------------------
+    # config python: runtime version and declared pin (advisory report)
+    # ------------------------------------------------------------------
+
+    def test_config_python_reports_runtime_and_matching_pin(self):
+        commands, mock_prompt = self._make_commands([])
+        with mock.patch(
+            "app.cli.python_version.runtime_python_version", return_value="3.12.14"
+        ), mock.patch(
+            "app.cli.python_version.runtime_executable",
+            return_value="/proj/.venv/bin/python",
+        ), mock.patch(
+            "app.cli.python_version.find_pin_file",
+            return_value=Path("/proj/.python-version"),
+        ), mock.patch(
+            "app.cli.python_version.read_pinned_version", return_value="3.12"
+        ):
+            commands.app.config_python()
+
+        text = mock_prompt.output_text
+        self.assertIn("Python (runtime) : 3.12.14", text)
+        self.assertIn("/proj/.venv/bin/python", text)
+        self.assertIn("Declared pin     : 3.12", text)
+        self.assertIn("OK - runtime matches the declared pin", text)
+
+    def test_config_python_reports_a_mismatch(self):
+        commands, mock_prompt = self._make_commands([])
+        with mock.patch(
+            "app.cli.python_version.runtime_python_version", return_value="3.14.4"
+        ), mock.patch(
+            "app.cli.python_version.runtime_executable", return_value="/usr/bin/python3"
+        ), mock.patch(
+            "app.cli.python_version.find_pin_file",
+            return_value=Path("/proj/.python-version"),
+        ), mock.patch(
+            "app.cli.python_version.read_pinned_version", return_value="3.12"
+        ):
+            commands.app.config_python()
+
+        text = mock_prompt.output_text
+        self.assertIn("MISMATCH", text)
+        self.assertIn("3.14.4", text)
+
+    def test_config_python_reports_pin_unavailable_without_a_file(self):
+        commands, mock_prompt = self._make_commands([])
+        with mock.patch(
+            "app.cli.python_version.find_pin_file", return_value=None
+        ):
+            commands.app.config_python()
+
+        text = mock_prompt.output_text
+        self.assertIn("Declared pin     : not available", text)
+        self.assertIn("Status           : n/a", text)
+
+    def test_config_python_reports_unreadable_pin(self):
+        commands, mock_prompt = self._make_commands([])
+        with mock.patch(
+            "app.cli.python_version.find_pin_file",
+            return_value=Path("/proj/.python-version"),
+        ), mock.patch(
+            "app.cli.python_version.read_pinned_version", return_value=None
+        ):
+            commands.app.config_python()
+
+        self.assertIn("Declared pin     : unreadable", mock_prompt.output_text)
+
+    # ------------------------------------------------------------------
     # Monitor start/stop liveness guards (duplicate-process regression)
     # ------------------------------------------------------------------
 
