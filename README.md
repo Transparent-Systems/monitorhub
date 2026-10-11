@@ -4,100 +4,144 @@
 
 ## 🚀 Quick Start
 
-1. **Run MonitorHub**:
+  You can configure MonitorHub with just a few commands
 
-    *Option A: On Windows run executable mhub.exe*
-    Download mhub.exe from GitHub. You can find the exe file under Releases.
+  **Initialise the database**:
+  MonitorHub stores its configuration (profiles, monitors, and support tables) in a SQLite database.  
+  The database is created explicitly, similar to ``git init``:
 
-    ```cmd
-    Example:
-    mhub.exe monitor new
-    ```
-    *Option B: On Linux run binary mhub*
-    Download mhub.exe from GitHub. You can find the binary file under Releases.
+  ```bash
+  mhub database init
+  ```
 
-    ```cmd
-    Example:
-    mhub monitor new
-    ```
+  Next create one or more profiles. Each profile is linked to one or more monitors.
+  After configuring a monitor you can start it.
+  ```bash
+  mhub profile new
+  mhub monitor new
+  mhub monitor start
+  ```
 
-    *Option C: Running from Source*
+  Stop a monitor with:
+  ```bash
+  mhub monitor stop
+  ```
+  
+  Examples to get help:
+  ```bash
+  mhub --help
+  mhub database --help
+  mhub profile --help
+  mhub monitor --help
+  ```
+  
+
+## How to run MonitorHub
+
+  ### Windows
+  Download mhub.exe from GitHub. You can find the mhub.exe file under Releases.
+
+  ```bash
+  Example:
+  mhub.exe monitor new
+  ```
+  ### Linux
+  Download mhub from GitHub. You can find the binary file under Releases.
+
+  ```bash
+  Example:
+  mhub monitor new
+  ```
+
+  ### Running from Source
     
-    a. **Install Python**: Download from [python.org](https://www.python.org/downloads/).
+    **Install Python**: Download from [python.org](https://www.python.org/downloads/).
+
+    **Install Python**: Download from [python.org](https://www.python.org/downloads/).
     
-    b. **Setup Environment**:
+    **Setup Environment**:
     ```bash
     python -m venv .venv
     # Windows:
     ./.venv/Scripts/activate
     # macOS/Linux:
     source .venv/bin/activate
-    
     pip install -r requirements.txt
     ```
 
-    c. **Initialise the database**:
+  ### Database commands
 
-    MonitorHub stores its configuration (profiles, monitors, and support tables) in a SQLite database.  
-    The database is created explicitly, similar to ``git init``:
+  **Initialise the database**:
+  MonitorHub stores its configuration (profiles, monitors, and support tables) in a SQLite database.  
+  The database is created explicitly, similar to ``git init``:
 
-    ```bash
-    mhub database init
-    ```
+  ```bash
+  mhub database init
+  ```
+  This creates the database schema.
+  You can view database information with:
 
-    This creates the database schema and loads some tables.  
-    You can view database information with:
+  ```bash
+  mhub database info
+  ```
 
-    ```bash
-    mhub database info
-    ```
+  You can check the database schema version (and whether it matches the
+  version this application supports) and, when needed, upgrade it in place:
 
-    You can check the database schema version (and whether it matches the
-    version this application supports) and, when needed, upgrade it in place:
+  ```bash
+  mhub database version
+  mhub database upgrade
+  ```
 
-    ```bash
-    mhub database version
-    mhub database upgrade
-    ```
+  ``mhub database upgrade`` applies any pending schema migrations without
+  touching your data. It refuses to downgrade a database that was created by a
+  newer version of MonitorHub.
 
-    ``mhub database upgrade`` applies any pending schema migrations without
-    touching your data. It refuses to downgrade a database that was created by a
-    newer version of MonitorHub.
+  You can rebuild the database.
+  IMPORTANT: 
+    This will override your existing database.
+    Make a backup of your database first
 
-    You can rebuild the database.
-    IMPORTANT: 
-      This will override your existing database.
-      Make a backup of your database first
+  ```bash
+  mhub database init --recreate
+  ```
 
-    ```bash
-    mhub database init --recreate
-    ```
+  To get a feel for how profiles, monitors, and their mapping look, you can
+  optionally load a small set of example data. This creates one example
+  monitor, one fake S3 profile, and the mapping between them, using clearly
+  fake credentials and paths:
 
-    To get a feel for how profiles, monitors, and their mapping look, you can
-    optionally load a small set of example data. This creates one example
-    monitor, one fake S3 profile, and the mapping between them, using clearly
-    fake credentials and paths:
+  ```bash
+  mhub database sample-data
+  ```
 
-    ```bash
-    mhub database sample-data
-    ```
+  This command is opt-in and only adds the examples once (it is safe to run
+  again). Delete the examples with the ``profile delete`` and
+  ``monitor delete`` commands.
 
-    This command is opt-in and only adds the examples once (it is safe to run
-    again). Delete the examples with the ``profile delete`` and
-    ``monitor delete`` commands.
+  d. **Run**:
+  ```bash
+  mhub monitor start
+  ```
 
-    d. **Run**:
-    ```bash
-    mhub monitor start
-    ```
+### Profiles: remote and command
+  1. A remote profile stores the configuration for a remote storage provider, like S3 cloud storage, FTP, Google Drive or Onedrive.  
+    If the remote profile is for an S3 compatable storage provider, then you can use the builtin MonitorHub S3 handler.  
+    All storage providers can be handled by Rclone.
+    Rclone requires the following steps:  
+    - Install Rclone for your operation system: Windows or Linux  
+    - Optional: create an Rclone profile with ``rclone config``  
+    - Optional: import one or more Rclone profiles with ``mhub profile import``  
 
-2 **Setup remote profiles**
+  2. A command profile stores the configuration for a shell command.  
+    For example you can run a command to send a notification, or run a script to block a firewall port.
+  
   Create a new remote profile with command:
   ```bash
   mhub profile new  
   ```
 
-  If you have already Rclone installed, you can import profiles with command:
+  If you have Rclone installed, you can import profiles with command:
   ```bash
   mhub profile import
   ```
@@ -105,12 +149,12 @@
   profile number to add individual profiles one at a time, or press Enter to
   stop (nothing is imported when no profile was selected).
 
-3 **Getting help**
+### Getting help
   Getting help about commands available
   ```bash
   mhub --help
   ```
-  Getting help about a specifi command
+  Getting help about a specific command
   ```bash
   mhub database --help
   mhub monitor --help
@@ -129,7 +173,7 @@
   the `.python-version` pin and shows whether the running interpreter matches it.
 
 
-## Monitor Hub
+## More information about Monitor Hub
 
 [Website](https://aip.transparent.co.nz) |
 [Documentation](https://aip.transparent.co.nz/monitorhub/) |
@@ -176,7 +220,7 @@ Over time we will add native handlers for common cloud storage providers and oth
 
 Rclone is the swiss knife of copying file to and from cloud storage. 
 Any remote profile type without a native handler is delegated to a call to Rclone,
-which is configured from the MonitorHub profile itself (no `rclone.conf` needed).
+which is configured from a MonitorHub profile itself (no `rclone.conf` needed).
 
 ### S3 via rclone
 
@@ -270,7 +314,7 @@ single-file instant upload is tuned with `s3_chunk_size` and
 ## Acknowledgments
 
 This project was developed with the assistance of several AI agents, mainly Deepseek V4 Pro and Google Gemini.
-Later on in the project I started using OpenRouter which makes it easy to try out different models.
+Later on in the project I used `OpenRouter` which makes it easy to try out different models.
 
 
 ## Features
@@ -359,7 +403,7 @@ I wanted the solve the many issues I experienced with common Windows desktop sol
 - Up to 100% CPU usage (what was it doing?)
 - Tool made PC hang if several explorer windows were open
 
-Initially I used rclone, which is the swiss knife of (cloud) file transfer.
+Initially I used `Rclone`, which is the swiss knife of (cloud) file transfer.
 I scheduled an rclone job every few hours and this was just fine for my purposes.  
 Until one day I wanted to upload my security videos to the cloud as well.  
 It was critical to upload those videos instantly and build a simple PowerShell script to do the job.  
@@ -373,7 +417,7 @@ To make the application scalable:
 - a monitor could handle file events, timer events and futue prrof to handle events
 - a pluggable architecture that allowed adding new monitor types and profile types easily
 
-While I was working on the application it gradually became clear to me that on a high level it was a lego box with monitors that consime events and profile handlers that process an event.
+While I was working on the application it gradually became clear to me that on a high level it was a lego box with monitors that consume events and profile handlers that process an event.
 The application is scalable and the architecture is scalable as well.
 For example adding a webhook monitor only requires one new class WebhookMonitor that registers itself with an ActionHandler. ALl the plumbing is already in place. This makes it simple to expand the application.
 
