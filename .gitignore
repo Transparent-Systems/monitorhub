@@ -1,0 +1,78 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Project-specific files
+log.yaml
+
+# Ignore all files in the following directories
+bat/
+bin/
+data/
+testdata/
+testdb/
+temp/
+logs/
+pid/
+snippets/
+todo/
+build/
+dist/
+
+# Operating System files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Virtual Environments
+.venv/
+venv/
+ENV/
+
+# Configuration and Secrets
+.env
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+.pytest_cache/
+htmlcov/
+
+# IDE-specific files
+.idea/
+.gemini/
+.vscode/
+GEMINI.md
+*.iml
+*.iws
+*.ipr
+*.suo
+*.user
+
+# Build artifacts
+/build/
+/dist/
+/images/
+/target/
+*.class
+*.jar
+*.war
+*.ear
+*.o
+*.pyc
+*.mmd
+*.plantuml
+
+# Dependency directories
+node_modules/
+vendor/
+lib/
+
+# Log files
+*.log
+
+# uv files
+uv.lock

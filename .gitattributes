@@ -1,0 +1,40 @@
+# Treat all .txt files as text with LF endings in the repo
+*.txt text eol=lf
+# Ensure shell scripts always have LF endings
+*.sh text eol=lf
+# Treat all .txt files as text with LF endings in the repo
+*.py text eol=lf
+# Treat all .md files as text with LF endings in the repo
+*.md text eol=lf
+# Treat all .json files as text with LF endings in the repo
+*.json text eol=lf
+# Treat all .yaml files as text with LF endings in the repo
+*.yaml text eol=lf
+# Treat all .yml files as text with LF endings in the repo
+*.yml text eol=lf
+# Treat all .conf files as text with LF endings in the repo
+*.conf text eol=lf
+# Treat all .log files as text with LF endings in the repo
+*.log text eol=lf
+# Treat all .csv files as text with LF endings in the repo
+*.csv text eol=lf
+# Treat all .xml files as text with LF endings in the repo
+*.xml text eol=lf
+# Treat all .html files as text with LF endings in the repo
+*.html text eol=lf
+# Treat all .css files as text with LF endings in the repo
+*.css text eol=lf
+# Treat all .js files as text with LF endings in the repo
+*.js text eol=lf
+# Treat all .ts files as text with LF endings in the repo
+*.ts text eol=lf
+# Treat all .json5 files as text with LF endings in the repo
+*.json5 text eol=lf
+# Treat all .mdx files as text with LF endings in the repo
+*.mdx text eol=lf
+
+
+# Treat binary files as binary (no line ending conversion)
+*.png binary
+*.jpg binary
+*.pdf binary

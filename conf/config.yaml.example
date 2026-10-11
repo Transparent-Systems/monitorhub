@@ -1,0 +1,14 @@
+# MonitorHub User Configuration
+# Saved in ~/.config/monitorhub/config.yaml
+
+version: 1.0.0
+
+# Name of the active/default database environment, or direct directory path
+default_database: dev
+
+# Database paths dictionary
+databases:
+  dev: testdb/dev
+  unittest: testdb/unittest
+  prod: /var/lib/monitorhub/db
+  local: data

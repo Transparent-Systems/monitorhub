@@ -1,0 +1,40 @@
+[project]
+name = "monitorhub"
+version = "1.0.0"
+requires-python = ">=3.12"
+dependencies = [
+    "watchdog",
+    "PyYAML",
+    "python-dotenv",
+    "boto3",
+    "boto3-stubs[s3]",
+    "pyinstaller",
+    "ruff",
+]
+
+# Separate development tools (like pytest) into optional dependencies
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pip-tools",
+    # pyreverse ships with pylint and is required by
+    # ``make update-diagrams`` / utils/update_diagram.py.
+    "pylint",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+# Automatically pass -s (show stdout/print calls)
+addopts = "-s"
+# Collect only the unittest-style files the Makefile runs. Manual scripts
+# (e.g. tests/thread_stress_test.py, tests/simple_performance_test.py) must not
+# be picked up: they touch a real database directory and are run by hand.
+python_files = ["test_*.py"]
+
+# Lint rulesets consolidated here (the per-directory app/*/ruff.toml files were
+# removed). "I" (isort) and "BLE" (blind-except) are explicit so the quality bar
+# does not silently depend on ruff's version-specific default rule set.
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "BLE"]
+# Carried over from the removed per-directory ruff.toml files.
+extend-ignore = ["E402", "SIM102"]
