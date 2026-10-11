@@ -1,6 +1,36 @@
 # Changelog
 
-## [Unreleased]
+## [1.0.0] - 2026-10-10
+
+Initial release of MonitorHub (formerly "FolderMonitor").
+
+This release has been tested on Windows 11 and Linux (Ubuntu 24.04).
+
+- ``profile new`` now selects the profile category interactively (``remote`` or
+    ``command``) instead of requiring a hard-coded CLI subcommand.
+    The ``profile new remote`` and ``profile new command`` subcommands have been
+    removed to make ``profile new`` consistent with ``monitor new``, which
+    already selects the monitor type interactively.
+
+- Database creation is now explicit rather than implicit.
+    ```bash
+    python mhub.py database init        # create schema and load support tables
+    python mhub.py database init --recreate   # drop and rebuild from scratch
+    python mhub.py database info        # show database information
+    python mhub.py database sample-data # load one example monitor, fake profile and mapping
+    ```
+
+    A monitor that is started before the database is initialised now reports a clear
+    error instead of silently creating the database.
+
+- Added opt-in sample data command.
+
+    ``python mhub.py database sample-data`` seeds the database with one example
+    monitor, one fake S3 profile, and their mapping. This lets end users see how
+    profiles, monitors, and mappings look without reading the manual. The
+    credentials and paths are clearly fake, and the command is idempotent.
+
+- MIT License.
 
 - ``build_project.py`` now invokes PyInstaller as ``sys.executable -m
   PyInstaller`` instead of a bare ``pyinstaller``. The bare name required the
@@ -192,11 +222,6 @@
   ``direction`` (backup or restore) rather than always backup, and
   ``setup_logging`` accepts a numeric YAML ``log_level`` without raising on
   ``.upper()``.
-
-- Minor CLI cleanups: the interactive profile selector now redraws the profile
-  list after an invalid entry (matching the monitor selector, which already
-  did), and a local string variable in the command-event editor no longer
-  shadows the ``prompt`` service it is built from.
 
 - ``RcloneHandler.get_remote_path`` now falls back to the path's file name when
   the given path is not relative to ``base_monitor_path`` instead of raising
@@ -488,34 +513,3 @@
 - New ``app/utils/schema_versioning.py`` module centralises version comparison,
   compatibility classification, and the ordered migration registry.
 
-## [1.0.0] - 2026-09-01
-
-Initial release of MonitorHub (formerly "FolderMonitor").
-
-This release has been tested on Windows 11 and Linux (Ubuntu 22.04).
-
-- ``profile new`` now selects the profile category interactively (``remote`` or
-    ``command``) instead of requiring a hard-coded CLI subcommand.
-    The ``profile new remote`` and ``profile new command`` subcommands have been
-    removed to make ``profile new`` consistent with ``monitor new``, which
-    already selects the monitor type interactively.
-
-- Database creation is now explicit rather than implicit.
-    ```bash
-    python mhub.py database init        # create schema and load support tables
-    python mhub.py database init --recreate   # drop and rebuild from scratch
-    python mhub.py database info        # show database information
-    python mhub.py database sample-data # load one example monitor, fake profile and mapping
-    ```
-
-    A monitor that is started before the database is initialised now reports a clear
-    error instead of silently creating the database.
-
-- Added opt-in sample data command.
-
-    ``python mhub.py database sample-data`` seeds the database with one example
-    monitor, one fake S3 profile, and their mapping. This lets end users see how
-    profiles, monitors, and mappings look without reading the manual. The
-    credentials and paths are clearly fake, and the command is idempotent.
-
-- MIT License.
