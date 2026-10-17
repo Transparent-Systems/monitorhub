@@ -11,8 +11,8 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
       - name: Install dependencies
@@ -28,7 +28,7 @@ jobs:
       # conf/config.yaml it defaults its database to <exe>/data and creates a
       # default conf/log.yaml + <exe>/logs on first run.
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: mhub-windows
           path: |
