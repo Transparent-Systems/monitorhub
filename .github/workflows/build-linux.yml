@@ -20,7 +20,7 @@ jobs:
       - name: Build binary
         run: python build_project.py
       - name: Generate SHA256 checksum
-        run: sha256sum dist/mhub > dist/mhub.sha256
+        run: cd dist && sha256sum mhub > mhub.sha256
       # conf/ is development-only. The production binary ships alone: without a
       # conf/config.yaml it defaults its database to <binary>/data and creates a
       # default conf/log.yaml + <binary>/logs on first run.
