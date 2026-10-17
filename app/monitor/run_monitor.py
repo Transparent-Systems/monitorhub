@@ -29,6 +29,7 @@ from app.utils.constants import (
 )
 from app.utils.generic_util import is_process_alive, utc_timestamp_now
 from app.utils.logger_setup import setup_logging
+from app.utils.project_paths import project_conf
 from app.utils.sqlite_handler import SQLiteHandler
 
 # Interval (seconds) between two polls of the database for a 'stop' command.
@@ -350,8 +351,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "-l", "--log",
         type=str,
-        default="conf/log.yaml",
-        help="Path to the log configuration file",
+        default=None,
+        help="Path to the log configuration file (default: conf/log.yaml beside the application)",
     )
     parser.add_argument(
         "--log-level",
@@ -370,7 +371,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "(boto3/botocore/s3transfer/urllib3); defaults to WARNING"
         ),
     )
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if args.log is None:
+        args.log = str(project_conf("log.yaml"))
+    return args
 
 
 def run_monitor_main(argv=None) -> int:

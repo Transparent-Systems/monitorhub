@@ -15,6 +15,7 @@ from app.monitor.run_monitor import (
     parse_args,
     run_monitor_main,
 )
+from app.utils.project_paths import project_conf
 from tests.base_test_class import BaseTestClass
 
 
@@ -230,7 +231,7 @@ class TestRunMonitorPhases(BaseTestClass):
 
         self.assertEqual(args.monitor_id, 7)
         self.assertEqual(args.db_dir, "data")
-        self.assertEqual(args.log, "conf/log.yaml")
+        self.assertEqual(args.log, str(project_conf("log.yaml")))
         self.assertIsNone(args.log_level)
         self.assertIsNone(args.dependency_log_level)
 

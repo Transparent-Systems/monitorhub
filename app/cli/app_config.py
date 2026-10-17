@@ -1,29 +1,13 @@
 import logging
 import os
-import sys
 from pathlib import Path
 from typing import Any
 
 import yaml
 
+from app.utils.project_paths import project_conf
 
-def _default_config_path() -> Path:
-    """Application config file: <project root>/conf/config.yaml.
-
-    Source runs (e.g. ``python mhub.py``, pytest): the repository root is
-    derived from ``__file__``, so the project ``conf/config.yaml`` is used no
-    matter what the current working directory is.
-
-    PyInstaller one-file binary (``sys.frozen``): the directory that contains
-    the executable is used, so a ``conf/`` folder deployed next to the ``mhub``
-    binary provides the settings.
-    """
-    if getattr(sys, "frozen", False):
-        return Path(sys.executable).resolve().parent / "conf" / "config.yaml"
-    return Path(__file__).resolve().parents[2] / "conf" / "config.yaml"
-
-
-DEFAULT_CONFIG_PATH = _default_config_path()
+DEFAULT_CONFIG_PATH = project_conf("config.yaml")
 
 
 class AppConfig:
@@ -59,10 +43,30 @@ class AppConfig:
     def data(self) -> dict[str, Any]:
         return self._data
 
+    def project_root(self) -> Path:
+        """Directory that owns this config: the parent of the conf/ folder."""
+        return self.config_path.resolve().parent.parent
+
+    def _resolve_db_dir(self, value: str) -> str:
+        """Resolve a database directory to a stable absolute path.
+
+        Absolute paths pass through unchanged; relative paths are anchored at
+        :meth:`project_root` so the database location does not depend on the
+        current working directory.
+        """
+        path = Path(value)
+        if path.is_absolute():
+            return value
+        return str(self.project_root() / path)
+
     def get_default_db_dir(self, fallback: str = "data") -> str:
         """
         Resolves the default database directory from configuration.
-        
+
+        Relative paths are resolved against the config's project folder (the
+        directory that contains ``conf/``), so the database location is
+        independent of the current working directory.
+
         Supports configuration formats:
         1. Named database mapping:
            default_database: dev
@@ -73,24 +77,25 @@ class AppConfig:
         2. Direct string path:
            default_database: testdb/dev
            
-        Falls back to `fallback` (default "data") if not configured or found.
+        Falls back to `fallback` (default "data", resolved against the same
+        project folder) if not configured or found.
         """
         if not self._data:
-            return fallback
+            return self._resolve_db_dir(fallback)
 
         default_db = self._data.get("default_database")
         if not default_db:
-            return fallback
+            return self._resolve_db_dir(fallback)
 
         databases = self._data.get("databases", {})
         if isinstance(databases, dict) and default_db in databases:
             db_val = databases[default_db]
             if isinstance(db_val, str):
-                return db_val
+                return self._resolve_db_dir(db_val)
             if isinstance(db_val, dict) and "path" in db_val:
-                return str(db_val["path"])
+                return self._resolve_db_dir(str(db_val["path"]))
 
         if isinstance(default_db, str):
-            return default_db
+            return self._resolve_db_dir(default_db)
 
-        return fallback
+        return self._resolve_db_dir(fallback)

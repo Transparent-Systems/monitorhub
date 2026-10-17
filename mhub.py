@@ -23,6 +23,7 @@ from app.cli.app_config import AppConfig
 from app.cli.commands import build_commands
 from app.cli.db_error_messages import integrity_error_message
 from app.utils.logger_setup import setup_logging
+from app.utils.project_paths import project_conf
 
 # Data-driven mapping of (command, subcommand) to the command object attribute
 # and method to invoke, together with a callable that builds the keyword
@@ -171,16 +172,20 @@ if __name__ == "__main__":
         type=str,
         default=None,
         metavar="<PATH>",
-        help="Directory of SQLite database (defaults to the 'default_database' setting in conf/config.yaml or 'data')"
+        help=(
+            "Directory of SQLite database (defaults to the 'default_database' setting in "
+            "conf/config.yaml or 'data'; relative paths in the config resolve against the "
+            "application folder)"
+        )
     )
 
     # Argument for location of the log file
     parser.add_argument(
         "-l", "--log",
         type=str,
-        default="conf/log.yaml",
+        default=None,
         metavar="<PATH>",
-        help="Path to the log file"
+        help="Path to the logging configuration YAML (default: conf/log.yaml beside the application)"
     )
 
     # Argument to override the configured log level
@@ -284,6 +289,11 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
+
+    # Default the log configuration to the project's conf/ folder so it works
+    # from any working directory; an explicit -l/--log value is kept verbatim.
+    if args.log is None:
+        args.log = str(project_conf("log.yaml"))
 
     # Configure logging (reads YAML config, sets up root logger handlers)
     logger, log_config = setup_logging(
