@@ -1,0 +1,40 @@
+name: Build Linux binary
+
+on:
+  workflow_dispatch:            # manual "run now" — perfect for a quick binary test
+  push:
+    tags: ['v*']                # every release tag builds the binary
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Build binary
+        run: python build_project.py
+      - name: Generate SHA256 checksum
+        run: sha256sum dist/mhub > dist/mhub.sha256
+      # conf/ is development-only. The production binary ships alone: without a
+      # conf/config.yaml it defaults its database to <binary>/data and creates a
+      # default conf/log.yaml + <binary>/logs on first run.
+      - name: Upload artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: mhub-linux
+          path: |
+            dist/mhub
+            dist/mhub.sha256
+      - name: Attach to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/mhub
+            dist/mhub.sha256
