@@ -1,5 +1,5 @@
 # MonitorHub User Configuration
-# Saved in ~/.config/monitorhub/config.yaml
+# Saved in <project root>/conf/config.yaml
 
 version: 1.0.0
 

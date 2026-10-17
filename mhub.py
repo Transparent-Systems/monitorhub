@@ -171,7 +171,7 @@ if __name__ == "__main__":
         type=str,
         default=None,
         metavar="<PATH>",
-        help="Directory of SQLite database (defaults to ~/.config/monitorhub/config.yaml setting or 'data')"
+        help="Directory of SQLite database (defaults to the 'default_database' setting in conf/config.yaml or 'data')"
     )
 
     # Argument for location of the log file

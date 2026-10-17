@@ -1,15 +1,33 @@
 import logging
 import os
+import sys
 from pathlib import Path
 from typing import Any
 
 import yaml
 
-DEFAULT_CONFIG_PATH = Path.home() / ".config" / "monitorhub" / "config.yaml"
+
+def _default_config_path() -> Path:
+    """Application config file: <project root>/conf/config.yaml.
+
+    Source runs (e.g. ``python mhub.py``, pytest): the repository root is
+    derived from ``__file__``, so the project ``conf/config.yaml`` is used no
+    matter what the current working directory is.
+
+    PyInstaller one-file binary (``sys.frozen``): the directory that contains
+    the executable is used, so a ``conf/`` folder deployed next to the ``mhub``
+    binary provides the settings.
+    """
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent / "conf" / "config.yaml"
+    return Path(__file__).resolve().parents[2] / "conf" / "config.yaml"
+
+
+DEFAULT_CONFIG_PATH = _default_config_path()
 
 
 class AppConfig:
-    """Manages application-level user configuration stored in ~/.config/monitorhub/config.yaml."""
+    """Manages application-level configuration stored in <project root>/conf/config.yaml."""
 
     def __init__(self, config_path: Path | str | os.PathLike[str] | None = None, logger: logging.Logger | None = None):
         self.config_path = Path(config_path) if config_path else DEFAULT_CONFIG_PATH

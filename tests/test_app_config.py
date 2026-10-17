@@ -55,6 +55,14 @@ class TestAppConfig(unittest.TestCase):
         config = AppConfig(config_path=self.config_path)
         self.assertEqual(config.get_default_db_dir(), "/var/lib/monitorhub/db")
 
+    def test_default_config_path_is_project_conf(self):
+        """Config is read from <project root>/conf/config.yaml, never ~/.config."""
+        expected = Path(__file__).resolve().parents[1] / "conf" / "config.yaml"
+        self.assertEqual(AppConfig().config_path, expected)
+        self.assertTrue(expected.exists())
+        # The real project config maps the default database to testdb/dev.
+        self.assertEqual(AppConfig().get_default_db_dir(), "testdb/dev")
+
 
 if __name__ == "__main__":
     unittest.main()
