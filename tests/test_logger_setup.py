@@ -12,6 +12,7 @@ import logging
 import os
 import tempfile
 import unittest
+from pathlib import Path
 from unittest import mock
 
 from app.utils.logger_setup import setup_logging
@@ -32,6 +33,24 @@ def _write_config(tmp_dir: str, log_level: str = "INFO") -> str:
             "  max_bytes: 10485760\n"
             "  max_backup_count: 5\n"
             f"  log_level: {log_level}\n"
+        )
+    return config_path
+
+
+def _write_relative_config(
+    tmp_dir: str, folder: str = "logs", file_name: str = "app.log"
+) -> str:
+    """Write a logging config with the given (possibly relative) folder/file."""
+    config_path = os.path.join(tmp_dir, "log_relative.yaml")
+    with open(config_path, "w", encoding="utf-8") as fh:
+        fh.write(
+            "version: 1.0.0\n"
+            "logging:\n"
+            f"  file_name: {file_name}\n"
+            f"  folder: {folder}\n"
+            "  max_bytes: 10485760\n"
+            "  max_backup_count: 5\n"
+            "  log_level: INFO\n"
         )
     return config_path
 
@@ -147,10 +166,55 @@ class TestSetupLogging(unittest.TestCase):
         os.chdir(self.tmp_dir)
         self.addCleanup(os.chdir, cwd)
         missing = os.path.join(self.tmp_dir, "missing", "log.yaml")
-        logger, log_config = setup_logging(missing)
+        with mock.patch(
+            "app.utils.logger_setup.project_root", return_value=Path(self.tmp_dir)
+        ):
+            logger, log_config = setup_logging(missing)
         self.assertTrue(os.path.exists(missing))
         self.assertEqual(log_config["log_level"], "INFO")
         self.assertEqual(logger.name, "MonitorHub")
+
+    def _file_handlers(self):
+        return [
+            h
+            for h in logging.getLogger().handlers
+            if isinstance(h, logging.handlers.RotatingFileHandler)
+        ]
+
+    def test_relative_folder_anchors_to_project_root(self):
+        """A relative ``folder`` resolves against the project root, not the CWD."""
+        root_dir = Path(self.tmp_dir) / "app"
+        root_dir.mkdir(parents=True, exist_ok=True)
+        config_path = _write_relative_config(
+            self.tmp_dir, folder="logs", file_name="app.log"
+        )
+        with mock.patch("app.utils.logger_setup.project_root", return_value=root_dir):
+            setup_logging(config_path)
+        handlers = self._file_handlers()
+        self.assertEqual(handlers[0].baseFilename, str(root_dir / "logs" / "app.log"))
+        self.assertTrue((root_dir / "logs").is_dir())
+
+    def test_absolute_folder_passes_through(self):
+        """An absolute ``folder`` is used verbatim."""
+        abs_dir = Path(self.tmp_dir) / "abs-logs"
+        config_path = _write_relative_config(
+            self.tmp_dir, folder=str(abs_dir), file_name="app.log"
+        )
+        setup_logging(config_path)
+        handlers = self._file_handlers()
+        self.assertEqual(handlers[0].baseFilename, str(abs_dir / "app.log"))
+        self.assertTrue(abs_dir.is_dir())
+
+    def test_absolute_file_name_is_full_log_path(self):
+        """An absolute ``file_name`` overrides the folder entirely."""
+        abs_dir = Path(self.tmp_dir) / "var" / "log"
+        config_path = _write_relative_config(
+            self.tmp_dir, folder="logs", file_name=str(abs_dir / "app.log")
+        )
+        setup_logging(config_path)
+        handlers = self._file_handlers()
+        self.assertEqual(handlers[0].baseFilename, str(abs_dir / "app.log"))
+        self.assertTrue(abs_dir.is_dir())
 
     # --- dependency silencing (quiet_dependencies) ---------------------------
 

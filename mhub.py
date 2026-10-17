@@ -185,7 +185,11 @@ if __name__ == "__main__":
         type=str,
         default=None,
         metavar="<PATH>",
-        help="Path to the logging configuration YAML (default: conf/log.yaml beside the application)"
+        help=(
+            "Path to the logging configuration YAML (default: conf/log.yaml beside the "
+            "application; relative folder/file_name values in the config resolve against "
+            "the application folder)"
+        )
     )
 
     # Argument to override the configured log level

@@ -1,9 +1,11 @@
 import logging
 import os
 from logging.handlers import RotatingFileHandler
+from pathlib import Path
 
 import yaml
 
+from app.utils.project_paths import project_root
 from version import VERSION_STRING
 
 # Third-party library loggers whose chatter is silenced by default.
@@ -50,6 +52,10 @@ def setup_logging(
             ``logging.log_level`` value.
         log_file: Optional explicit log file name that overrides the YAML
             ``logging.file_name`` value.
+            Relative ``logging.folder`` / ``logging.file_name`` values resolve
+            against the project root (the folder that owns the application), so
+            log files land in a stable location regardless of the current
+            working directory; absolute paths are used verbatim.
         quiet_dependencies: When True (the default) and no explicit
             ``dependency_log_level`` is given, the ``boto3``, ``botocore``,
             ``s3transfer`` and ``urllib3`` loggers are floored to WARNING so
@@ -103,10 +109,26 @@ def setup_logging(
     MAX_BYTES = log_config.get("max_bytes", 10 * 1024 * 1024)
     BACKUP_COUNT = log_config.get("max_backup_count", 5)
 
-    # --- Ensure log folder exists ------------------------------------------------
-    if not os.path.exists(LOG_FOLDER):
-        os.makedirs(LOG_FOLDER, exist_ok=True)
-        print(f"Log folder '{LOG_FOLDER}' created.")
+    # --- Resolve the log file against the project root --------------------------
+    # A relative ``folder`` / ``file_name`` in the logging config is anchored at
+    # the project root (the folder that owns the application) so log files end
+    # up in a stable place no matter what the current working directory is.
+    # Absolute paths pass through verbatim.
+    file_path = Path(LOG_FILE)
+    if file_path.is_absolute():
+        log_dir = file_path.parent
+    else:
+        folder_path = Path(LOG_FOLDER)
+        if folder_path.is_absolute():
+            log_dir = folder_path
+        else:
+            log_dir = project_root() / LOG_FOLDER
+        file_path = log_dir / LOG_FILE
+
+    # --- Ensure the log folder exists -------------------------------------------
+    if not log_dir.exists():
+        log_dir.mkdir(parents=True, exist_ok=True)
+        print(f"Log folder '{log_dir}' created.")
 
     # --- Handlers ---------------------------------------------------------------
     formatter = logging.Formatter(
@@ -114,7 +136,7 @@ def setup_logging(
     )
 
     file_handler = RotatingFileHandler(
-        os.path.join(LOG_FOLDER, LOG_FILE),
+        str(file_path),
         maxBytes=MAX_BYTES,
         backupCount=BACKUP_COUNT,
     )
