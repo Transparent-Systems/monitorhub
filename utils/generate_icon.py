@@ -24,7 +24,7 @@ SPOKE_WIDTH = 10
 HUB_RADIUS = 36
 
 # Colours
-BG_COLOR = (28, 30, 38, 255)          # dark charcoal
+BG_COLOR = (220, 220, 222, 255)          # light grey
 RIM_COLOR = (0, 168, 181, 255)         # teal-blue
 SPOKE_COLOR = (0, 168, 181, 255)       # teal-blue
 HUB_COLOR = (0, 168, 181, 255)         # teal-blue
