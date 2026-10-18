@@ -21,7 +21,7 @@ RIM_THICKNESS = 18
 SPOKE_COUNT = 8
 SPOKE_ANGLE_OFFSET = -90   # start vertical (12 o'clock)
 SPOKE_WIDTH = 10
-HUB_RADIUS = 36
+HUB_RADIUS = 100
 
 # Colours
 BG_COLOR = (220, 220, 222, 255)          # light grey
