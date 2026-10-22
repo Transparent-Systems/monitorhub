@@ -1,6 +1,6 @@
 """
 Script: mhub.py
-Version: v1.0.0
+Version: v1.1.0
 Author: John Zoetebier
 Description:
     MonitorHub CLI — command-line interface for managing profiles,
