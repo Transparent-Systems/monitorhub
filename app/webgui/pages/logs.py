@@ -16,11 +16,15 @@ from pathlib import Path
 # which would shadow the top-level ``app`` package. Add the project root (the
 # folder containing ``app/`` and ``pyproject.toml``) explicitly so ``app.*``
 # imports resolve regardless of how the page is launched.
-_root = Path(__file__).resolve().parent
-while not (_root / "pyproject.toml").exists() and _root.parent != _root:
-    _root = _root.parent
-if str(_root) not in sys.path:
-    sys.path.insert(0, str(_root))
+#
+# Skipped when frozen (PyInstaller): ``app.*`` is served from the bundled
+# archive, and there is no ``pyproject.toml`` to walk up to.
+if not getattr(sys, "frozen", False):
+    _root = Path(__file__).resolve().parent
+    while not (_root / "pyproject.toml").exists() and _root.parent != _root:
+        _root = _root.parent
+    if str(_root) not in sys.path:
+        sys.path.insert(0, str(_root))
 
 import streamlit as st
 

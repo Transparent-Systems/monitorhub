@@ -4,7 +4,8 @@ Version: v1.1.0
 Author: John Zoetebier
 Description:
     MonitorHub CLI — command-line interface for managing profiles,
-    monitors, configuration, and diagnostics.
+    monitors, configuration, and diagnostics. The 'webgui' subcommand
+    launches the Streamlit web interface (same feature set, browser UI).
 Requirements:
     1) Python (version pinned in .python-version; run 'mhub config python')
     2) Python modules in requirements.txt
@@ -229,6 +230,9 @@ def main(argv: list[str] | None = None) -> int:
     # Version command
     subparsers.add_parser("version", help="Show version")
 
+    # Web GUI command (Streamlit; requires the Streamlit dependency)
+    subparsers.add_parser("webgui", help="Launch the Streamlit web GUI")
+
     # Config command
     config_parser = subparsers.add_parser("config", help="Configuration commands (subcommands: test, python; enter 'config -h' for help)")
     config_subparsers = config_parser.add_subparsers(dest="config_subcommand", help="Config subcommands")
@@ -305,6 +309,14 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     args = parser.parse_args(argv)
+
+    # `webgui` boots the Streamlit server, which resolves its own configuration,
+    # database and logging. Dispatch it before the logging/database wiring below
+    # so it also works on a machine where the database has not been initialised
+    # yet (the GUI pages report an empty/uninitialised database themselves).
+    if args.command == "webgui":
+        from app.webgui.launcher import main as webgui_main
+        return webgui_main()
 
     # Default the log configuration to the project's conf/ folder so it works
     # from any working directory; an explicit -l/--log value is kept verbatim.

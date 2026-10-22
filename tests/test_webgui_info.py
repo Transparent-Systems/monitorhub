@@ -24,7 +24,7 @@ class TestInfoPage(unittest.TestCase):
 
     def test_missing_readme_shows_error(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir, patch(
-            "app.utils.project_paths.project_root", return_value=Path(temp_dir)
+            "app.utils.project_paths.resource_root", return_value=Path(temp_dir)
         ):
             at = AppTest.from_file(str(PAGE_PATH), default_timeout=30)
             at.run()
