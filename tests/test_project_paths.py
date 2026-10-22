@@ -33,14 +33,14 @@ class TestResourceRoot(unittest.TestCase):
 
     def test_frozen_run_roots_at_extraction_dir(self):
         meipass = Path(tempfile.mkdtemp())
-        exe = Path(tempfile.mkdtemp()) / "mhub-webgui"
+        exe = Path(tempfile.mkdtemp()) / "mhub-gui"
         with mock.patch.object(sys, "frozen", True, create=True), mock.patch.object(
             sys, "_MEIPASS", str(meipass), create=True
         ), mock.patch.object(sys, "executable", str(exe)):
             self.assertEqual(resource_root(), meipass)
 
     def test_frozen_run_without_meipass_falls_back_to_executable_dir(self):
-        exe = Path(tempfile.mkdtemp()) / "mhub-webgui"
+        exe = Path(tempfile.mkdtemp()) / "mhub-gui"
         had_meipass = hasattr(sys, "_MEIPASS")
         original_meipass = getattr(sys, "_MEIPASS", None)
         if had_meipass:

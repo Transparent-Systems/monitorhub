@@ -40,6 +40,7 @@ from app.utils.constants import (
 )
 from app.utils.generic_util import is_interval_valid
 from app.utils.sqlite_handler import SQLiteHandler
+from app.webgui.database import database_ready
 
 # Profile types that the web GUI knows how to render forms for.  The list
 # combines all known categories so the type dropdown includes every option.
@@ -930,6 +931,9 @@ def main() -> None:
     _flash()
 
     sqlite_handler = _resources()
+    if not database_ready(sqlite_handler):
+        return
+
     profiles = sqlite_handler.get_profiles()
 
     # -------------------------------------------------------------------

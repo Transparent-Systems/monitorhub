@@ -31,6 +31,7 @@ import streamlit as st
 from app.monitor.monitor_process_manager import monitor_log_path
 from app.utils.app_config import AppConfig
 from app.utils.sqlite_handler import SQLiteHandler
+from app.webgui.database import database_ready
 
 # (label, run_every) pairs; None disables automatic refresh.
 REFRESH_OPTIONS: dict[str, str | None] = {
@@ -133,6 +134,9 @@ def main() -> None:
     st.title("🧾 Monitor Logs")
 
     sqlite_handler = _resources()
+    if not database_ready(sqlite_handler):
+        return
+
     monitors = sqlite_handler.get_monitors()
     if not monitors:
         st.info("No monitors yet — create one on the Monitors page.")

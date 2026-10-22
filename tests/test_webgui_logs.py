@@ -146,5 +146,31 @@ class TestLogsPage(unittest.TestCase):
         self.assertTrue(any("No monitors yet" in info for info in infos), infos)
 
 
+class TestLogsPageUninitialisedDatabase(unittest.TestCase):
+    """An uninitialised database must not surface as a raw traceback."""
+
+    def test_friendly_error_instead_of_a_traceback(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            db_dir = root / "db"
+            db_dir.mkdir()
+            with patch(
+                "app.utils.app_config.AppConfig.get_default_db_dir",
+                return_value=str(db_dir),
+            ), patch(
+                "app.monitor.monitor_process_manager.project_root",
+                return_value=root,
+            ):
+                at = AppTest.from_file(str(PAGE_PATH), default_timeout=30)
+                at.run()
+
+        self.assertFalse(at.exception, at.exception)
+        errors = [error.value for error in at.error]
+        self.assertTrue(
+            any("not initialised" in error for error in errors), errors
+        )
+        self.assertTrue(any("database init" in error for error in errors), errors)
+
+
 if __name__ == "__main__":
     unittest.main()

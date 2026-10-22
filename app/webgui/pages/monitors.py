@@ -45,6 +45,7 @@ from app.utils.generic_util import is_interval_valid
 from app.utils.monitor_config import build_monitor_config
 from app.utils.project_paths import project_conf
 from app.utils.sqlite_handler import SQLiteHandler
+from app.webgui.database import database_ready
 
 # Mirrors MonitorCommands.STOP_GRACE_SECONDS so a web-initiated stop behaves
 # identically to the CLI: graceful shutdown first, then SIGTERM/SIGKILL
@@ -788,6 +789,9 @@ def main() -> None:
     _flash()
 
     sqlite_handler, process_manager = _resources()
+    if not database_ready(sqlite_handler):
+        return
+
     monitors = sqlite_handler.get_monitors()
     profiles = sqlite_handler.get_profiles()
     # A monitor is live only while its stored PID is alive; status alone can be

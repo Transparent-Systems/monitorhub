@@ -1,21 +1,25 @@
 """Launch the MonitorHub Streamlit web GUI.
 
 One place knows how to boot the Streamlit server, shared by the ``mhub webgui``
-CLI subcommand (source runs) and the frozen ``mhub-webgui`` PyInstaller entry
-point.  Keeping it here means the frozen binary and a source checkout start the
-GUI with exactly the same script, port and flags.
+CLI subcommand and the frozen ``mhub-gui`` PyInstaller entry point.  Keeping it
+here means the frozen binary and a source checkout start the GUI with exactly
+the same script, port and flags.
 
 Usage::
 
-    .venv/bin/python mhub.py webgui      # source
-    ./dist/mhub-webgui                   # frozen (PyInstaller)
+    .venv/bin/python mhub.py webgui            # source
+    .venv/bin/python mhub.py -d data webgui    # source, explicit database
+    ./dist/mhub-gui                            # frozen (PyInstaller)
+    ./dist/mhub-gui -d /path/to/db             # frozen, explicit database
 """
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
+from app.utils.app_config import DB_DIR_ENV_VAR
 from app.utils.project_paths import resource_root
 
 # The Streamlit main script, relative to the resource root. Streamlit discovers
@@ -47,12 +51,20 @@ def script_path() -> Path:
     return resource_root() / WEBGUI_SCRIPT
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: list[str] | None = None, db_dir: str | None = None) -> int:
     """Start the web GUI; return a process exit code on failure.
 
     ``argv`` (default ``sys.argv[1:]``) is appended after the default flags, so
-    callers can still override e.g. the port.
+    callers can still override e.g. the port.  ``db_dir`` selects the database
+    the pages open; when omitted they resolve it from ``conf/config.yaml``
+    beside the executable, falling back to ``data``.
     """
+    if db_dir:
+        # The Streamlit pages run in this process, but they resolve their
+        # database through AppConfig. Exporting the value is how -d/--db-dir
+        # reaches them without threading it through every page.
+        os.environ[DB_DIR_ENV_VAR] = db_dir
+
     script = script_path()
     if not script.is_file():
         print(
@@ -68,7 +80,7 @@ def main(argv: list[str] | None = None) -> int:
     except ImportError:
         print(
             "ERROR: the Streamlit web GUI is not available in this build.\n"
-            "Use the 'mhub-webgui' executable, or run the web GUI from a source\n"
+            "Use the 'mhub-gui' executable, or run the web GUI from a source\n"
             "checkout with: python mhub.py webgui",
             file=sys.stderr,
         )

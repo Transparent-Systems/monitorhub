@@ -1,19 +1,21 @@
 """Unit tests for :mod:`app.webgui.launcher`.
 
 The launcher is the single place that knows how to boot Streamlit, shared by
-``mhub webgui`` (source) and the frozen ``mhub-webgui`` binary. These tests pin
-down the script location, the default flags and the two failure paths, without
-ever starting a real server.
+``mhub webgui`` (source) and the frozen ``mhub-gui`` binary. These tests pin down
+the script location, the default flags, the database override and the two
+failure paths, without ever starting a real server.
 """
 
 import builtins
 import contextlib
 import io
+import os
 import sys
 import unittest
 from pathlib import Path
 from unittest import mock
 
+from app.utils.app_config import DB_DIR_ENV_VAR
 from app.utils.project_paths import resource_root
 from app.webgui import launcher
 
@@ -92,7 +94,37 @@ class TestMain(unittest.TestCase):
         ), contextlib.redirect_stderr(output):
             code = launcher.main([])
         self.assertEqual(code, 1)
-        self.assertIn("mhub-webgui", output.getvalue())
+        self.assertIn("mhub-gui", output.getvalue())
+
+
+class TestDatabaseOverride(unittest.TestCase):
+    """``-d/--db-dir`` reaches the pages through the environment."""
+
+    def _start(self, **kwargs) -> int:
+        with mock.patch("streamlit.web.cli", mock.Mock(), create=True):
+            return launcher.main([], **kwargs)
+
+    def test_db_dir_is_exported_for_the_pages(self):
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop(DB_DIR_ENV_VAR, None)
+            self._start(db_dir="/tmp/mhub-db")
+            self.assertEqual(os.environ.get(DB_DIR_ENV_VAR), "/tmp/mhub-db")
+
+    def test_absent_db_dir_leaves_the_environment_untouched(self):
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop(DB_DIR_ENV_VAR, None)
+            self._start()
+            self.assertNotIn(DB_DIR_ENV_VAR, os.environ)
+
+    def test_pages_resolve_the_exported_directory(self):
+        # End to end: launcher exports, AppConfig resolves. This is the contract
+        # the GUI pages rely on when they build their SQLiteHandler.
+        from app.utils.app_config import AppConfig
+
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop(DB_DIR_ENV_VAR, None)
+            self._start(db_dir="/tmp/mhub-db")
+            self.assertEqual(AppConfig().get_default_db_dir(fallback="data"), "/tmp/mhub-db")
 
 
 if __name__ == "__main__":

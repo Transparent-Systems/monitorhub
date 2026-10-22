@@ -7,6 +7,7 @@ PATH-dependent ``pyinstaller``. Subprocess execution and filesystem cleanup are
 mocked so nothing is actually built or deleted.
 """
 
+import ast
 import contextlib
 import io
 import os
@@ -14,9 +15,12 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from pathlib import Path
 from unittest import mock
 
 import build_project
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 class TestBuildCommand(unittest.TestCase):
@@ -70,9 +74,32 @@ class TestBuildCommand(unittest.TestCase):
         argv = self._captured_argv("win32", icon_exists=False)
         self.assertFalse(any(arg.startswith("--icon") for arg in argv))
 
+    def test_cli_build_excludes_streamlit(self):
+        # The CLI artifact must stay ~30 MB, not grow to ~120 MB by bundling the
+        # Streamlit stack.
+        self.assertIn("--exclude-module=streamlit", self._captured_argv("linux"))
 
-class TestWebguiBuildCommand(unittest.TestCase):
-    """The webgui target builds a separate, Streamlit-bundling artifact."""
+
+class TestCliBinaryStaysSmall(unittest.TestCase):
+    """mhub.py must reach the GUI launcher dynamically, not statically.
+
+    A static import of app.webgui.launcher makes PyInstaller follow it into
+    Streamlit and bundle the whole stack into the CLI binary.
+    """
+
+    def test_mhub_does_not_statically_import_the_gui_launcher(self):
+        source = (REPO_ROOT / "mhub.py").read_text(encoding="utf-8")
+        for node in ast.walk(ast.parse(source)):
+            if isinstance(node, ast.Import):
+                names = [alias.name for alias in node.names]
+                self.assertNotIn("app.webgui.launcher", names)
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                self.assertNotEqual(node.module, "app.webgui.launcher")
+                self.assertFalse(node.module.startswith("app.webgui"))
+
+
+class TestGuiBuildCommand(unittest.TestCase):
+    """The gui target builds a separate, Streamlit-bundling artifact."""
 
     def _argv(self, platform: str = "linux", icon_exists: bool = False) -> list[str]:
         with mock.patch.object(
@@ -82,14 +109,26 @@ class TestWebguiBuildCommand(unittest.TestCase):
         ) as run, mock.patch.object(
             build_project.os.path, "exists", return_value=icon_exists
         ):
-            build_project.build_executable("webgui")
+            build_project.build_executable("gui")
         return run.call_args.args[0]
 
-    def test_names_the_webgui_entry_point_and_binary(self):
+    def test_names_the_gui_entry_point_and_binary(self):
         argv = self._argv()
-        self.assertEqual(argv[argv.index("--name") + 1], build_project.WEBGUI_APP_NAME)
-        self.assertEqual(argv[-1], build_project.WEBGUI_MAIN_SCRIPT)
+        self.assertEqual(argv[argv.index("--name") + 1], build_project.GUI_APP_NAME)
+        self.assertEqual(argv[-1], build_project.GUI_MAIN_SCRIPT)
         self.assertIn("--onefile", argv)
+
+    def test_the_webgui_spelling_is_still_accepted(self):
+        with mock.patch.object(
+            build_project.sys, "platform", "linux"
+        ), mock.patch.object(build_project, "clean_previous_builds"), mock.patch.object(
+            build_project.subprocess, "run"
+        ) as run, mock.patch.object(
+            build_project.os.path, "exists", return_value=False
+        ):
+            build_project.build_executable("webgui")
+        argv = run.call_args.args[0]
+        self.assertEqual(argv[argv.index("--name") + 1], build_project.GUI_APP_NAME)
 
     def test_keeps_the_monitor_runner_hidden_import(self):
         self.assertIn("--hidden-import=app.monitor.run_monitor", self._argv())
@@ -117,11 +156,11 @@ class TestWebguiBuildCommand(unittest.TestCase):
                     f"--add-data={source}{separator}{destination}", argv
                 )
 
-    def test_windows_webgui_build_still_adds_the_icon(self):
+    def test_windows_gui_build_still_adds_the_icon(self):
         argv = self._argv("win32", icon_exists=True)
         self.assertIn(f"--icon={build_project.ICON_FILE}", argv)
 
-    def test_cli_build_does_not_include_the_webgui_options(self):
+    def test_cli_build_does_not_include_the_gui_options(self):
         with mock.patch.object(
             build_project.sys, "platform", "linux"
         ), mock.patch.object(build_project, "clean_previous_builds"), mock.patch.object(
@@ -131,20 +170,32 @@ class TestWebguiBuildCommand(unittest.TestCase):
         ):
             build_project.build_executable()
         argv = run.call_args.args[0]
-        self.assertFalse(any("streamlit" in arg for arg in argv))
-        self.assertFalse(any(arg.startswith("--add-data=") for arg in argv))
+        # None of the GUI bundling options may leak into the CLI build.
+        for prefix in (
+            "--collect-all=",
+            "--collect-submodules=",
+            "--copy-metadata=",
+            "--add-data=",
+        ):
+            with self.subTest(prefix=prefix):
+                self.assertFalse(any(arg.startswith(prefix) for arg in argv))
 
 
 class TestBuildTargets(unittest.TestCase):
-    def test_target_table_maps_cli_and_webgui(self):
+    def test_target_table_maps_cli_and_gui(self):
         self.assertEqual(
             build_project.TARGETS["cli"],
             (build_project.MAIN_SCRIPT, build_project.APP_NAME),
         )
         self.assertEqual(
-            build_project.TARGETS["webgui"],
-            (build_project.WEBGUI_MAIN_SCRIPT, build_project.WEBGUI_APP_NAME),
+            build_project.TARGETS["gui"],
+            (build_project.GUI_MAIN_SCRIPT, build_project.GUI_APP_NAME),
         )
+
+    def test_webgui_is_an_alias_for_gui(self):
+        self.assertEqual(build_project.resolve_target("webgui"), "gui")
+        self.assertEqual(build_project.resolve_target("gui"), "gui")
+        self.assertEqual(build_project.resolve_target("cli"), "cli")
 
     def test_data_spec_uses_the_platform_separator(self):
         self.assertEqual(
@@ -166,18 +217,83 @@ class TestBuildFailure(unittest.TestCase):
 
 
 class TestCleanPreviousBuilds(unittest.TestCase):
-    def test_removes_existing_build_and_dist_directories(self):
+    """Cleaning is target-scoped: building one target keeps the other's binary."""
+
+    @staticmethod
+    def _output_name(target: str) -> str:
+        name = build_project.TARGETS[target][1]
+        return f"{name}.exe" if sys.platform == "win32" else name
+
+    def _make_layout(self) -> None:
+        """Create the CLI and GUI build outputs plus a test database."""
+        for target in ("cli", "gui"):
+            os.makedirs(os.path.join("build", build_project.TARGETS[target][1]))
+            os.makedirs(build_project.DIST_DIR, exist_ok=True)
+            with open(
+                os.path.join(build_project.DIST_DIR, self._output_name(target)),
+                "w",
+                encoding="utf-8",
+            ) as fh:
+                fh.write("x")
+        os.makedirs(os.path.join(build_project.DIST_DIR, "data"))
+        with open(
+            os.path.join(build_project.DIST_DIR, "data", "monitorhub.db"),
+            "w",
+            encoding="utf-8",
+        ) as fh:
+            fh.write("x")
+
+    def test_removes_only_the_targets_own_artifacts(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             cwd = os.getcwd()
             os.chdir(tmp_dir)
             try:
-                for folder in (build_project.DIST_DIR, "build"):
-                    os.makedirs(folder)
-                    with open(os.path.join(folder, "artifact"), "w", encoding="utf-8") as fh:
-                        fh.write("x")
+                self._make_layout()
+                build_project.clean_previous_builds("gui")
+
+                # The GUI's own outputs are gone...
+                self.assertFalse(
+                    os.path.exists(os.path.join("build", build_project.TARGETS["gui"][1]))
+                )
+                self.assertFalse(
+                    os.path.exists(
+                        os.path.join(build_project.DIST_DIR, self._output_name("gui"))
+                    )
+                )
+                # ...while the CLI binary and the runtime data survive.
+                self.assertTrue(
+                    os.path.exists(os.path.join("build", build_project.TARGETS["cli"][1]))
+                )
+                self.assertTrue(
+                    os.path.exists(
+                        os.path.join(build_project.DIST_DIR, self._output_name("cli"))
+                    )
+                )
+                self.assertTrue(
+                    os.path.exists(
+                        os.path.join(build_project.DIST_DIR, "data", "monitorhub.db")
+                    )
+                )
+            finally:
+                os.chdir(cwd)
+
+    def test_defaults_to_the_cli_target(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            cwd = os.getcwd()
+            os.chdir(tmp_dir)
+            try:
+                self._make_layout()
                 build_project.clean_previous_builds()
-                self.assertFalse(os.path.exists(build_project.DIST_DIR))
-                self.assertFalse(os.path.exists("build"))
+                self.assertFalse(
+                    os.path.exists(
+                        os.path.join(build_project.DIST_DIR, self._output_name("cli"))
+                    )
+                )
+                self.assertTrue(
+                    os.path.exists(
+                        os.path.join(build_project.DIST_DIR, self._output_name("gui"))
+                    )
+                )
             finally:
                 os.chdir(cwd)
 
@@ -188,6 +304,7 @@ class TestCleanPreviousBuilds(unittest.TestCase):
             try:
                 # Must not raise when build/ and dist/ are absent.
                 build_project.clean_previous_builds()
+                build_project.clean_previous_builds("gui")
             finally:
                 os.chdir(cwd)
 
