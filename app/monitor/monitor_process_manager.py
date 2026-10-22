@@ -1,15 +1,16 @@
 """OS process lifecycle management for monitor child processes.
 
-Extracted from :class:`~app.cli.monitor_commands.MonitorCommands` so the
-command handler can focus on database state and user interaction while this
-collaborator owns the low-level process mechanics: launching detached
-children, tracking their ``Popen`` handles, checking liveness, waiting for
-exit, and escalating a stop from SIGTERM to SIGKILL.
+Manages the low-level process mechanics: launching detached children,
+tracking their ``Popen`` handles, checking liveness, waiting for exit,
+and escalating a stop from SIGTERM to SIGKILL.
 
 The process-lifecycle invariants described in ``docs/development_notes.md``
 are preserved here: finished children are reaped through their tracked
 ``Popen`` handle (avoiding zombies that ``os.kill(pid, 0)`` would report as
 alive), and a global ``SIGCHLD`` handler is deliberately not used.
+
+Shared by the CLI and the web GUI so both presentation layers use the
+same process-management contract.
 """
 
 from __future__ import annotations
@@ -22,14 +23,23 @@ import sys
 import time
 from pathlib import Path
 
-from app.cli.prompt_service import PromptService
 from app.utils.generic_util import is_process_alive
+from app.utils.project_paths import project_root
 
 # ``signal.SIGKILL`` is POSIX-only; accessing it on Windows raises
 # ``AttributeError``. On Windows ``os.kill(pid, signal.SIGTERM)`` terminates the
 # process unconditionally (the TerminateProcess API), so it is the force-kill
 # signal there. Resolving it once here keeps force_kill platform-safe.
 _FORCE_KILL_SIGNAL = getattr(signal, "SIGKILL", signal.SIGTERM)
+
+
+def monitor_log_path(monitor_id: int) -> Path:
+    """Return the per-monitor console log file path.
+
+    The file receives the child's console output (including tracebacks) and is
+    shared by the launcher and the web GUI log viewer so both always agree.
+    """
+    return project_root() / "logs" / f"monitor_{monitor_id}.log"
 
 
 class MonitorProcessManager:
@@ -41,7 +51,6 @@ class MonitorProcessManager:
         db_dir: str,
         log_config: str,
         log_level: str | None,
-        prompt: PromptService,
         dependency_log_level: str | None = None,
     ) -> None:
         self.logger = logger
@@ -49,7 +58,6 @@ class MonitorProcessManager:
         self.log_config = log_config
         self.log_level = log_level
         self.dependency_log_level = dependency_log_level
-        self.prompt = prompt
         # Child monitor processes launched by this instance, keyed by monitor id.
         # Holding the Popen handles lets us reap finished children with ``poll``
         # (avoiding zombies) and detect their exit reliably, since os.kill(pid, 0)
@@ -80,18 +88,18 @@ class MonitorProcessManager:
         """
         try:
             os.kill(pid, _FORCE_KILL_SIGNAL)
-            self.prompt.print(f"Sent force-kill signal to monitor '{name}' (pid={pid}).")
+            self.logger.info(f"Sent force-kill signal to monitor '{name}' (pid={pid}).")
             return True
         except ProcessLookupError:
-            self.prompt.print(f"Monitor '{name}' process (pid={pid}) not found — may have already exited.")
+            self.logger.info(f"Monitor '{name}' process (pid={pid}) not found — may have already exited.")
             return True
         except PermissionError:
-            self.prompt.print(f"Permission denied when force-killing monitor '{name}' (pid={pid}).")
+            self.logger.warning(f"Permission denied when force-killing monitor '{name}' (pid={pid}).")
             return False
         except OSError as error:
             # Windows raises a plain OSError (not ProcessLookupError) when the
             # process cannot be opened, e.g. because it has already exited.
-            self.prompt.print(
+            self.logger.warning(
                 f"Could not force-kill monitor '{name}' (pid={pid}): {error}"
             )
             return not is_process_alive(pid)
@@ -131,6 +139,17 @@ class MonitorProcessManager:
                 return process.poll() is None
         return is_process_alive(pid)
 
+    def is_monitor_running(self, monitor: dict) -> bool:
+        """Return True when a monitor has a live process.
+
+        Used by the CLI and web GUI to guard edit/delete against monitors that
+        are still running (whose config changes would not apply, or whose
+        deletion would orphan a live process).
+        """
+        monitor_id = monitor.get("id", 0)
+        pid = int(monitor.get("pid") or 0)
+        return pid != 0 and self.is_alive(monitor_id, pid)
+
     def wait_for_exit(
         self, pid: int, timeout: float, interval: float = 0.5, monitor_id: int | None = None
     ) -> bool:
@@ -159,17 +178,17 @@ class MonitorProcessManager:
             return
         try:
             os.kill(pid, signal.SIGTERM)
-            self.prompt.print(f"Escalating: sent SIGTERM to monitor '{name}' (pid={pid}).")
+            self.logger.info(f"Escalating: sent SIGTERM to monitor '{name}' (pid={pid}).")
         except ProcessLookupError:
             return
         except PermissionError:
-            self.prompt.print(
+            self.logger.warning(
                 f"Permission denied sending SIGTERM to monitor '{name}' (pid={pid})."
             )
             return
         except OSError as error:
             # Windows raises a plain OSError when the process cannot be opened.
-            self.prompt.print(
+            self.logger.warning(
                 f"Could not escalate stop for monitor '{name}' (pid={pid}): {error}"
             )
             return
@@ -190,8 +209,8 @@ class MonitorProcessManager:
         # The monitor child is run with `-m` from this root, so Python puts the
         # project root on sys.path itself — no script-path preamble or
         # PYTHONPATH tricks are needed for `app.*` imports.
-        project_root = Path(__file__).resolve().parents[2]
-        python = self.resolve_python_interpreter(project_root)
+        app_root = project_root()
+        python = self.resolve_python_interpreter(app_root)
 
         child_env = None
         launch_cwd = None
@@ -230,12 +249,11 @@ class MonitorProcessManager:
             # Anchoring the child's cwd at the project root makes the child's
             # sys.path (via `-m`) and any root-relative paths deterministic,
             # regardless of where mhub.py itself was invoked from.
-            launch_cwd = project_root
+            launch_cwd = app_root
 
         try:
-            logs_dir = Path.cwd() / "logs"
-            logs_dir.mkdir(exist_ok=True)
-            error_log = logs_dir / f"monitor_{monitor_id_val}.log"
+            error_log = monitor_log_path(monitor_id_val)
+            error_log.parent.mkdir(parents=True, exist_ok=True)
             with open(error_log, "a") as error_log_fh:
                 process = subprocess.Popen(
                     cmd,
@@ -248,7 +266,7 @@ class MonitorProcessManager:
             # Track the child so we can reap it and detect its exit reliably.
             self.tracked_processes[monitor_id_val] = process
         except (OSError, ValueError) as e:
-            self.prompt.print(f"Failed to start monitor '{monitor_name}' (id={monitor_id_val}): {e}")
+            self.logger.error(f"Failed to start monitor '{monitor_name}' (id={monitor_id_val}): {e}")
             return False
 
         return True

@@ -23,13 +23,13 @@ from app.cli.commands import Commands, build_commands
 from app.cli.monitor_commands import (
     STALE_HEARTBEAT_SECONDS,
     MonitorCommands,
-    validate_monitor_type_number,
 )
 from app.cli.profile_commands import ProfileCommands
 from app.monitor.action_handler import DEFAULT_COMMAND_MAX_WORKERS
 from app.utils import reference_data
 from app.utils.constants import DB_FILENAME, MONITOR_STATUS_RUNNING, TIMESTAMP_FORMAT
 from app.utils.generic_util import parse_timestamp, utc_timestamp_now
+from app.utils.monitor_validator import validate_monitor_type_number
 from tests.database_test_data import DatabaseTestData
 from tests.mock_prompt_service import MockPromptService
 
@@ -282,13 +282,41 @@ class TestCommands(unittest.TestCase):
 
     def test_monitor_new(self):
         commands, _ = self._make_commands(
-            ["my-monitor", "/tmp/source", "remote:dest", "1", "", ""]
+            [
+                "my-monitor",
+                "testdata/source/instant-monitor",
+                "remote:dest",
+                "1",
+                "",
+                "",
+            ]
         )
         commands.monitor.new()
         monitor = commands.sqlite_handler.get_monitor(monitor_name="my-monitor")
         self.assertTrue(monitor)
         self.assertEqual(monitor["monitor_type"], "instant")
         self.assertEqual(monitor["config"].get("exclude_patterns"), [])
+
+    def test_monitor_new_rejects_missing_monitor_path(self):
+        """A missing monitor path is rejected and the prompt asks again."""
+        commands, mock_prompt = self._make_commands(
+            [
+                "my-monitor",
+                "/missing/monitor-path",
+                "testdata/source/instant-monitor",
+                "remote:dest",
+                "1",
+                "",
+                "",
+            ]
+        )
+        commands.monitor.new()
+        monitor = commands.sqlite_handler.get_monitor(monitor_name="my-monitor")
+        self.assertTrue(monitor)
+        self.assertEqual(
+            monitor["monitor_path"], "testdata/source/instant-monitor"
+        )
+        self.assertIn("does not exist", mock_prompt.output_text)
 
     def test_monitor_new_adds_selected_profile(self):
         profiles = self.database_test_data.sqlite_handler.get_profiles()
@@ -300,7 +328,7 @@ class TestCommands(unittest.TestCase):
         commands, _ = self._make_commands(
             [
                 "my-monitor",
-                "/tmp/source",
+                "testdata/source/instant-monitor",
                 "remote:dest",
                 "1",
                 "",
@@ -406,6 +434,18 @@ class TestCommands(unittest.TestCase):
         updated_monitor = commands.sqlite_handler.get_monitor(monitor_id=monitor["id"])
         self.assertEqual(updated_monitor["config"]["interval"], "20m")
 
+    def test_monitor_edit_bare_interval_gets_minutes_suffix(self):
+        monitor = self.database_test_data.sqlite_handler.get_monitor(
+            monitor_name="Restore Monitor 1"
+        )
+        self.assertIsNotNone(monitor)
+        commands, _ = self._make_commands(
+            ["", "", "", "", "10", "", "", ""]
+        )
+        commands.monitor.edit(monitor_id=monitor["id"])
+        updated_monitor = commands.sqlite_handler.get_monitor(monitor_id=monitor["id"])
+        self.assertEqual(updated_monitor["config"]["interval"], "10m")
+
     def test_monitor_edit_rejects_non_numeric_monitor_type(self):
         monitor = self.database_test_data.sqlite_handler.get_monitor(
             monitor_name="Backup Monitor 1"
@@ -489,20 +529,20 @@ class TestCommands(unittest.TestCase):
 
     def test_monitor_delete(self):
         first_id = self.database_test_data.sqlite_handler.get_monitors()[0]["id"]
-        commands, _ = self._make_commands([str(first_id), str(first_id)])
+        commands, _ = self._make_commands([str(first_id), str(first_id), "y"])
         commands.monitor.delete()
         monitor = commands.sqlite_handler.get_monitor(monitor_id=first_id)
         self.assertFalse(monitor)
 
     def test_monitor_delete_by_id(self):
-        commands, _ = self._make_commands([])
+        commands, _ = self._make_commands(["y"])
         monitors = commands.sqlite_handler.get_monitors()
         target = monitors[0]
         commands.monitor.delete(monitor_id=target["id"])
         self.assertFalse(commands.sqlite_handler.get_monitor(monitor_id=target["id"]))
 
     def test_monitor_delete_by_name(self):
-        commands, _ = self._make_commands([])
+        commands, _ = self._make_commands(["y"])
         monitors = commands.sqlite_handler.get_monitors()
         target = monitors[0]
         commands.monitor.delete(monitor_name=target["name"])
@@ -514,6 +554,72 @@ class TestCommands(unittest.TestCase):
         target = monitors[0]
         commands.monitor.delete(monitor_id=target["id"], monitor_name=target["name"])
         self.assertIn("Cannot specify both --monitor-id and --monitor-name.", mock_prompt.output_text)
+
+    def test_monitor_clone_by_id(self):
+        commands, mock_prompt = self._make_commands([])
+        target = commands.sqlite_handler.get_monitors()[0]
+        source_profiles = {
+            p["id"] for p in commands.sqlite_handler.get_profiles_for_monitor(target["id"])
+        }
+        commands.monitor.clone(monitor_id=target["id"])
+
+        clone = commands.sqlite_handler.get_monitor(
+            monitor_name=f"{target['name']} (copy)"
+        )
+        self.assertIsNotNone(clone)
+        self.assertEqual(clone["monitor_path"], target["monitor_path"])
+        self.assertEqual(clone["remote_path"], target["remote_path"])
+        self.assertEqual(clone["monitor_type"], target["monitor_type"])
+        self.assertEqual(clone["config"], target["config"])
+        self.assertEqual(clone["status"], "stopped")
+        self.assertEqual(clone["pid"], 0)
+        clone_profiles = {
+            p["id"] for p in commands.sqlite_handler.get_profiles_for_monitor(clone["id"])
+        }
+        self.assertEqual(source_profiles, clone_profiles)
+        self.assertIn("created as a clone", mock_prompt.output_text)
+
+    def test_monitor_clone_by_name(self):
+        commands, mock_prompt = self._make_commands([])
+        target = commands.sqlite_handler.get_monitors()[0]
+        commands.monitor.clone(monitor_name=target["name"])
+
+        clone = commands.sqlite_handler.get_monitor(
+            monitor_name=f"{target['name']} (copy)"
+        )
+        self.assertIsNotNone(clone)
+        self.assertEqual(clone["monitor_path"], target["monitor_path"])
+        self.assertIn("created as a clone", mock_prompt.output_text)
+
+    def test_monitor_clone_both_id_and_name(self):
+        commands, mock_prompt = self._make_commands([])
+        target = commands.sqlite_handler.get_monitors()[0]
+        commands.monitor.clone(monitor_id=target["id"], monitor_name=target["name"])
+        self.assertIn("Cannot specify both --monitor-id and --monitor-name.", mock_prompt.output_text)
+
+    def test_monitor_delete_blocks_running_monitor(self):
+        commands, mock_prompt = self._make_commands([])
+        target = commands.sqlite_handler.get_monitors()[0]
+        with mock.patch.object(
+            commands.monitor.processes, "is_monitor_running", return_value=True
+        ):
+            commands.monitor.delete(monitor_id=target["id"])
+        self.assertIsNotNone(
+            commands.sqlite_handler.get_monitor(monitor_id=target["id"])
+        )
+        self.assertIn("it is running", mock_prompt.output_text)
+
+    def test_monitor_edit_warns_running_monitor(self):
+        commands, mock_prompt = self._make_commands(
+            ["", "", "", "", "", "", "", ""]
+        )
+        target = commands.sqlite_handler.get_monitors()[0]
+        with mock.patch.object(
+            commands.monitor.processes, "is_monitor_running", return_value=True
+        ):
+            commands.monitor.edit(monitor_id=target["id"])
+        self.assertIn("is running", mock_prompt.output_text)
+        self.assertIn("restarted", mock_prompt.output_text)
 
     def test_profile_show(self):
         commands, mock_prompt = self._make_commands([])
@@ -1268,6 +1374,25 @@ class TestCommands(unittest.TestCase):
         launch.assert_called_once()
         self.assertIn("stale 'running'", mock_prompt.output_text)
 
+    def test_monitor_start_rejects_missing_monitor_path(self):
+        """An invalid monitor path is reported and no child is launched."""
+        commands, mock_prompt = self._make_commands([])
+        monitor = commands.sqlite_handler.get_monitors()[0]
+        commands.sqlite_handler.update_monitor(
+            monitor_id=monitor["id"],
+            name=monitor["name"],
+            monitor_path="/missing/monitor-path",
+            remote_path=monitor["remote_path"],
+            monitor_type=monitor["monitor_type"],
+            config=monitor["config"],
+            status="stopped",
+            pid=0,
+        )
+        with mock.patch.object(commands.monitor.processes, "launch") as launch:
+            commands.monitor.start(monitor_id=monitor["id"])
+        launch.assert_not_called()
+        self.assertIn("does not exist", mock_prompt.output_text)
+
     def test_monitor_stop_escalates_when_process_survives(self):
         commands, mock_prompt = self._make_commands([])
         monitor = commands.sqlite_handler.get_monitors()[0]
@@ -1300,7 +1425,7 @@ class TestCommands(unittest.TestCase):
     def test_escalate_stop_sends_sigterm_then_force_kills(self):
         commands, _ = self._make_commands([])
         with (
-            mock.patch("app.cli.monitor_process_manager.os.kill") as kill_mock,
+            mock.patch("app.monitor.monitor_process_manager.os.kill") as kill_mock,
             mock.patch.object(commands.monitor.processes, "wait_for_exit", return_value=False),
             mock.patch.object(commands.monitor.processes, "force_kill") as force_mock,
         ):
@@ -1320,7 +1445,7 @@ class TestCommands(unittest.TestCase):
         child.wait()  # reaped so the handle reports a return code
         commands.monitor.processes.tracked_processes[7] = child
         with mock.patch(
-            "app.cli.monitor_process_manager.is_process_alive", return_value=True
+            "app.monitor.monitor_process_manager.is_process_alive", return_value=True
         ) as pid_check:
             self.assertTrue(
                 commands.monitor.processes.wait_for_exit(child.pid, timeout=1.0, monitor_id=7)
@@ -1331,7 +1456,7 @@ class TestCommands(unittest.TestCase):
         """Without a tracked handle the generic PID check is still used."""
         commands, _ = self._make_commands([])
         with mock.patch(
-            "app.cli.monitor_process_manager.is_process_alive", return_value=False
+            "app.monitor.monitor_process_manager.is_process_alive", return_value=False
         ) as pid_check:
             self.assertTrue(
                 commands.monitor.processes.wait_for_exit(4242, timeout=1.0, monitor_id=7)
@@ -1343,7 +1468,7 @@ class TestCommands(unittest.TestCase):
         commands, _ = self._make_commands([])
         fake_process = mock.Mock()
         with mock.patch(
-            "app.cli.monitor_process_manager.subprocess.Popen", return_value=fake_process
+            "app.monitor.monitor_process_manager.subprocess.Popen", return_value=fake_process
         ) as popen:
             self.assertTrue(
                 commands.monitor.processes.launch({"id": 99, "name": "tracked"})
@@ -1356,7 +1481,7 @@ class TestCommands(unittest.TestCase):
         commands, _ = self._make_commands([], dependency_log_level="DEBUG")
         fake_process = mock.Mock()
         with mock.patch(
-            "app.cli.monitor_process_manager.subprocess.Popen", return_value=fake_process
+            "app.monitor.monitor_process_manager.subprocess.Popen", return_value=fake_process
         ) as popen:
             self.assertTrue(
                 commands.monitor.processes.launch({"id": 99, "name": "tracked"})
@@ -1370,7 +1495,7 @@ class TestCommands(unittest.TestCase):
         commands, _ = self._make_commands([])
         fake_process = mock.Mock()
         with mock.patch(
-            "app.cli.monitor_process_manager.subprocess.Popen", return_value=fake_process
+            "app.monitor.monitor_process_manager.subprocess.Popen", return_value=fake_process
         ) as popen:
             self.assertTrue(
                 commands.monitor.processes.launch({"id": 99, "name": "tracked"})
@@ -1389,7 +1514,7 @@ class TestCommands(unittest.TestCase):
         repo_root = Path(__file__).resolve().parents[1]
         fake_process = mock.Mock()
         with mock.patch(
-            "app.cli.monitor_process_manager.subprocess.Popen", return_value=fake_process
+            "app.monitor.monitor_process_manager.subprocess.Popen", return_value=fake_process
         ) as popen:
             self.assertTrue(
                 commands.monitor.processes.launch({"id": 99, "name": "tracked"})
@@ -1423,7 +1548,7 @@ class TestCommands(unittest.TestCase):
 
             with (
                 mock.patch.object(commands.monitor.processes, "escalate_stop") as escalate,
-                mock.patch("app.cli.monitor_process_manager.os.kill") as kill_mock,
+                mock.patch("app.monitor.monitor_process_manager.os.kill") as kill_mock,
             ):
                 commands.monitor.stop(monitor_id=monitor["id"])
 

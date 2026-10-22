@@ -11,7 +11,7 @@ import sqlite3
 import tempfile
 import unittest
 
-from app.utils.constants import MONITOR_TYPE_INSTANT
+from app.utils.constants import MONITOR_STATUS_STOPPED, MONITOR_TYPE_INSTANT
 from app.utils.schema_versioning import DATABASE_SCHEMA_VERSION, SCHEMA_MIGRATIONS
 from app.utils.sqlite_handler import SQLiteHandler
 from tests.base_test_class import BaseTestClass
@@ -361,6 +361,122 @@ class TestSqliteHandler(BaseTestClass):
         profile_id = 1
         self.sqlite_handler.delete_monitor_profile_map(monitor_id, profile_id)
         self.logger.info(f"Unmapped monitor ID {monitor_id} from profile ID {profile_id}")
+
+    def test_45_clone_monitor(self):
+        monitor_id = self.sqlite_handler.add_monitor(
+            name="clone_source_monitor",
+            monitor_path="/tmp/clone-source",
+            remote_path="/remote/clone-source",
+            monitor_type=MONITOR_TYPE_INSTANT,
+            config={"exclude_patterns": ["*.tmp"]},
+            status=MONITOR_STATUS_STOPPED,
+        )
+        profile_id = self.sqlite_handler.add_profile(
+            name="clone_source_profile",
+            profile_type="aws",
+            config={"access_key_id": "AKIA-TEST"},
+        )
+        self.assertIsNotNone(monitor_id)
+        self.assertIsNotNone(profile_id)
+        self.sqlite_handler.add_monitor_profile_map(monitor_id, profile_id)
+
+        clone_id = self.sqlite_handler.clone_monitor(monitor_id)
+        self.assertIsNotNone(clone_id)
+
+        source = self.sqlite_handler.get_monitor(monitor_id=monitor_id)
+        clone = self.sqlite_handler.get_monitor(monitor_id=clone_id)
+
+        self.assertEqual(clone["name"], "clone_source_monitor (copy)")
+        self.assertEqual(clone["monitor_path"], source["monitor_path"])
+        self.assertEqual(clone["remote_path"], source["remote_path"])
+        self.assertEqual(clone["monitor_type"], source["monitor_type"])
+        self.assertEqual(clone["config"], source["config"])
+        self.assertEqual(clone["status"], MONITOR_STATUS_STOPPED)
+        self.assertEqual(clone["pid"], 0)
+
+        source_profiles = {
+            p["id"] for p in self.sqlite_handler.get_profiles_for_monitor(monitor_id)
+        }
+        clone_profiles = {
+            p["id"] for p in self.sqlite_handler.get_profiles_for_monitor(clone_id)
+        }
+        self.assertEqual(source_profiles, clone_profiles)
+
+        # Cloning the clone auto-increments the copy counter.
+        clone2_id = self.sqlite_handler.clone_monitor(clone_id)
+        self.assertIsNotNone(clone2_id)
+        clone2 = self.sqlite_handler.get_monitor(monitor_id=clone2_id)
+        self.assertEqual(clone2["name"], "clone_source_monitor (copy 2)")
+
+    def test_45_01_clone_nonexistent_monitor_returns_none(self):
+        self.assertIsNone(self.sqlite_handler.clone_monitor(999999))
+
+    def test_45_02_clone_profile_shallow_by_default(self):
+        """Default clone copies type/config but not monitor links."""
+        profile_id = self.sqlite_handler.add_profile(
+            name="clone_profile_source_shallow",
+            profile_type="s3",
+            config={"access_key_id": "AKIA-TEST"},
+        )
+        monitor_id = self.sqlite_handler.add_monitor(
+            name="clone_profile_shallow_monitor",
+            monitor_path="/tmp/clone-profile-shallow",
+            remote_path="/remote/clone-profile-shallow",
+            monitor_type=MONITOR_TYPE_INSTANT,
+            config={},
+            status=MONITOR_STATUS_STOPPED,
+        )
+        self.assertIsNotNone(profile_id)
+        self.assertIsNotNone(monitor_id)
+        self.sqlite_handler.add_monitor_profile_map(monitor_id, profile_id)
+
+        clone_id = self.sqlite_handler.clone_profile(profile_id)
+        self.assertIsNotNone(clone_id)
+
+        source = self.sqlite_handler.get_profile(profile_id=profile_id)
+        clone = self.sqlite_handler.get_profile(profile_id=clone_id)
+
+        self.assertEqual(clone["name"], "clone_profile_source_shallow (copy)")
+        self.assertEqual(clone["profile_type"], source["profile_type"])
+        self.assertEqual(clone["config"], source["config"])
+        self.assertEqual(
+            self.sqlite_handler.get_monitors_for_profile(clone_id), []
+        )
+
+    def test_45_03_clone_profile_deep_links_monitors(self):
+        """Deep clone links the same monitors as the source profile."""
+        profile_id = self.sqlite_handler.add_profile(
+            name="clone_profile_source_deep",
+            profile_type="s3",
+            config={"access_key_id": "AKIA-TEST"},
+        )
+        monitor_id = self.sqlite_handler.add_monitor(
+            name="clone_profile_deep_monitor",
+            monitor_path="/tmp/clone-profile-deep",
+            remote_path="/remote/clone-profile-deep",
+            monitor_type=MONITOR_TYPE_INSTANT,
+            config={},
+            status=MONITOR_STATUS_STOPPED,
+        )
+        self.assertIsNotNone(profile_id)
+        self.assertIsNotNone(monitor_id)
+        self.sqlite_handler.add_monitor_profile_map(monitor_id, profile_id)
+
+        clone_id = self.sqlite_handler.clone_profile(profile_id, deep=True)
+        self.assertIsNotNone(clone_id)
+
+        source_monitors = {
+            m["id"]
+            for m in self.sqlite_handler.get_monitors_for_profile(profile_id)
+        }
+        clone_monitors = {
+            m["id"]
+            for m in self.sqlite_handler.get_monitors_for_profile(clone_id)
+        }
+        self.assertEqual(source_monitors, clone_monitors)
+
+    def test_45_04_clone_nonexistent_profile_returns_none(self):
+        self.assertIsNone(self.sqlite_handler.clone_profile(999999))
 
     def test_50_cleanup(self):
         # First delete all monitor-profile mappings

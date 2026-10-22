@@ -11,10 +11,9 @@ from __future__ import annotations
 import shutil
 from typing import Any
 
-from app.cli import profile_display
 from app.cli.prompt_service import PromptService
 from app.monitor import rclone_env
-from app.utils import reference_data
+from app.utils import profile_display, reference_data
 from app.utils.constants import (
     DEFAULT_COMMAND_MAX_WORKERS,
     MAX_COMMAND_MAX_WORKERS,

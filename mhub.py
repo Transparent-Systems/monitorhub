@@ -19,9 +19,9 @@ import argparse
 import sqlite3
 import sys
 
-from app.cli.app_config import AppConfig
 from app.cli.commands import build_commands
 from app.cli.db_error_messages import integrity_error_message
+from app.utils.app_config import AppConfig
 from app.utils.logger_setup import setup_logging
 from app.utils.project_paths import project_conf
 
@@ -71,6 +71,14 @@ _SUBCOMMAND_DISPATCH = {
     ("monitor", "delete"): (
         "monitor",
         "delete",
+        lambda args: {
+            "monitor_id": getattr(args, "monitor_id", None),
+            "monitor_name": getattr(args, "monitor_name", None),
+        },
+    ),
+    ("monitor", "clone"): (
+        "monitor",
+        "clone",
         lambda args: {
             "monitor_id": getattr(args, "monitor_id", None),
             "monitor_name": getattr(args, "monitor_name", None),
@@ -152,16 +160,18 @@ def _add_selector_args(
     )
 
 
-if __name__ == "__main__":
+def main(argv: list[str] | None = None) -> int:
+    """Run the MonitorHub CLI and return the process exit code."""
+    argv = sys.argv[1:] if argv is None else list(argv)
+
     # Hidden in-process dispatch used by the frozen PyInstaller binary.
     # When the binary re-invokes itself to start a monitor child process it
     # passes `run-monitor` as the first argument. Run the monitor logic
     # directly (rather than invoking `python app/monitor/run_monitor.py`) so it
     # works inside the bundled executable.
-    if len(sys.argv) > 1 and sys.argv[1] == "run-monitor":
-        sys.argv.pop(1)
+    if argv and argv[0] == "run-monitor":
         from app.monitor.run_monitor import run_monitor_main
-        sys.exit(run_monitor_main())
+        return run_monitor_main(argv[1:])
 
     parser = argparse.ArgumentParser(
         description="MonitorHub CLI for managing profiles, monitors, and configuration."
@@ -222,8 +232,8 @@ if __name__ == "__main__":
     # Config command
     config_parser = subparsers.add_parser("config", help="Configuration commands (subcommands: test, python; enter 'config -h' for help)")
     config_subparsers = config_parser.add_subparsers(dest="config_subcommand", help="Config subcommands")
-    config_test_parser = config_subparsers.add_parser("test", help="Run environment and configuration checks")
-    config_python_parser = config_subparsers.add_parser(
+    config_subparsers.add_parser("test", help="Run environment and configuration checks")
+    config_subparsers.add_parser(
         "python",
         help="Show the Python version in use and the project's pinned version",
     )
@@ -236,7 +246,7 @@ if __name__ == "__main__":
     profile_show_parser = profile_subparsers.add_parser("show", help="Show all profiles")
     _add_selector_args(profile_show_parser, "profile", "show", "omit to show all profiles")
     profile_subparsers.add_parser("import", help="Import profiles from rclone")
-    profile_new_parser = profile_subparsers.add_parser("new", help="Create a new profile (select profile category interactively)")
+    profile_subparsers.add_parser("new", help="Create a new profile (select profile category interactively)")
     profile_edit_parser = profile_subparsers.add_parser("edit", help="Edit a profile")
     _add_selector_args(profile_edit_parser, "profile", "edit", "omit to select interactively")
     profile_delete_parser = profile_subparsers.add_parser("delete", help="Delete a profile")
@@ -252,19 +262,19 @@ if __name__ == "__main__":
 
     database_parser = subparsers.add_parser("database", help="Database information")
     database_subparsers = database_parser.add_subparsers(dest="database_subcommand", help="Database subcommands")
-    database_info_parser = database_subparsers.add_parser("info", help="Show database information")
-    database_version_parser = database_subparsers.add_parser("version", help="Show database version")
+    database_subparsers.add_parser("info", help="Show database information")
+    database_subparsers.add_parser("version", help="Show database version")
     database_init_parser = database_subparsers.add_parser("init", help="Initialise the database schema and load support tables")
     database_init_parser.add_argument("--recreate",
         action="store_true",
         default=False,
         help="Drop the existing schema and recreate it from scratch"
     )
-    database_upgrade_parser = database_subparsers.add_parser(
+    database_subparsers.add_parser(
         "upgrade",
         help="Apply pending schema migrations to bring the database up to date",
     )
-    database_sample_data_parser = database_subparsers.add_parser(
+    database_subparsers.add_parser(
         "sample-data",
         help="Load example profile and monitor sample data"
     )
@@ -273,11 +283,13 @@ if __name__ == "__main__":
     monitor_parser = subparsers.add_parser("monitor", help="Manage monitors (subcommands: show, stop, ... ; enter 'monitor -h' for help)")
     monitor_subparsers = monitor_parser.add_subparsers(dest="monitor_subcommand", help="Monitor subcommands")
 
-    monitor_new_parser = monitor_subparsers.add_parser("new", help="Create a new monitor")
+    monitor_subparsers.add_parser("new", help="Create a new monitor")
     monitor_edit_parser = monitor_subparsers.add_parser("edit", help="Edit a monitor")
     _add_selector_args(monitor_edit_parser, "monitor", "edit", "omit to select interactively")
     monitor_delete_parser = monitor_subparsers.add_parser("delete", help="Delete a monitor")
     _add_selector_args(monitor_delete_parser, "monitor", "delete", "omit to select interactively")
+    monitor_clone_parser = monitor_subparsers.add_parser("clone", help="Clone a monitor")
+    _add_selector_args(monitor_clone_parser, "monitor", "clone", "omit to select interactively")
     monitor_show_parser = monitor_subparsers.add_parser("show", help="Show all monitors")
     _add_selector_args(monitor_show_parser, "monitor", "show", "omit to show all monitors")
     monitor_start_parser = monitor_subparsers.add_parser("start", help="Start a monitor")
@@ -292,7 +304,7 @@ if __name__ == "__main__":
         help="Force kill the monitor process immediately instead of graceful shutdown"
     )
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     # Default the log configuration to the project's conf/ folder so it works
     # from any working directory; an explicit -l/--log value is kept verbatim.
@@ -337,7 +349,7 @@ if __name__ == "__main__":
             entry = _SUBCOMMAND_DISPATCH.get((args.command, subcommand))
             if entry is None:
                 command_parsers.get(args.command, parser).print_help()
-                sys.exit(1)
+                return 1
             owner_attr, method_name, kwargs_builder = entry
             command_obj = getattr(commands, owner_attr)
             kwargs = kwargs_builder(args)
@@ -347,7 +359,7 @@ if __name__ == "__main__":
             # report it without the "is the database initialised?" hint.
             logger.error(f"Database constraint error: {error}")
             print(integrity_error_message(error), file=sys.stderr)
-            sys.exit(1)
+            return 1
         except sqlite3.Error as error:
             logger.error(f"Database error: {error}")
             print(
@@ -356,7 +368,7 @@ if __name__ == "__main__":
                 "Create it with: python mhub.py database init",
                 file=sys.stderr,
             )
-            sys.exit(1)
+            return 1
         finally:
             # Deterministically return the database connection before the
             # process exits (sys.exit in the except branches still passes
@@ -366,4 +378,10 @@ if __name__ == "__main__":
                 commands.sqlite_handler.close()
     else:
         parser.print_help()
-        sys.exit(1)
+        return 1
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

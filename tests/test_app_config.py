@@ -5,7 +5,7 @@ from pathlib import Path
 
 import yaml
 
-from app.cli.app_config import AppConfig
+from app.utils.app_config import AppConfig
 
 
 class TestAppConfig(unittest.TestCase):

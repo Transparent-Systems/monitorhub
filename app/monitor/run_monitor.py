@@ -29,6 +29,7 @@ from app.utils.constants import (
 )
 from app.utils.generic_util import is_process_alive, utc_timestamp_now
 from app.utils.logger_setup import setup_logging
+from app.utils.monitor_validator import monitor_path_is_valid
 from app.utils.project_paths import project_conf
 from app.utils.sqlite_handler import SQLiteHandler
 
@@ -116,6 +117,15 @@ class MonitorRunContext:
             logger.error(
                 f"Monitor '{monitor.get('name')}' (id={monitor_id}) is already running as "
                 f"pid={existing_pid}. Exiting to avoid a duplicate monitor process."
+            )
+            sqlite_handler.close()
+            return None
+
+        path_error = monitor_path_is_valid(monitor.get("monitor_path", ""))
+        if path_error:
+            logger.error(
+                f"Monitor '{monitor.get('name')}' (id={monitor_id}) cannot start: "
+                f"{path_error} Exiting."
             )
             sqlite_handler.close()
             return None
@@ -245,8 +255,20 @@ class MonitorRunContext:
                     shutdown_reason = reason
                 stop_event.set()
 
-        if not self.monitor_handler.start(on_complete=request_shutdown):
-            logger.error(f"Failed to start monitor '{monitor.get('name')}' (id={monitor_id}). Exiting.")
+        try:
+            started = self.monitor_handler.start(on_complete=request_shutdown)
+        except Exception:  # noqa: BLE001 - a failed start must not leave a stale 'running' row
+            logger.exception(
+                f"Failed to start monitor '{monitor.get('name')}' (id={monitor_id}). Exiting."
+            )
+            started = False
+        else:
+            if not started:
+                logger.error(
+                    f"Failed to start monitor '{monitor.get('name')}' (id={monitor_id}). Exiting."
+                )
+
+        if not started:
             sqlite_handler.update_monitor_status(monitor_id=monitor_id, status=MONITOR_STATUS_STOPPED)
             sqlite_handler.update_monitor_pid(monitor_id=monitor_id, pid=0)
             sqlite_handler.close()

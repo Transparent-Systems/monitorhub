@@ -23,8 +23,9 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 # Package directory (relative to the repository root) -> forbidden import
 # prefixes. Directories are scanned recursively.
 FORBIDDEN_IMPORTS: dict[str, tuple[str, ...]] = {
-    "app/utils": ("app.cli",),
-    "app/monitor": ("app.cli",),
+    "app/utils": ("app.cli", "app.webgui"),
+    "app/monitor": ("app.cli", "app.webgui"),
+    "app/webgui": ("app.cli",),
 }
 
 

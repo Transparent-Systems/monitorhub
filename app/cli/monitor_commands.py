@@ -7,10 +7,10 @@ import time
 
 from app.cli.db_error_messages import integrity_error_message
 from app.cli.diagnostic_util import DiagnosticUtil
-from app.cli.monitor_process_manager import MonitorProcessManager
 from app.cli.prompt_service import PromptService
 from app.cli.selectors import MonitorSelector
-from app.utils import reference_data
+from app.monitor.monitor_process_manager import MonitorProcessManager
+from app.utils import monitor_validator, reference_data
 from app.utils.constants import (
     MONITOR_STATUS_RUNNING,
     MONITOR_STATUS_STOP,
@@ -24,6 +24,7 @@ from app.utils.generic_util import (
     is_interval_valid,
     parse_timestamp,
 )
+from app.utils.monitor_config import normalize_interval
 from app.utils.sqlite_handler import SQLiteHandler
 
 STALE_HEARTBEAT_SECONDS = 60
@@ -32,20 +33,6 @@ STALE_HEARTBEAT_SECONDS = 60
 # before escalating to SIGTERM/SIGKILL. The monitor's status poller interval is
 # ~10s, so this allows one comfortable poll cycle plus teardown.
 STOP_GRACE_SECONDS = 15
-
-
-def validate_monitor_type_number(
-    value: str, monitor_types: list[tuple[str, str]]
-) -> str | None:
-    """Validate a 1-based monitor type selection.
-
-    Returns an error message when ``value`` is not a digit within
-    ``1..len(monitor_types)``, otherwise ``None``. Shared by the ``new`` and
-    ``edit`` flows so both reject typos and out-of-range numbers consistently.
-    """
-    if not value.isdigit() or not (0 < int(value) <= len(monitor_types)):
-        return f"Invalid monitor type number: {value}. Please try again."
-    return None
 
 
 class MonitorCommands:
@@ -76,7 +63,6 @@ class MonitorCommands:
             log_config=log_config,
             log_level=log_level,
             dependency_log_level=dependency_log_level,
-            prompt=prompt,
         )
         # Interactive list selection is delegated to a focused collaborator.
         self.selector = MonitorSelector(sqlite_handler=sqlite_handler, prompt=prompt)
@@ -172,7 +158,7 @@ class MonitorCommands:
         )
         if input_interval is None:  # Defensive: there is no cancel path here.
             return current_interval or ""
-        return input_interval + "m" if input_interval.isdigit() else input_interval
+        return normalize_interval(input_interval)
 
     def _prompt_exclude_patterns(self, current: list[str] | None = None) -> list[str]:
         """Prompt for comma-separated exclude patterns and return them as a list.
@@ -234,6 +220,7 @@ class MonitorCommands:
             "Enter new monitor path: ",
             current=monitor.get("monitor_path"),
             allow_cancel=True,
+            validator=monitor_validator.monitor_path_is_valid,
             render=render_monitor_path,
         )
         if new_monitor_path:
@@ -272,7 +259,7 @@ class MonitorCommands:
 
         raw_monitor_type = self.prompt.prompt_choice(
             "Enter new monitor type: ",
-            valid=lambda value: validate_monitor_type_number(value, monitor_types),
+            valid=lambda value: monitor_validator.validate_monitor_type_number(value, monitor_types),
             render=render_monitor_types,
             allow_cancel=True,
         )
@@ -461,10 +448,82 @@ class MonitorCommands:
 
     def _delete_monitor(self, monitor: dict) -> None:
         """Delete a single monitor resolved by id or name."""
+        if self.processes.is_monitor_running(monitor):
+            self.prompt.print(
+                f"Cannot delete monitor '{monitor.get('name', 'N/A')}': it is running. "
+                "Stop it first (monitor stop)."
+            )
+            return
+        if not self.prompt.prompt_yes_no(
+            f"Please confirm you want to delete "
+            f"'{monitor.get('name', 'N/A')}'. Enter N/y: ",
+            default=False,
+        ):
+            self.prompt.print(
+                f"Monitor name: {monitor.get('name', 'N/A')} not deleted"
+            )
+            return
         if self.sqlite_handler.delete_monitor(monitor_id=monitor.get("id", 0)):
             self.prompt.print(f"Monitor name: {monitor.get('name', 'N/A')} deleted")
         else:
             self.prompt.print(f"Monitor name: {monitor.get('name', 'N/A')} not deleted")
+
+    def clone(self, monitor_id: int | None = None, monitor_name: str | None = None):
+        """Clone monitor."""
+        if monitor_id is not None and monitor_name is not None:
+            self.prompt.print("Cannot specify both --monitor-id and --monitor-name.")
+            return
+
+        if monitor_id is not None:
+            monitor = self.sqlite_handler.get_monitor(monitor_id=monitor_id)
+            if not monitor:
+                self.prompt.print(f"Monitor with id={monitor_id} not found.")
+                return
+            self._clone_monitor(monitor)
+            return
+
+        if monitor_name is not None:
+            monitor = self.sqlite_handler.get_monitor(monitor_name=monitor_name)
+            if not monitor:
+                self.prompt.print(f"Monitor with name='{monitor_name}' not found.")
+                return
+            self._clone_monitor(monitor)
+            return
+
+        monitors = self.sqlite_handler.get_monitors()
+        if not monitors:
+            self.prompt.print(f"No monitors found in {self.sqlite_handler.db_path}")
+            return
+
+        choice = self.selector.select_interactive(monitors=monitors)
+        if choice is None:
+            self.prompt.print("No monitor selected")
+            return
+
+        monitor = find_by_id(monitors, choice)
+        if monitor is None:
+            self.prompt.print(f"Monitor with id={choice} not found.")
+            return
+        self._clone_monitor(monitor)
+
+    def _clone_monitor(self, monitor: dict) -> None:
+        """Clone a single monitor resolved by id or name."""
+        source_name = monitor.get("name", "N/A")
+        try:
+            new_id = self.sqlite_handler.clone_monitor(monitor.get("id", 0))
+        except sqlite3.IntegrityError as error:
+            self.prompt.print(
+                integrity_error_message(error, entity="Monitor", name=source_name)
+            )
+            return
+
+        if new_id is None:
+            self.prompt.print(f"Monitor name: {source_name} not cloned")
+            return
+
+        clone = self.sqlite_handler.get_monitor(monitor_id=new_id)
+        clone_name = clone.get("name", "N/A") if clone else "N/A"
+        self.prompt.print(f"Monitor '{clone_name}' created as a clone of '{source_name}'.")
 
     def edit(self, monitor_id: int | None = None, monitor_name: str | None = None):
         """Edit monitor."""
@@ -501,6 +560,12 @@ class MonitorCommands:
 
         monitor_id = monitor.get("id", "N/A")
         monitor["config"] = monitor.get("config") or {}
+
+        if self.processes.is_monitor_running(monitor):
+            self.prompt.print(
+                f"Warning: monitor '{monitor.get('name', 'N/A')}' is running. "
+                "Changes will take effect only after it is restarted (stop, then start)."
+            )
 
         self._edit_basic_fields(monitor)
         self._edit_interval(monitor)
@@ -545,9 +610,7 @@ class MonitorCommands:
             return
 
         def valid_monitor_name(value: str) -> str | None:
-            if self.sqlite_handler.get_monitor(monitor_name=value):
-                return f"Monitor name: {value} already exists. Please try again"
-            return None
+            return monitor_validator.monitor_name_is_unique(self.sqlite_handler, value)
 
         input_monitor_name = self.prompt.prompt_required(
             "Enter monitor name: ",
@@ -563,6 +626,7 @@ class MonitorCommands:
         input_monitor_path = self.prompt.prompt_required(
             "Please enter monitor path: ",
             allow_cancel=True,
+            validator=monitor_validator.monitor_path_is_valid,
             echo_label="monitor path",
         )
         if input_monitor_path is None:
@@ -589,7 +653,7 @@ class MonitorCommands:
 
         raw_monitor_type_number = self.prompt.prompt_choice(
             "Please select number of monitor type: ",
-            valid=lambda value: validate_monitor_type_number(value, monitor_types),
+            valid=lambda value: monitor_validator.validate_monitor_type_number(value, monitor_types),
             render=render_monitor_types,
             empty_message="Monitor type cannot be just spaces",
         )
@@ -845,6 +909,17 @@ class MonitorCommands:
                 monitor_id=monitor_id_val, status=MONITOR_STATUS_STOPPED
             )
             self.sqlite_handler.update_monitor_pid(monitor_id=monitor_id_val, pid=0)
+
+        path_error = monitor_validator.monitor_path_is_valid(
+            monitor.get("monitor_path", "")
+        )
+        if path_error:
+            self.prompt.print(
+                f"Monitor '{monitor_name}' (id={monitor_id_val}) cannot start: "
+                f"{path_error}"
+            )
+            return
+
         if self.processes.launch(monitor):
             self.prompt.print(f"Monitor '{monitor_name}' (id={monitor_id_val}) started.")
 

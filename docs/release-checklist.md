@@ -4,20 +4,30 @@
 - [ ] **Update Release Log**: Verify that any internal release logs or documentation sites are updated to reflect the new version.
 - [ ] **Check dependencies**: Verify that `requirements.txt` is up to date with `pyproject.toml` (regenerate with `uv pip compile pyproject.toml -o requirements.txt`).
 - [ ] **Run Tests**: Execute `.venv/bin/python mhub.py config test` to ensure the environment and configuration are valid.
-- [ ] **Squash Commits**: Run `git rebase -i main` to combine local commits into a clean history.
-- [ ] **Build Executable on Linux**: Run PyInstaller to generate the latest `monitorhub` binary.
+- [ ] **Build Executable on Linux** (optional - the tag push below builds it in CI): Run PyInstaller to generate the latest `monitorhub` binary.
         Command: .venv/bin/python build_project.py
-- [ ] **Build Executable on Windows**: Run PyInstaller to generate the latest `mhub.exe`.
+- [ ] **Build Executable on Windows** (optional - the tag push below builds it in CI): Run PyInstaller to generate the latest `mhub.exe`.
         Command: .venv/bin/python build_project.py
-- [ ] **Add Git Release Tag**: Create a new git tag for the version (e.g., `git tag -a <version> -m "Release <version>"`).
-- [ ] **Push to GitHub**: Push the code and the tags to the remote repository (`git push origin <branch> --tags`). 
-        If you rebased an existing branch, you may need to force push with `git push --force-with-lease origin <branch> --tags`.
-- [ ] **Merge back into main branch**: 
-        - Checkout main
-        - git merge <branch>
-        - delete the branch (`git branch -d <branch>`).
-- [ ] **Push main branch to GitHub**: git push origin main.
-- [ ] **Create GitHub Release**: 
-        - Draft a new release on GitHub
-        - Attach the Windows and Linux executables
-        - Paste the changelog notes.
+- [ ] **Merge the feature branch into main as one squashed commit**:
+        - git switch main
+        - git pull origin main
+        - git merge --squash <branch>
+        - git commit -m "<summary of the release>"
+        - git push origin main
+        `git merge --squash` stages the complete branch diff as a single commit: it replaces
+        `git rebase -i main` and produces one clean commit on main without rewriting the branch
+        history, so no force push is needed. Resolve any conflicts before committing.
+        Pushing the feature branch is optional now (only for a pull request or a backup copy).
+        If the branch has an open pull request, the squash creates a new commit SHA, so GitHub
+        does not mark the PR as merged: close it with `gh pr close <branch>`.
+- [ ] **Delete the feature branch**: `git branch -D <branch>`.
+        Use `-D`, not `-d`: a squashed branch is not recorded as merged. Delete the remote copy
+        too if it was pushed (`git push origin --delete <branch>`).
+- [ ] **Add Git Release Tag**: Create the tag on main, after the squash merge, so it points at the released commit (e.g., `git tag -a <version> -m "Release <version>"`).
+- [ ] **Push the tag**: `git push origin <version>`.
+        This triggers the "Build Linux binary" and "Build Windows binary" workflows, which build
+        the binaries and attach them to the GitHub Release for that tag.
+- [ ] **Create GitHub Release**:
+        - Open the release created by the tag push
+        - Paste the changelog notes
+        - The Windows and Linux executables and their SHA256 checksums are attached by the workflows.

@@ -10,6 +10,7 @@ dependencies = [
     "boto3-stubs[s3]",
     "pyinstaller",
     "ruff",
+    "streamlit",
 ]
 
 # Separate development tools (like pytest) into optional dependencies

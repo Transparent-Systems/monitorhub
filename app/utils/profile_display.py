@@ -1,4 +1,4 @@
-"""Mask secret profile values in CLI output.
+"""Mask secret profile values in output.
 
 The profile commands print a profile's configuration so the user can inspect
 and edit it.  Secret values (passwords, tokens, secret keys) must not end up in

@@ -178,8 +178,14 @@
 [Website](https://aip.transparent.co.nz) |
 [Documentation](https://aip.transparent.co.nz/monitorhub/) |
 
-MonitorHub monitors a folder and files in it for changes and propagates folders and files a target destination.  
-The target destination can be a cloud storage provider, FTP server, local drive or shared folder.  
+MonitorHub has monitors and profiles. A monitor is an event consumer and triggers a handler configured in a profile.   At present we have:
+- an instant monitor for file system events
+- a scheduled monitor like a backup monitor or restore monitor triggered by timer events
+
+At present we have:
+- A remote profile to copy files to a destination in the cloud storage provider, FTP share or local file system
+- A command profile to run any command or script on a workstation or server
+
 Examples of cloud storage providers are:
 
 * Microsoft OneDrive
@@ -192,6 +198,13 @@ Examples of cloud storage providers are:
 * Any FTP server
 
 S3-compatible providers represent the vast majority of the object storage market.
+
+Examples of scripts to run by a command handler are:
+- send a notification to a user
+- email a user
+- block a port on a firewall
+- change all files in a folder to root-only access
+- start or stop another monitor. 
 
 ### S3Handler
 

@@ -54,6 +54,37 @@ class TestRunMonitor(BaseTestClass):
     @patch("app.monitor.run_monitor.MonitorHandlerFactory")
     @patch("app.monitor.run_monitor.SQLiteHandler")
     @patch("app.monitor.run_monitor.setup_logging")
+    def test_run_monitor_invalid_path_exits_before_running(
+        self, mock_setup_logging, mock_sqlite_cls, mock_factory
+    ):
+        """An invalid monitor path is logged and exits before status='running'."""
+        mock_logger = MagicMock()
+        mock_setup_logging.return_value = (mock_logger, {})
+        mock_sqlite = MagicMock()
+        mock_sqlite.get_monitor.return_value = {
+            "id": 1,
+            "name": "test_monitor",
+            "monitor_type": "instant",
+            "monitor_path": "/definitely/missing/monitorhub-test",
+            "status": "stopped",
+            "pid": 0,
+        }
+        mock_sqlite.get_profiles_for_monitor.return_value = [{"id": 1, "name": "p1"}]
+        mock_sqlite_cls.return_value = mock_sqlite
+
+        with self.assertRaises(SystemExit) as cm:
+            run_monitor_main(["--monitor-id", "1", "--db-dir", self.db_dir])
+
+        self.assertEqual(cm.exception.code, 1)
+        mock_factory.create.assert_not_called()
+        mock_sqlite.update_monitor_status.assert_not_called()
+        mock_sqlite.close.assert_called()
+        messages = [str(call) for call in mock_logger.error.call_args_list]
+        self.assertTrue(any("does not exist" in message for message in messages), messages)
+
+    @patch("app.monitor.run_monitor.MonitorHandlerFactory")
+    @patch("app.monitor.run_monitor.SQLiteHandler")
+    @patch("app.monitor.run_monitor.setup_logging")
     def test_run_monitor_handler_start_failure(
         self, mock_setup_logging, mock_sqlite_cls, mock_factory
     ):
@@ -64,6 +95,7 @@ class TestRunMonitor(BaseTestClass):
             "id": 1,
             "name": "test_monitor",
             "monitor_type": "scheduled",
+            "monitor_path": self.db_dir,
         }
         mock_sqlite.get_profiles_for_monitor.return_value = [{"id": 1, "name": "p1"}]
         mock_sqlite_cls.return_value = mock_sqlite
@@ -77,6 +109,44 @@ class TestRunMonitor(BaseTestClass):
 
         self.assertEqual(cm.exception.code, 1)
         mock_sqlite.update_monitor_status.assert_called_with(monitor_id=1, status="stopped")
+        mock_sqlite.update_monitor_pid.assert_called_with(monitor_id=1, pid=0)
+        mock_sqlite.close.assert_called()
+
+    @patch("app.monitor.run_monitor.MonitorHandlerFactory")
+    @patch("app.monitor.run_monitor.SQLiteHandler")
+    @patch("app.monitor.run_monitor.setup_logging")
+    def test_run_monitor_handler_start_exception_resets_state(
+        self, mock_setup_logging, mock_sqlite_cls, mock_factory
+    ):
+        """A handler that raises during start must not leave a 'running' row.
+
+        Regression: watchdog raises FileNotFoundError when the monitor path does
+        not exist. The exception used to skip the stopped-state reset, leaving
+        status='running' with a dead PID.
+        """
+        mock_logger = MagicMock()
+        mock_setup_logging.return_value = (mock_logger, {})
+        mock_sqlite = MagicMock()
+        mock_sqlite.get_monitor.return_value = {
+            "id": 1,
+            "name": "test_monitor",
+            "monitor_type": "instant",
+            "monitor_path": self.db_dir,
+        }
+        mock_sqlite.get_profiles_for_monitor.return_value = [{"id": 1, "name": "p1"}]
+        mock_sqlite_cls.return_value = mock_sqlite
+
+        mock_handler = MagicMock()
+        mock_handler.start.side_effect = FileNotFoundError("missing monitor path")
+        mock_factory.create.return_value = mock_handler
+
+        with self.assertRaises(SystemExit) as cm:
+            run_monitor_main(["--monitor-id", "1", "--db-dir", self.db_dir])
+
+        self.assertEqual(cm.exception.code, 1)
+        mock_sqlite.update_monitor_status.assert_called_with(
+            monitor_id=1, status="stopped"
+        )
         mock_sqlite.update_monitor_pid.assert_called_with(monitor_id=1, pid=0)
         mock_sqlite.close.assert_called()
 
@@ -137,6 +207,7 @@ class TestRunMonitor(BaseTestClass):
             "id": 1,
             "name": "test_monitor",
             "monitor_type": "scheduled",
+            "monitor_path": self.db_dir,
         }
         mock_sqlite.get_profiles_for_monitor.return_value = [{"id": 1, "name": "p1"}]
         mock_sqlite_cls.return_value = mock_sqlite
@@ -178,6 +249,7 @@ class TestRunMonitor(BaseTestClass):
             "id": 1,
             "name": "test_monitor",
             "monitor_type": "instant",
+            "monitor_path": self.db_dir,
         }
         mock_sqlite.get_profiles_for_monitor.return_value = [{"id": 1, "name": "p1"}]
         mock_sqlite_cls.return_value = mock_sqlite
@@ -309,6 +381,7 @@ class TestRunMonitorPhases(BaseTestClass):
             "id": 1,
             "name": "test_monitor",
             "monitor_type": "scheduled",
+            "monitor_path": self.db_dir,
             "pid": 0,
         }
         mock_sqlite.get_profiles_for_monitor.return_value = [{"id": 1, "name": "p1"}]

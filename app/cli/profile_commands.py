@@ -4,13 +4,12 @@ import logging
 import shlex
 from typing import Any
 
-from app.cli import profile_display
 from app.cli.profile_editor import ProfileEditor
 from app.cli.profile_importer import ProfileImporter
 from app.cli.prompt_service import PromptService
 from app.cli.selectors import ProfileSelector
 from app.monitor.rclone_handler import RcloneHandler
-from app.utils import reference_data
+from app.utils import profile_display, reference_data
 from app.utils.constants import (
     DEFAULT_COMMAND_MAX_WORKERS,
     MAX_COMMAND_MAX_WORKERS,

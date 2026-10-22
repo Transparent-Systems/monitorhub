@@ -5,10 +5,12 @@ import threading
 import weakref
 from collections.abc import Generator
 from contextlib import contextmanager
+from copy import deepcopy
 from pathlib import Path
 from typing import Any, Self
 
-from app.utils.constants import DB_FILENAME
+from app.utils.constants import DB_FILENAME, MONITOR_STATUS_STOPPED
+from app.utils.monitor_naming import next_clone_name
 from app.utils.schema_versioning import (
     SCHEMA_MIGRATIONS,
     compare_versions,
@@ -662,6 +664,69 @@ class SQLiteHandler:
             {"id": monitor_id},
             f"Error deleting monitor id={monitor_id}",
         )
+
+    def clone_monitor(self, monitor_id: int) -> int | None:
+        """Clone a monitor and return the new monitor's id (or None).
+
+        Copies the monitor's path, remote path, type, config (deep copy) and
+        profile links. The clone is created as ``stopped`` with a fresh,
+        unique name (``<name> (copy)``, auto-incremented on collision).
+        """
+        source = self.get_monitor(monitor_id=monitor_id)
+        if source is None:
+            return None
+
+        def name_exists(candidate: str) -> bool:
+            return self.get_monitor(monitor_name=candidate) is not None
+
+        new_name = next_clone_name(source.get("name", "N/A"), name_exists)
+
+        new_id = self.add_monitor(
+            name=new_name,
+            monitor_path=source.get("monitor_path", ""),
+            remote_path=source.get("remote_path", ""),
+            monitor_type=source.get("monitor_type", ""),
+            config=deepcopy(source.get("config") or {}),
+            status=MONITOR_STATUS_STOPPED,
+        )
+        if new_id is None:
+            return None
+
+        for profile in self.get_profiles_for_monitor(source["id"]):
+            self.add_monitor_profile_map(new_id, profile.get("id"))
+
+        return new_id
+
+    def clone_profile(self, profile_id: int, deep: bool = False) -> int | None:
+        """Clone a profile and return the new profile's id (or None).
+
+        Copies the profile's type and config (deep copy). When ``deep`` is True,
+        the clone is also linked to the same monitors as the source profile; the
+        default is a shallow clone with no monitor links. The clone receives a
+        fresh, unique name (``<name> (copy)``, auto-incremented on collision).
+        """
+        source = self.get_profile(profile_id=profile_id)
+        if source is None:
+            return None
+
+        def name_exists(candidate: str) -> bool:
+            return self.get_profile(profile_name=candidate) is not None
+
+        new_name = next_clone_name(source.get("name", "N/A"), name_exists)
+
+        new_id = self.add_profile(
+            name=new_name,
+            profile_type=source.get("profile_type", ""),
+            config=deepcopy(source.get("config") or {}),
+        )
+        if new_id is None:
+            return None
+
+        if deep:
+            for monitor in self.get_monitors_for_profile(source["id"]):
+                self.add_monitor_profile_map(monitor.get("id", 0), new_id)
+
+        return new_id
 
     def add_profile(self, name: str, profile_type: str, config: dict[str, Any]) -> int | None:
         """

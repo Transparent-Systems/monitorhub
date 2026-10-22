@@ -1,8 +1,8 @@
-"""Unit tests for the CLI secret-masking helpers (``app.cli.profile_display``)."""
+"""Unit tests for the secret-masking helpers (``app.utils.profile_display``)."""
 
 import unittest
 
-from app.cli import profile_display
+from app.utils import profile_display
 
 
 class TestIsSecretKey(unittest.TestCase):
