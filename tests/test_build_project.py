@@ -225,8 +225,10 @@ class TestBuildFailure(unittest.TestCase):
         ), mock.patch.object(build_project.os.path, "exists", return_value=False):
             output = io.StringIO()
             with contextlib.redirect_stdout(output):
-                build_project.build_executable()
+                code = build_project.build_executable()
         self.assertIn("ERROR: PyInstaller build failed.", output.getvalue())
+        # A failed build must fail the caller: CI used to carry on regardless.
+        self.assertEqual(code, 1)
 
 
 class TestCleanPreviousBuilds(unittest.TestCase):
@@ -320,6 +322,163 @@ class TestCleanPreviousBuilds(unittest.TestCase):
                 build_project.clean_previous_builds("gui")
             finally:
                 os.chdir(cwd)
+
+
+class TestPreflight(unittest.TestCase):
+    """Fail early and explain, instead of a cryptic PyInstaller error."""
+
+    def test_no_problem_when_pyinstaller_is_installed(self):
+        self.assertIsNone(build_project.pyinstaller_problem())
+
+    def test_missing_pyinstaller_names_the_interpreter_and_the_fix(self):
+        with mock.patch.object(
+            build_project.importlib.util, "find_spec", return_value=None
+        ):
+            problem = build_project.pyinstaller_problem()
+        self.assertIn(sys.executable, problem)
+        self.assertIn("pip install -r requirements.txt", problem)
+
+    def test_build_aborts_before_invoking_pyinstaller(self):
+        output = io.StringIO()
+        with mock.patch.object(
+            build_project, "pyinstaller_problem", return_value="no PyInstaller"
+        ), mock.patch.object(build_project, "clean_previous_builds") as clean, mock.patch.object(
+            build_project.subprocess, "run"
+        ) as run, contextlib.redirect_stderr(output):
+            code = build_project.build_executable("cli")
+        self.assertEqual(code, 2)
+        run.assert_not_called()
+        clean.assert_not_called()
+        self.assertIn("ERROR: no PyInstaller", output.getvalue())
+
+    def test_missing_inputs_abort_the_build(self):
+        output = io.StringIO()
+        with mock.patch.object(
+            build_project, "missing_inputs", return_value=["README.md"]
+        ), mock.patch.object(build_project, "clean_previous_builds") as clean, mock.patch.object(
+            build_project.subprocess, "run"
+        ) as run, contextlib.redirect_stderr(output):
+            code = build_project.build_executable("gui")
+        self.assertEqual(code, 2)
+        run.assert_not_called()
+        clean.assert_not_called()
+        self.assertIn("README.md", output.getvalue())
+
+    def test_missing_inputs_for_the_gui_target(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            cwd = os.getcwd()
+            os.chdir(tmp_dir)
+            try:
+                missing = build_project.missing_inputs("gui", "mhub_gui.py")
+            finally:
+                os.chdir(cwd)
+        for expected in (
+            "mhub_gui.py",
+            "README.md",
+            "app_icon_512.png",
+            "app/webgui/*.py",
+            "app/webgui/pages/*.py",
+        ):
+            with self.subTest(expected=expected):
+                self.assertIn(expected, missing)
+
+    def test_a_complete_checkout_has_every_input(self):
+        cwd = os.getcwd()
+        os.chdir(REPO_ROOT)
+        try:
+            self.assertEqual(build_project.missing_inputs("cli", "mhub.py"), [])
+            self.assertEqual(build_project.missing_inputs("gui", "mhub_gui.py"), [])
+        finally:
+            os.chdir(cwd)
+
+    def test_banner_names_the_interpreter(self):
+        output = io.StringIO()
+        with mock.patch.object(build_project, "clean_previous_builds"), mock.patch.object(
+            build_project.subprocess, "run"
+        ), contextlib.redirect_stdout(output):
+            build_project.build_executable("cli")
+        self.assertIn(sys.executable, output.getvalue())
+
+
+class TestAllTarget(unittest.TestCase):
+    def _run_all(self, side_effect=None):
+        with mock.patch.object(build_project, "clean_previous_builds"), mock.patch.object(
+            build_project.subprocess, "run", side_effect=side_effect
+        ) as run, contextlib.redirect_stdout(io.StringIO()):
+            code = build_project.build_executable("all")
+        return code, [call.args[0] for call in run.call_args_list]
+
+    def test_builds_the_cli_then_the_gui(self):
+        code, argvs = self._run_all()
+        self.assertEqual(code, 0)
+        self.assertEqual(len(argvs), 2)
+        self.assertEqual(
+            [argv[argv.index("--name") + 1] for argv in argvs],
+            [build_project.APP_NAME, build_project.GUI_APP_NAME],
+        )
+        self.assertEqual(argvs[0][-1], build_project.MAIN_SCRIPT)
+        self.assertEqual(argvs[1][-1], build_project.GUI_MAIN_SCRIPT)
+
+    def test_failure_of_either_build_is_reported(self):
+        error = subprocess.CalledProcessError(1, ["PyInstaller"])
+        code, _ = self._run_all(side_effect=[None, error])
+        self.assertEqual(code, 1)
+
+
+class TestMainEntryPoint(unittest.TestCase):
+    def _main(self, argv):
+        output = io.StringIO()
+        with mock.patch.object(
+            build_project, "build_executable", return_value=0
+        ) as build, contextlib.redirect_stdout(output):
+            code = build_project.main(argv)
+        return code, build, output.getvalue()
+
+    def test_defaults_to_the_cli_and_says_so(self):
+        code, build, output = self._main([])
+        self.assertEqual(code, 0)
+        build.assert_called_once_with("cli")
+        self.assertIn("building the CLI only", output)
+        self.assertIn("build_project.py gui", output)
+        self.assertIn("build_project.py all", output)
+
+    def test_an_explicit_target_is_not_nudged(self):
+        _, build, output = self._main(["cli"])
+        build.assert_called_once_with("cli")
+        self.assertNotIn("building the CLI only", output)
+
+    def test_every_choice_is_accepted(self):
+        for target in build_project.TARGET_CHOICES:
+            with self.subTest(target=target):
+                _, build, _ = self._main([target])
+                build.assert_called_once_with(target)
+
+    def test_webgui_is_still_an_alias(self):
+        _, build, _ = self._main(["webgui"])
+        build.assert_called_once_with("gui")
+
+    def test_unknown_target_is_rejected(self):
+        code, build, output = self._main(["nope"])
+        self.assertEqual(code, 2)
+        build.assert_not_called()
+        self.assertIn("Unknown target 'nope'", output)
+        self.assertIn("cli, gui, all", output)
+
+    def test_help_is_available(self):
+        for flag in ("-h", "--help"):
+            with self.subTest(flag=flag):
+                code, build, output = self._main([flag])
+                self.assertEqual(code, 0)
+                build.assert_not_called()
+                self.assertIn("Targets:", output)
+                self.assertIn("python build_project.py all", output)
+
+    def test_defaults_to_sys_argv(self):
+        with mock.patch.object(
+            build_project, "build_executable", return_value=0
+        ) as build, mock.patch.object(sys, "argv", ["build_project.py", "gui"]):
+            build_project.main()
+        build.assert_called_once_with("gui")
 
 
 if __name__ == "__main__":

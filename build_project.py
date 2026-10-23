@@ -1,7 +1,9 @@
+import importlib.util
 import os
 import shutil
 import subprocess
 import sys
+from pathlib import Path
 
 # --- Configuration ---
 MAIN_SCRIPT = "mhub.py"
@@ -22,6 +24,38 @@ TARGETS = {
     "cli": (MAIN_SCRIPT, APP_NAME),
     "gui": (GUI_MAIN_SCRIPT, GUI_APP_NAME),
 }
+
+# Pseudo-target that builds every entry in TARGETS, in this order.
+ALL_TARGET = "all"
+BUILD_ORDER = ("cli", "gui")
+TARGET_CHOICES = (*BUILD_ORDER, ALL_TARGET)
+
+# Files the GUI target bundles; a partial checkout must fail with their names
+# rather than PyInstaller's "Unable to find ... when adding binary and data
+# files". Globs are checked for at least one match.
+GUI_INPUT_FILES = ("README.md", "app_icon_512.png")
+GUI_INPUT_GLOBS = ("app/webgui/*.py", "app/webgui/pages/*.py")
+
+USAGE = """\
+Build the MonitorHub executables with PyInstaller.
+
+Usage:
+    python build_project.py [target]
+
+Targets:
+    cli     the command-line binary (mhub / mhub.exe) - the default
+    gui     the web GUI binary (mhub-gui / mhub-gui.exe), which also
+            carries the whole CLI
+    all     both, in the order above
+
+Examples:
+    python build_project.py            # cli only
+    python build_project.py gui        # the web GUI
+    python build_project.py all        # both
+
+PyInstaller must be installed for the interpreter that runs this script
+(python -m pip install -r requirements.txt).
+"""
 
 # Accepted spellings of a target name (the GUI was called "webgui" before the
 # binary was renamed to mhub-gui).
@@ -86,6 +120,48 @@ GUI_BUILD_OPTIONS = [
     f"--add-data={_data_spec('app_icon_512.png', '.')}",
 ]
 
+
+def missing_inputs(target: str, main_script: str) -> list[str]:
+    """Return the files ``target`` needs that are absent from the checkout.
+
+    Checked before PyInstaller runs, so a partial copy names the missing file
+    instead of dying inside PyInstaller with "Unable to find ... when adding
+    binary and data files".
+    """
+    missing = [] if Path(main_script).is_file() else [main_script]
+    if target != "gui":
+        return missing
+
+    for name in GUI_INPUT_FILES:
+        if not Path(name).is_file():
+            missing.append(name)
+    for pattern in GUI_INPUT_GLOBS:
+        if not list(Path().glob(pattern)):
+            missing.append(pattern)
+    return missing
+
+
+def pyinstaller_problem() -> str | None:
+    """Return an actionable message when PyInstaller is not available.
+
+    The build runs PyInstaller through ``sys.executable``, so it must be
+    installed for *that* interpreter. A ``pip install`` that targeted a
+    different Python (a bare ``pip`` without the virtualenv active) leaves the
+    venv without it, which used to surface as a bare
+    "No module named PyInstaller" after a misleading "build failed" message.
+    """
+    try:
+        available = importlib.util.find_spec("PyInstaller") is not None
+    except (ImportError, ValueError):
+        available = False
+    if available:
+        return None
+    return (
+        f"PyInstaller is not installed for {sys.executable}.\n"
+        "Install the build dependencies with the same interpreter:\n"
+        "    python -m pip install -r requirements.txt"
+    )
+
 def clean_previous_builds(target: str = "cli"):
     """Remove this target's previous build output.
 
@@ -105,12 +181,28 @@ def clean_previous_builds(target: str = "cli"):
         else:
             os.remove(path)
 
-def build_executable(target: str = "cli"):
-    """Build the ``cli`` (default) or ``gui`` executable."""
-    target = resolve_target(target)
+def build_target(target: str) -> int:
+    """Build one target; return 0 on success, non-zero on failure."""
     main_script, output_name = TARGETS[target]
 
-    print(f"--- Preparing build for {output_name} (target: {target}) ---")
+    missing = missing_inputs(target, main_script)
+    if missing:
+        print(
+            f"ERROR: cannot build {output_name}: missing {', '.join(missing)}.\n"
+            "Build from a complete checkout of the repository.",
+            file=sys.stderr,
+        )
+        return 2
+
+    problem = pyinstaller_problem()
+    if problem:
+        print(f"ERROR: {problem}", file=sys.stderr)
+        return 2
+
+    print(
+        f"--- Preparing build for {output_name} (target: {target}) "
+        f"with {sys.executable} ---"
+    )
     clean_previous_builds(target)
 
     # Base PyInstaller command
@@ -152,14 +244,49 @@ def build_executable(target: str = "cli"):
         print(f"\nSUCCESS: {output_name} created in /{DIST_DIR}")
     except subprocess.CalledProcessError:
         print("\nERROR: PyInstaller build failed.")
+        return 1
+    return 0
+
+
+def build_executable(target: str = "cli") -> int:
+    """Build the ``cli`` (default), ``gui`` or ``all`` target(s).
+
+    Returns the worst exit code of the builds that ran, so a failed build also
+    fails the caller - CI used to carry on regardless.
+    """
+    target = resolve_target(target)
+    if target == ALL_TARGET:
+        results = [build_target(name) for name in BUILD_ORDER]
+        return max(results)
+    return build_target(target)
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Build the requested target (default ``cli``); return the exit code."""
+    argv = sys.argv[1:] if argv is None else list(argv)
+    if argv and argv[0] in ("-h", "--help"):
+        print(USAGE)
+        return 0
+
+    requested = argv[0] if argv else "cli"
+    target = resolve_target(requested)
+
+    if target not in TARGET_CHOICES:
+        print(
+            f"Unknown target '{requested}'. "
+            f"Choose from: {', '.join(TARGET_CHOICES)}."
+        )
+        return 2
+
+    if not argv:
+        print(
+            "No target given: building the CLI only.\n"
+            "For the web GUI use 'python build_project.py gui', "
+            "or 'python build_project.py all' for both."
+        )
+
+    return build_executable(target)
+
 
 if __name__ == "__main__":
-    # Optional target argument: `python build_project.py [cli|gui]`.
-    requested_target = resolve_target(sys.argv[1] if len(sys.argv) > 1 else "cli")
-    if requested_target not in TARGETS:
-        print(
-            f"Unknown target '{requested_target}'. "
-            f"Choose from: {', '.join(TARGETS)}."
-        )
-        sys.exit(2)
-    build_executable(requested_target)
+    sys.exit(main())
