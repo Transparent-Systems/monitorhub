@@ -54,6 +54,22 @@ GUI_BUILD_OPTIONS = [
     # streamlit/version.py reads importlib.metadata at import time, and
     # starlette_server.py reports the uvicorn/websockets versions.
     "--collect-all=streamlit",
+    # ...but the test-support code is not needed at runtime, and it is the only
+    # route to pytest and pygments in the bundle:
+    #   * streamlit.testing is Streamlit's own AppTest harness (our AppTest
+    #     tests run in the dev environment, never inside the frozen binary);
+    #   * pandas._testing imports pytest lazily, inside two helper functions
+    #     the GUI never calls (`import pandas` works with pytest blocked);
+    #   * pytest's terminal writer imports pygments;
+    #   * pyarrow.conftest is a pytest fixture module - the pyarrow hook filters
+    #     out pyarrow.tests but not this file.
+    # An excluded module is not analysed, so its imports disappear with it, and
+    # this wins over --collect-all's hidden imports. Together these drop ~430
+    # modules (pygments alone is 5.4 MB of source).
+    "--exclude-module=streamlit.testing",
+    "--exclude-module=pytest",
+    "--exclude-module=pygments",
+    "--exclude-module=pyarrow.conftest",
     "--copy-metadata=streamlit",
     "--copy-metadata=uvicorn",
     "--copy-metadata=websockets",

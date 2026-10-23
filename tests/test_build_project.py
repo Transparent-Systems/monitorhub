@@ -142,6 +142,19 @@ class TestGuiBuildCommand(unittest.TestCase):
     def test_collects_application_submodules_imported_only_by_pages(self):
         self.assertIn("--collect-submodules=app", self._argv())
 
+    def test_excludes_the_test_support_code(self):
+        # The GUI never runs a test suite, so the pytest/pygments stack
+        # (~430 modules) must not be bundled.
+        argv = self._argv()
+        for module in (
+            "streamlit.testing",
+            "pytest",
+            "pygments",
+            "pyarrow.conftest",
+        ):
+            with self.subTest(module=module):
+                self.assertIn(f"--exclude-module={module}", argv)
+
     def test_ships_the_pages_and_read_only_resources_as_data(self):
         argv = self._argv()
         separator = os.pathsep

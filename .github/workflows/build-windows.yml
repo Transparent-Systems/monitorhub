@@ -17,15 +17,19 @@ jobs:
           python-version: '3.12'
       - name: Install dependencies
         run: python -m pip install -r requirements.txt
-      - name: Build exe
-        run: python build_project.py
-      - name: Generate SHA256 checksum
+      - name: Build CLI exe
+        run: python build_project.py cli
+      - name: Build GUI exe (Streamlit)
+        run: python build_project.py gui
+      - name: Generate SHA256 checksums
         shell: pwsh
         run: |
-          $hash = (Get-FileHash dist/mhub.exe -Algorithm SHA256).Hash.ToLower()
-          "$hash  mhub.exe" | Out-File -Encoding ASCII dist/mhub.exe.sha256
-      # conf/ is development-only. The production exe ships alone: without a
-      # conf/config.yaml it defaults its database to <exe>/data and creates a
+          foreach ($name in 'mhub', 'mhub-gui') {
+            $hash = (Get-FileHash "dist/$name.exe" -Algorithm SHA256).Hash.ToLower()
+            "$hash  $name.exe" | Out-File -Encoding ASCII "dist/$name.exe.sha256"
+          }
+      # conf/ is development-only. The production exes ship alone: without a
+      # conf/config.yaml they default the database to <exe>/data and create a
       # default conf/log.yaml + <exe>/logs on first run.
       - name: Upload artifact
         uses: actions/upload-artifact@v5
@@ -34,6 +38,8 @@ jobs:
           path: |
             dist/mhub.exe
             dist/mhub.exe.sha256
+            dist/mhub-gui.exe
+            dist/mhub-gui.exe.sha256
       - name: Attach to GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
@@ -41,4 +47,6 @@ jobs:
           files: |
             dist/mhub.exe
             dist/mhub.exe.sha256
+            dist/mhub-gui.exe
+            dist/mhub-gui.exe.sha256
 
