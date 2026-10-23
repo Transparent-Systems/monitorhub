@@ -2,7 +2,7 @@
 
 - [ ] **Update Change Notes**: Ensure `CHANGELOG.md` is updated with the new version number, date, and a summary of changes.
 - [ ] **Update Release Log**: Verify that any internal release logs or documentation sites are updated to reflect the new version.
-- [ ] **Check dependencies**: Verify that `requirements.txt` is up to date with `pyproject.toml` (regenerate with `uv pip compile pyproject.toml -o requirements.txt`).
+- [ ] **Check dependencies**: Verify that `requirements.txt` is up to date with `pyproject.toml` (regenerate with `uv pip compile pyproject.toml --universal -o requirements.txt`; `--universal` keeps the platform-specific entries such as PyInstaller's `pefile` on Windows and `macholib` on macOS).
 - [ ] **Run Tests**: Execute `.venv/bin/python mhub.py config test` to ensure the environment and configuration are valid.
 - [ ] **Build Executable on Linux** (optional - the tag push below builds it in CI): Run PyInstaller to generate the latest `monitorhub` binary.
         Command: .venv/bin/python build_project.py

@@ -30,6 +30,12 @@ ALL_TARGET = "all"
 BUILD_ORDER = ("cli", "gui")
 TARGET_CHOICES = (*BUILD_ORDER, ALL_TARGET)
 
+# PyInstaller bundle layout. onefile packs everything into a single executable
+# that extracts itself on every start (slow on Windows); onedir ships a folder
+# whose executable starts immediately.
+DEFAULT_LAYOUT = "onefile"
+LAYOUTS = ("onefile", "onedir")
+
 # Files the GUI target bundles; a partial checkout must fail with their names
 # rather than PyInstaller's "Unable to find ... when adding binary and data
 # files". Globs are checked for at least one match.
@@ -40,7 +46,7 @@ USAGE = """\
 Build the MonitorHub executables with PyInstaller.
 
 Usage:
-    python build_project.py [target]
+    python build_project.py [target] [--layout onefile|onedir]
 
 Targets:
     cli     the command-line binary (mhub / mhub.exe) - the default
@@ -48,10 +54,16 @@ Targets:
             carries the whole CLI
     all     both, in the order above
 
+Layout:
+    onefile  one executable that unpacks itself on every start (default)
+    onedir   a folder whose executable starts immediately, at the cost of
+             shipping the folder as a whole
+
 Examples:
-    python build_project.py            # cli only
-    python build_project.py gui        # the web GUI
-    python build_project.py all        # both
+    python build_project.py                    # cli, onefile
+    python build_project.py gui                # the web GUI, onefile
+    python build_project.py gui --layout onedir
+    python build_project.py all                # both, onefile
 
 PyInstaller must be installed for the interpreter that runs this script
 (python -m pip install -r requirements.txt).
@@ -162,6 +174,18 @@ def pyinstaller_problem() -> str | None:
         "    python -m pip install -r requirements.txt"
     )
 
+def output_path(target: str, layout: str = DEFAULT_LAYOUT) -> str:
+    """Path of the built executable, relative to the repository root.
+
+    ``dist/mhub`` for a onefile build, ``dist/mhub-gui/mhub-gui`` for onedir.
+    """
+    _, output_name = TARGETS[target]
+    exe_name = f"{output_name}.exe" if sys.platform == "win32" else output_name
+    if layout == "onedir":
+        return os.path.join(DIST_DIR, output_name, exe_name)
+    return os.path.join(DIST_DIR, exe_name)
+
+
 def clean_previous_builds(target: str = "cli"):
     """Remove this target's previous build output.
 
@@ -172,7 +196,11 @@ def clean_previous_builds(target: str = "cli"):
     """
     _, output_name = TARGETS[target]
     exe_name = f"{output_name}.exe" if sys.platform == "win32" else output_name
-    for path in (os.path.join("build", output_name), os.path.join(DIST_DIR, exe_name)):
+    for path in (
+        os.path.join("build", output_name),
+        os.path.join(DIST_DIR, exe_name),  # onefile artifact
+        os.path.join(DIST_DIR, output_name),  # onedir folder
+    ):
         if not os.path.exists(path):
             continue
         print(f"Cleaning {path}...")
@@ -181,7 +209,7 @@ def clean_previous_builds(target: str = "cli"):
         else:
             os.remove(path)
 
-def build_target(target: str) -> int:
+def build_target(target: str, layout: str = DEFAULT_LAYOUT) -> int:
     """Build one target; return 0 on success, non-zero on failure."""
     main_script, output_name = TARGETS[target]
 
@@ -200,8 +228,8 @@ def build_target(target: str) -> int:
         return 2
 
     print(
-        f"--- Preparing build for {output_name} (target: {target}) "
-        f"with {sys.executable} ---"
+        f"--- Preparing build for {output_name} (target: {target}, "
+        f"layout: {layout}) with {sys.executable} ---"
     )
     clean_previous_builds(target)
 
@@ -212,8 +240,16 @@ def build_target(target: str) -> int:
     # different interpreter. PyInstaller embeds the interpreter that runs it, so
     # using ``sys.executable`` guarantees the frozen binary bundles the project
     # interpreter (the one reported by ``mhub config python``).
-    # --onefile: Bundles everything into one executable
-    build_cmd = [sys.executable, "-m", "PyInstaller", "--onefile", "--name", output_name]
+    # --onefile: one self-extracting executable
+    # --onedir:  a folder; the executable starts without unpacking
+    build_cmd = [
+        sys.executable,
+        "-m",
+        "PyInstaller",
+        f"--{layout}",
+        "--name",
+        output_name,
+    ]
 
     # Ensure the monitor-runner module is packaged inside the binary.
     # mhub.py / mhub_gui.py import app.monitor.run_monitor inside their
@@ -241,14 +277,14 @@ def build_target(target: str) -> int:
 
     try:
         subprocess.run(build_cmd, check=True)
-        print(f"\nSUCCESS: {output_name} created in /{DIST_DIR}")
+        print(f"\nSUCCESS: {output_path(target, layout)} created")
     except subprocess.CalledProcessError:
         print("\nERROR: PyInstaller build failed.")
         return 1
     return 0
 
 
-def build_executable(target: str = "cli") -> int:
+def build_executable(target: str = "cli", layout: str = DEFAULT_LAYOUT) -> int:
     """Build the ``cli`` (default), ``gui`` or ``all`` target(s).
 
     Returns the worst exit code of the builds that ran, so a failed build also
@@ -256,9 +292,38 @@ def build_executable(target: str = "cli") -> int:
     """
     target = resolve_target(target)
     if target == ALL_TARGET:
-        results = [build_target(name) for name in BUILD_ORDER]
+        results = [build_target(name, layout) for name in BUILD_ORDER]
         return max(results)
-    return build_target(target)
+    return build_target(target, layout)
+
+
+def parse_args(argv: list[str]) -> tuple[str, str]:
+    """Return the (target, layout) named on the command line.
+
+    Hand-rolled rather than argparse so the module keeps working on a bare
+    interpreter (it is the only thing that can tell you PyInstaller is missing).
+    """
+    target: str | None = None
+    layout = DEFAULT_LAYOUT
+    rest = list(argv)
+    while rest:
+        token = rest.pop(0)
+        if token == "--layout":
+            if not rest:
+                raise ValueError("--layout needs a value")
+            layout = rest.pop(0)
+        elif token.startswith("--layout="):
+            layout = token.split("=", 1)[1]
+        elif target is None:
+            target = token
+        else:
+            raise ValueError(f"unexpected argument '{token}'")
+
+    if layout not in LAYOUTS:
+        raise ValueError(
+            f"unknown layout '{layout}'. Choose from: {', '.join(LAYOUTS)}."
+        )
+    return (target or "cli"), layout
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -268,9 +333,13 @@ def main(argv: list[str] | None = None) -> int:
         print(USAGE)
         return 0
 
-    requested = argv[0] if argv else "cli"
-    target = resolve_target(requested)
+    try:
+        requested, layout = parse_args(argv)
+    except ValueError as error:
+        print(f"ERROR: {error}")
+        return 2
 
+    target = resolve_target(requested)
     if target not in TARGET_CHOICES:
         print(
             f"Unknown target '{requested}'. "
@@ -285,7 +354,7 @@ def main(argv: list[str] | None = None) -> int:
             "or 'python build_project.py all' for both."
         )
 
-    return build_executable(target)
+    return build_executable(target, layout)
 
 
 if __name__ == "__main__":

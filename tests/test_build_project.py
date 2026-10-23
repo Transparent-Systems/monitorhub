@@ -292,6 +292,26 @@ class TestCleanPreviousBuilds(unittest.TestCase):
             finally:
                 os.chdir(cwd)
 
+    def test_removes_a_previous_onedir_folder(self):
+        # An onedir build writes dist/<name>/ instead of dist/<name>.
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            cwd = os.getcwd()
+            os.chdir(tmp_dir)
+            try:
+                os.makedirs(
+                    os.path.join(
+                        build_project.DIST_DIR, build_project.GUI_APP_NAME, "_internal"
+                    )
+                )
+                build_project.clean_previous_builds("gui")
+                self.assertFalse(
+                    os.path.exists(
+                        os.path.join(build_project.DIST_DIR, build_project.GUI_APP_NAME)
+                    )
+                )
+            finally:
+                os.chdir(cwd)
+
     def test_defaults_to_the_cli_target(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             cwd = os.getcwd()
@@ -400,6 +420,92 @@ class TestPreflight(unittest.TestCase):
         self.assertIn(sys.executable, output.getvalue())
 
 
+class TestLayout(unittest.TestCase):
+    """``--layout`` selects the PyInstaller bundle layout."""
+
+    @staticmethod
+    def _exe(name: str) -> str:
+        return f"{name}.exe" if sys.platform == "win32" else name
+
+    def _argv(self, target: str, layout: str) -> list[str]:
+        with mock.patch.object(build_project, "clean_previous_builds"), mock.patch.object(
+            build_project.subprocess, "run"
+        ) as run, contextlib.redirect_stdout(io.StringIO()):
+            code = build_project.build_executable(target, layout)
+        self.assertEqual(code, 0)
+        return run.call_args.args[0]
+
+    def test_onefile_is_the_default(self):
+        argv = self._argv("gui", build_project.DEFAULT_LAYOUT)
+        self.assertIn("--onefile", argv)
+        self.assertNotIn("--onedir", argv)
+
+    def test_onedir_builds_a_folder(self):
+        argv = self._argv("gui", "onedir")
+        self.assertIn("--onedir", argv)
+        self.assertNotIn("--onefile", argv)
+
+    def test_all_honours_the_layout(self):
+        with mock.patch.object(build_project, "clean_previous_builds"), mock.patch.object(
+            build_project.subprocess, "run"
+        ) as run, contextlib.redirect_stdout(io.StringIO()):
+            build_project.build_executable("all", "onedir")
+        self.assertEqual(len(run.call_args_list), 2)
+        for call in run.call_args_list:
+            self.assertIn("--onedir", call.args[0])
+
+    def test_output_path_onefile(self):
+        self.assertEqual(
+            build_project.output_path("cli"),
+            os.path.join(build_project.DIST_DIR, self._exe(build_project.APP_NAME)),
+        )
+
+    def test_output_path_onedir(self):
+        self.assertEqual(
+            build_project.output_path("gui", "onedir"),
+            os.path.join(
+                build_project.DIST_DIR,
+                build_project.GUI_APP_NAME,
+                self._exe(build_project.GUI_APP_NAME),
+            ),
+        )
+
+    def test_parse_args_defaults(self):
+        self.assertEqual(build_project.parse_args([]), ("cli", "onefile"))
+        self.assertEqual(build_project.parse_args(["gui"]), ("gui", "onefile"))
+
+    def test_parse_args_accepts_both_layout_forms(self):
+        self.assertEqual(
+            build_project.parse_args(["gui", "--layout", "onedir"]), ("gui", "onedir")
+        )
+        self.assertEqual(
+            build_project.parse_args(["--layout=onedir", "all"]), ("all", "onedir")
+        )
+
+    def test_parse_args_rejects_bad_input(self):
+        for argv in (["gui", "--layout"], ["gui", "--layout", "nope"], ["gui", "cli"]):
+            with self.subTest(argv=argv), self.assertRaises(ValueError):
+                build_project.parse_args(argv)
+
+    def test_main_passes_the_layout_through(self):
+        with mock.patch.object(
+            build_project, "build_executable", return_value=0
+        ) as build:
+            code = build_project.main(["gui", "--layout", "onedir"])
+        self.assertEqual(code, 0)
+        build.assert_called_once_with("gui", "onedir")
+
+    def test_main_rejects_an_unknown_layout(self):
+        output = io.StringIO()
+        with mock.patch.object(
+            build_project, "build_executable"
+        ) as build, contextlib.redirect_stdout(output):
+            code = build_project.main(["gui", "--layout", "nope"])
+        self.assertEqual(code, 2)
+        build.assert_not_called()
+        self.assertIn("unknown layout", output.getvalue())
+
+
 class TestAllTarget(unittest.TestCase):
     def _run_all(self, side_effect=None):
         with mock.patch.object(build_project, "clean_previous_builds"), mock.patch.object(
@@ -437,25 +543,25 @@ class TestMainEntryPoint(unittest.TestCase):
     def test_defaults_to_the_cli_and_says_so(self):
         code, build, output = self._main([])
         self.assertEqual(code, 0)
-        build.assert_called_once_with("cli")
+        build.assert_called_once_with("cli", "onefile")
         self.assertIn("building the CLI only", output)
         self.assertIn("build_project.py gui", output)
         self.assertIn("build_project.py all", output)
 
     def test_an_explicit_target_is_not_nudged(self):
         _, build, output = self._main(["cli"])
-        build.assert_called_once_with("cli")
+        build.assert_called_once_with("cli", "onefile")
         self.assertNotIn("building the CLI only", output)
 
     def test_every_choice_is_accepted(self):
         for target in build_project.TARGET_CHOICES:
             with self.subTest(target=target):
                 _, build, _ = self._main([target])
-                build.assert_called_once_with(target)
+                build.assert_called_once_with(target, "onefile")
 
     def test_webgui_is_still_an_alias(self):
         _, build, _ = self._main(["webgui"])
-        build.assert_called_once_with("gui")
+        build.assert_called_once_with("gui", "onefile")
 
     def test_unknown_target_is_rejected(self):
         code, build, output = self._main(["nope"])
@@ -478,7 +584,7 @@ class TestMainEntryPoint(unittest.TestCase):
             build_project, "build_executable", return_value=0
         ) as build, mock.patch.object(sys, "argv", ["build_project.py", "gui"]):
             build_project.main()
-        build.assert_called_once_with("gui")
+        build.assert_called_once_with("gui", "onefile")
 
 
 if __name__ == "__main__":

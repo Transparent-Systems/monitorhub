@@ -46,6 +46,7 @@ from app.utils.monitor_config import build_monitor_config
 from app.utils.project_paths import project_conf
 from app.utils.sqlite_handler import SQLiteHandler
 from app.webgui.database import database_ready
+from app.webgui.messages import start_result_message
 
 # Mirrors MonitorCommands.STOP_GRACE_SECONDS so a web-initiated stop behaves
 # identically to the CLI: graceful shutdown first, then SIGTERM/SIGKILL
@@ -56,7 +57,12 @@ STOP_GRACE_SECONDS = 15
 # set its status to "running" before re-rendering the page. The child boots
 # (imports boto3/watchdog, opens the database) before writing the status, so an
 # immediate re-read would show the stale "stopped" state.
-START_WAIT_SECONDS = 5
+#
+# The wait ends as soon as the child reports "running" (or dies), so a generous
+# ceiling costs nothing on a fast machine - it only bounds how long a *hung*
+# child keeps the page waiting. It has to cover a onefile child unpacking the
+# whole bundle before it can run: about 10 s on a Windows VM.
+START_WAIT_SECONDS = 30
 
 # How long a freshly-launched monitor must stay alive after reporting "running"
 # before the start is treated as successful. The child writes "running" before
@@ -681,26 +687,27 @@ def _render_actions(
                 monitor_id = monitor.get("id", 0)
                 monitor_name = monitor.get("name", "N/A")
                 message, ok = _start_monitor(sqlite_handler, process_manager, monitor)
+                kind = "success" if ok else "error"
                 if ok:
                     # Wait for the child process to report 'running' and stay
                     # alive before reporting a successful start.
                     with st.spinner("Starting monitor…"):
-                        _wait_for_running(
+                        settled = _wait_for_running(
                             sqlite_handler, process_manager, monitor_id
                         )
                     latest = sqlite_handler.get_monitor(monitor_id=monitor_id)
-                    if not _is_monitor_process_alive(
+                    alive = _is_monitor_process_alive(
                         process_manager, monitor_id, latest
-                    ):
+                    )
+                    if not alive:
                         _clear_stale_monitor_state(
                             sqlite_handler, process_manager, monitor_id
                         )
-                        message = (
-                            f"Monitor '{monitor_name}' (id={monitor_id}) exited "
-                            f"during startup. See logs/monitor_{monitor_id}.log."
-                        )
-                        ok = False
-                st.session_state["flash"] = ("success" if ok else "error", message)
+                    kind, message = start_result_message(
+                        monitor_name, monitor_id, alive=alive, settled=settled
+                    )
+                    ok = alive
+                st.session_state["flash"] = (kind, message)
                 st.rerun()
     with col2:
         if st.button(
@@ -814,7 +821,7 @@ def main() -> None:
 
     # Global actions: start/stop all monitors (mirrors the CLI's "monitor start"
     # and "monitor stop" with no id/name, which act on every monitor).
-    toolbar_col1, toolbar_col2 = st.columns(2)
+    toolbar_col1, toolbar_col2, toolbar_col3 = st.columns(3)
     with toolbar_col1:
         if st.button("▶ Start All", width="stretch"):
             _close_monitor_blocks()
@@ -839,6 +846,16 @@ def main() -> None:
                 summary, ok = result[0]
                 st.session_state["flash"] = ("success" if ok else "warning", summary)
             st.rerun()
+    with toolbar_col3:
+        # The click itself reruns the page, re-reading the database. Monitor
+        # status also changes on its own (scheduled monitors, a monitor that
+        # stops itself, a slow child still booting), so a deliberate refresh is
+        # always useful.
+        st.button(
+            "↻ Refresh",
+            width="stretch",
+            help="Re-read the monitor list and status from the database.",
+        )
 
     filter_col1, filter_col2 = st.columns(2)
     with filter_col1:

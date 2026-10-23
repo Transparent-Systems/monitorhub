@@ -99,6 +99,14 @@ class TestMonitorsPageActions(unittest.TestCase):
         self.assertNotIn("■ Stop", self._labels(at))
         self.assertFalse(any("stale" in warning for warning in self._warnings(at)))
 
+    def test_toolbar_offers_a_refresh_button(self) -> None:
+        # Monitor status also changes without a click (scheduled monitors, a
+        # child still booting), so the page offers a deliberate refresh instead
+        # of relying on the browser's own reload.
+        self._add_monitor(MONITOR_STATUS_STOPPED, 0)
+        at = self._run_page()
+        self.assertIn("↻ Refresh", self._labels(at))
+
     def test_running_monitor_with_live_pid_offers_stop(self) -> None:
         self._add_monitor(MONITOR_STATUS_RUNNING, os.getpid())
         at = self._run_page()
