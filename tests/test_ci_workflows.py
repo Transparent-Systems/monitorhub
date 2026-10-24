@@ -169,6 +169,33 @@ class TestActionsRunOnNode24(unittest.TestCase):
                     self.assertGreaterEqual(int(major), NODE24_ACTIONS[name])
 
 
+DEPENDABOT = WORKFLOW_DIR.parent / "dependabot.yml"
+
+
+class TestDependabotConfig(unittest.TestCase):
+    """Dependabot keeps the actions current; a typo here disables it silently."""
+
+    def _config(self) -> dict:
+        self.assertTrue(DEPENDABOT.is_file(), DEPENDABOT)
+        return yaml.safe_load(DEPENDABOT.read_text(encoding="utf-8"))
+
+    def test_it_updates_github_actions_on_a_monthly_schedule(self):
+        config = self._config()
+        self.assertEqual(config["version"], 2)
+        updates = config["updates"]
+        self.assertEqual(
+            [update["package-ecosystem"] for update in updates], ["github-actions"]
+        )
+        self.assertEqual(updates[0]["directory"], "/")
+        self.assertEqual(updates[0]["schedule"]["interval"], "monthly")
+
+    def test_it_does_not_manage_the_generated_requirements_file(self):
+        # requirements.txt comes from `uv pip compile --universal`; a pip entry
+        # here would fight the release checklist.
+        ecosystems = {update["package-ecosystem"] for update in self._config()["updates"]}
+        self.assertNotIn("pip", ecosystems)
+
+
 class TestManualRunsCannotPublish(unittest.TestCase):
     """A workflow_dispatch run must not touch a GitHub Release."""
 

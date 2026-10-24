@@ -1,0 +1,24 @@
+# Keep the GitHub Actions used by the build workflows up to date.
+#
+# Dependabot opens a pull request when a newer version of an action is
+# released. The bump still has to pass tests/test_ci_workflows.py, which fails
+# when an action is pinned below a major that declares `runs.using: node24`, so
+# a stale runtime cannot slip back in; `make check-actions` reports the runtime
+# a proposed version declares.
+#
+# Python dependencies are deliberately not managed here: requirements.txt is
+# generated from pyproject.toml with `uv pip compile --universal` (see
+# docs/release-checklist.md), so Dependabot's edits would be overwritten by the
+# next regeneration.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    # One pull request a month covering all actions, instead of one per action.
+    # Drop this block to get per-action pull requests.
+    groups:
+      github-actions:
+        patterns:
+          - "*"
