@@ -46,7 +46,7 @@ jobs:
       # conf/log.yaml + <exe>/logs on first run, and the GUI folder does the same
       # inside its own directory.
       - name: Upload artifact
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: mhub-windows
           path: |
@@ -54,9 +54,13 @@ jobs:
             dist/mhub.exe.sha256
             dist/mhub-gui-${{ env.VERSION }}-windows.zip
             dist/mhub-gui-${{ env.VERSION }}-windows.zip.sha256
+          # The exe and the zip are already compressed, so re-compressing them
+          # only costs CPU. This is the internal workflow artifact; the release
+          # assets users download are unaffected.
+          compression-level: 0
       - name: Attach to GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             dist/mhub.exe

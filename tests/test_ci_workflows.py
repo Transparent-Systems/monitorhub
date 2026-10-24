@@ -123,6 +123,49 @@ class TestVersionedGuiArchive(unittest.TestCase):
         self.assertIn("mhub-gui-$env:VERSION-windows.zip", command)
 
 
+# Every action must declare `runs.using: node24`. The older majors
+# (upload-artifact v5, action-gh-release v2) declare node20, which GitHub
+# removed on 2026-09-23 and now force-migrates to node24 with a deprecation
+# warning. The values are the lowest major known to run on node24: upgrading
+# later is fine, downgrading is not.
+NODE24_ACTIONS = {
+    "actions/checkout": 5,
+    "actions/setup-python": 6,
+    "actions/upload-artifact": 7,
+    "softprops/action-gh-release": 3,
+}
+
+
+def action_refs(workflow_path: Path) -> list[str]:
+    """Return every ``uses:`` reference in a workflow."""
+    return [step["uses"] for step in steps(workflow_path) if "uses" in step]
+
+
+class TestActionsRunOnNode24(unittest.TestCase):
+    """Node 20 was removed from the runners on 2026-09-23."""
+
+    def test_every_action_is_audited(self):
+        for workflow_path in (LINUX, WINDOWS):
+            for ref in action_refs(workflow_path):
+                with self.subTest(action=ref):
+                    self.assertIn(
+                        ref.split("@", 1)[0],
+                        NODE24_ACTIONS,
+                        "action is not in the audited node24 list",
+                    )
+
+    def test_no_action_is_pinned_below_its_node24_major(self):
+        for workflow_path in (LINUX, WINDOWS):
+            for ref in action_refs(workflow_path):
+                name, _, version = ref.partition("@")
+                major = version.lstrip("v").split(".")[0]
+                if not major.isdigit():
+                    # Pinned to a branch or SHA: nothing to compare.
+                    continue
+                with self.subTest(action=ref):
+                    self.assertGreaterEqual(int(major), NODE24_ACTIONS[name])
+
+
 class TestManualRunsCannotPublish(unittest.TestCase):
     """A workflow_dispatch run must not touch a GitHub Release."""
 

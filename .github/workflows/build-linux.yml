@@ -31,7 +31,7 @@ jobs:
       # conf/config.yaml they default the database to <binary>/data and create a
       # default conf/log.yaml + <binary>/logs on first run.
       - name: Upload artifact
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: mhub-linux
           path: |
@@ -41,7 +41,7 @@ jobs:
             dist/mhub-gui.sha256
       - name: Attach to GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             dist/mhub
