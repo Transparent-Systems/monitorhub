@@ -7,7 +7,7 @@ PYTHON := .venv/bin/python
 UNITTEST := $(PYTHON) -m unittest
 RUFF := $(PYTHON) -m ruff
 
-.PHONY: help check-env test test-unit test-integration test-command-action-handler test-commands update-diagrams update-diagram-actionhandler update-diagram-commands lint lint-fix clean
+.PHONY: help check-env check-actions test test-unit test-integration test-command-action-handler test-commands update-diagrams update-diagram-actionhandler update-diagram-commands lint lint-fix clean
 
 help: ## Show available targets
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z_-]+:.*## / {printf "  \033[36m%-28s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -18,6 +18,9 @@ check-env: ## Verify the .venv interpreter is available and print its version
 		echo "  python3 -m venv .venv && .venv/bin/pip install -r requirements.txt"; \
 		exit 1; }
 	@$(PYTHON) -c "import sys; print(f'Using {sys.executable} ({sys.version.split()[0]})')"
+
+check-actions: check-env ## Report the Node runtime every workflow action declares
+	$(PYTHON) utils/check_actions.py
 
 test: test-unit ## Run all unit tests
 
