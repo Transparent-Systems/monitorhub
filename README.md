@@ -39,18 +39,68 @@
 ## How to run MonitorHub
 
   ### Windows
-  Download mhub.exe from GitHub. You can find the mhub.exe file under Releases.
 
-  ```bash
-  Example:
-  mhub.exe monitor new
+  Download one or both files from the
+  [Releases](https://github.com/Transparent-Systems/monitorhub/releases) page:
+
+  | File | What it is |
+  | ---- | ---------- |
+  | `mhub-gui-<version>-windows.zip` | The web GUI **and** the full CLI (recommended) |
+  | `mhub.exe` | The CLI only — smaller, for servers and scripts |
+
+  **Web GUI**: unzip the archive and run the executable inside it:
+
+  ```powershell
+  .\mhub-gui\mhub-gui.exe
   ```
+
+  Your browser opens http://127.0.0.1:8501. Keep the `mhub-gui` folder together:
+  the first run creates `conf\`, `data\` and `logs\` inside it, so keep those
+  subfolders when you upgrade. Streamlit options work as well:
+
+  ```powershell
+  .\mhub-gui\mhub-gui.exe --server.port 9000
+  ```
+
+  The GUI binary also carries the whole CLI, so it is the only download you need:
+
+  ```powershell
+  .\mhub-gui\mhub-gui.exe database init
+  .\mhub-gui\mhub-gui.exe monitor start
+  .\mhub-gui\mhub-gui.exe --help
+  ```
+
+  Windows SmartScreen may warn that the executable is unrecognised because it is
+  not code-signed. Choose **More info → Run anyway**.
+
+  **CLI only**: download `mhub.exe` and run it directly:
+
+  ```powershell
+  .\mhub.exe monitor new
+  ```
+
   ### Linux
-  Download mhub from GitHub. You can find the binary file under Releases.
+
+  Download the binaries you want from the
+  [Releases](https://github.com/Transparent-Systems/monitorhub/releases) page and
+  make them executable (the executable bit is not kept by the download):
 
   ```bash
-  Example:
-  mhub monitor new
+  chmod +x mhub mhub-gui
+  ```
+
+  **CLI**:
+
+  ```bash
+  ./mhub monitor new
+  ```
+
+  **Web GUI** (a single self-contained file that also carries the whole CLI):
+
+  ```bash
+  ./mhub-gui                     # opens http://127.0.0.1:8501
+  ./mhub-gui --server.port 9000
+  ./mhub-gui database init
   ```
 
   ### Running from Source

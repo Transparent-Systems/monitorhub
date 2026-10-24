@@ -1,9 +1,10 @@
 name: Build Windows binary
 
 on:
-  workflow_dispatch:            # manual "run now" — perfect for a quick exe test
+  workflow_dispatch:            # manual run: uploads the workflow artifact only.
+                                # A GitHub Release is only touched by a v* tag push.
   push:
-    tags: ['v*']                # every release tag builds the exe
+    tags: ['v*']                # every release tag builds and publishes the exes
 
 jobs:
   build-windows:
@@ -17,20 +18,33 @@ jobs:
           python-version: '3.12'
       - name: Install dependencies
         run: python -m pip install -r requirements.txt
+      - name: Read the version
+        shell: pwsh
+        run: |
+          $version = python -c "import version; print(version.VERSION_STRING)"
+          "VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
       - name: Build CLI exe
         run: python build_project.py cli
-      - name: Build GUI exe (Streamlit)
-        run: python build_project.py gui
+      - name: Build GUI exe (folder layout)
+        run: python build_project.py gui --layout onedir
+      - name: Package the GUI folder
+        shell: pwsh
+        run: |
+          # -Path <folder> stores the folder itself as the archive root, so
+          # extracting the zip produces a clean mhub-gui/ directory.
+          Compress-Archive -Path dist/mhub-gui `
+            -DestinationPath "dist/mhub-gui-$env:VERSION-windows.zip" -Force
       - name: Generate SHA256 checksums
         shell: pwsh
         run: |
-          foreach ($name in 'mhub', 'mhub-gui') {
-            $hash = (Get-FileHash "dist/$name.exe" -Algorithm SHA256).Hash.ToLower()
-            "$hash  $name.exe" | Out-File -Encoding ASCII "dist/$name.exe.sha256"
+          foreach ($name in 'mhub.exe', "mhub-gui-$env:VERSION-windows.zip") {
+            $hash = (Get-FileHash "dist/$name" -Algorithm SHA256).Hash.ToLower()
+            "$hash  $name" | Out-File -Encoding ASCII "dist/$name.sha256"
           }
-      # conf/ is development-only. The production exes ship alone: without a
-      # conf/config.yaml they default the database to <exe>/data and create a
-      # default conf/log.yaml + <exe>/logs on first run.
+      # conf/ is development-only. The production artefacts ship alone: the CLI
+      # exe defaults the database to <exe>/data and creates a default
+      # conf/log.yaml + <exe>/logs on first run, and the GUI folder does the same
+      # inside its own directory.
       - name: Upload artifact
         uses: actions/upload-artifact@v5
         with:
@@ -38,8 +52,8 @@ jobs:
           path: |
             dist/mhub.exe
             dist/mhub.exe.sha256
-            dist/mhub-gui.exe
-            dist/mhub-gui.exe.sha256
+            dist/mhub-gui-${{ env.VERSION }}-windows.zip
+            dist/mhub-gui-${{ env.VERSION }}-windows.zip.sha256
       - name: Attach to GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
@@ -47,6 +61,6 @@ jobs:
           files: |
             dist/mhub.exe
             dist/mhub.exe.sha256
-            dist/mhub-gui.exe
-            dist/mhub-gui.exe.sha256
+            dist/mhub-gui-${{ env.VERSION }}-windows.zip
+            dist/mhub-gui-${{ env.VERSION }}-windows.zip.sha256
 

@@ -1,9 +1,10 @@
 name: Build Linux binary
 
 on:
-  workflow_dispatch:            # manual "run now" — perfect for a quick binary test
+  workflow_dispatch:            # manual run: uploads the workflow artifact only.
+                                # A GitHub Release is only touched by a v* tag push.
   push:
-    tags: ['v*']                # every release tag builds the binary
+    tags: ['v*']                # every release tag builds and publishes the binaries
 
 jobs:
   build-linux:

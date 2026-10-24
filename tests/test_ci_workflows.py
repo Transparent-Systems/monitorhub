@@ -1,8 +1,7 @@
-"""Guard the release workflows: both binaries must be built and published.
+"""Guard the release workflows.
 
-CI is the one place a mistake is expensive and invisible - the GUI binary was
-silently absent from the artifacts because the workflow only ran the default
-build target.
+CI is the one place a mistake is expensive and invisible: the GUI binary was
+once missing from the artifacts, and a manual run must never publish a release.
 """
 
 import unittest
@@ -13,6 +12,11 @@ import yaml
 WORKFLOW_DIR = Path(__file__).resolve().parents[1] / ".github" / "workflows"
 LINUX = WORKFLOW_DIR / "build-linux.yml"
 WINDOWS = WORKFLOW_DIR / "build-windows.yml"
+
+# The GUI ships as a single onefile binary on Linux, and as a versioned zip of
+# the onedir folder on Windows.
+LINUX_GUI = "dist/mhub-gui"
+WINDOWS_GUI_ZIP = "dist/mhub-gui-${{ env.VERSION }}-windows.zip"
 
 
 def steps(workflow_path: Path) -> list[dict]:
@@ -32,53 +36,101 @@ def step_named(workflow_path: Path, name: str) -> dict:
     raise AssertionError(f"no step named {name!r} in {workflow_path.name}")
 
 
+def _entries(value: str) -> list[str]:
+    """Split a workflow path/files block into its entries.
+
+    One entry per line: the entries can contain spaces (``${{ env.VERSION }}``),
+    so splitting on whitespace would tear them apart.
+    """
+    return [line.strip() for line in value.splitlines() if line.strip()]
+
+
 class TestBothTargetsAreBuilt(unittest.TestCase):
-    def test_linux_builds_the_cli_and_the_gui(self):
+    def test_linux_builds_both_targets_as_onefile(self):
         commands = run_commands(LINUX)
         self.assertIn("build_project.py cli", commands)
         self.assertIn("build_project.py gui", commands)
+        # onefile is the default, so Linux names no layout at all.
+        self.assertNotIn("--layout", commands)
 
-    def test_windows_builds_the_cli_and_the_gui(self):
+    def test_windows_builds_the_cli_and_an_onedir_gui(self):
         commands = run_commands(WINDOWS)
         self.assertIn("build_project.py cli", commands)
-        self.assertIn("build_project.py gui", commands)
+        self.assertIn("build_project.py gui --layout onedir", commands)
 
 
 class TestBothBinariesArePublished(unittest.TestCase):
     def _uploaded(self, workflow_path: Path) -> list[str]:
-        upload = step_named(workflow_path, "Upload artifact")
-        return upload["with"]["path"].split()
+        return _entries(step_named(workflow_path, "Upload artifact")["with"]["path"])
 
     def _released(self, workflow_path: Path) -> list[str]:
-        release = step_named(workflow_path, "Attach to GitHub Release")
-        return release["with"]["files"].split()
+        return _entries(
+            step_named(workflow_path, "Attach to GitHub Release")["with"]["files"]
+        )
 
     def test_linux_uploads_and_releases_both_binaries(self):
         for files in (self._uploaded(LINUX), self._released(LINUX)):
-            self.assertIn("dist/mhub", files)
-            self.assertIn("dist/mhub.sha256", files)
-            self.assertIn("dist/mhub-gui", files)
-            self.assertIn("dist/mhub-gui.sha256", files)
+            for expected in (
+                "dist/mhub",
+                "dist/mhub.sha256",
+                LINUX_GUI,
+                f"{LINUX_GUI}.sha256",
+            ):
+                with self.subTest(expected=expected):
+                    self.assertIn(expected, files)
 
-    def test_windows_uploads_and_releases_both_executables(self):
+    def test_windows_uploads_and_releases_the_cli_and_the_gui_zip(self):
         for files in (self._uploaded(WINDOWS), self._released(WINDOWS)):
-            self.assertIn("dist/mhub.exe", files)
-            self.assertIn("dist/mhub.exe.sha256", files)
-            self.assertIn("dist/mhub-gui.exe", files)
-            self.assertIn("dist/mhub-gui.exe.sha256", files)
+            for expected in (
+                "dist/mhub.exe",
+                "dist/mhub.exe.sha256",
+                WINDOWS_GUI_ZIP,
+                f"{WINDOWS_GUI_ZIP}.sha256",
+            ):
+                with self.subTest(expected=expected):
+                    self.assertIn(expected, files)
+
+    def test_windows_never_publishes_a_onefile_gui(self):
+        # The onedir build has no dist/mhub-gui.exe; a stale path would make the
+        # release step publish nothing (or fail).
+        self.assertNotIn("mhub-gui.exe", WINDOWS.read_text(encoding="utf-8"))
 
 
-class TestChecksumsCoverBothBinaries(unittest.TestCase):
+class TestChecksumsCoverBothArtefacts(unittest.TestCase):
     def test_linux_checksums_both_binaries(self):
         command = step_named(LINUX, "Generate SHA256 checksums")["run"]
         self.assertIn("sha256sum mhub > mhub.sha256", command)
         self.assertIn("sha256sum mhub-gui > mhub-gui.sha256", command)
 
-    def test_windows_checksums_both_executables(self):
+    def test_windows_checksums_the_cli_and_the_gui_zip(self):
         command = step_named(WINDOWS, "Generate SHA256 checksums")["run"]
-        self.assertIn("mhub", command)
-        self.assertIn("mhub-gui", command)
-        self.assertIn(".exe.sha256", command)
+        self.assertIn("mhub.exe", command)
+        self.assertIn("mhub-gui-$env:VERSION-windows.zip", command)
+        self.assertIn(".sha256", command)
+
+
+class TestVersionedGuiArchive(unittest.TestCase):
+    def test_the_version_comes_from_version_py(self):
+        command = step_named(WINDOWS, "Read the version")["run"]
+        self.assertIn("version.VERSION_STRING", command)
+        self.assertIn("GITHUB_ENV", command)
+
+    def test_the_gui_folder_is_the_archive_root(self):
+        # -Path <folder> keeps the folder name as the root entry, so extracting
+        # the zip produces a clean mhub-gui/ directory.
+        command = step_named(WINDOWS, "Package the GUI folder")["run"]
+        self.assertIn("Compress-Archive -Path dist/mhub-gui", command)
+        self.assertIn("mhub-gui-$env:VERSION-windows.zip", command)
+
+
+class TestManualRunsCannotPublish(unittest.TestCase):
+    """A workflow_dispatch run must not touch a GitHub Release."""
+
+    def test_release_steps_are_tag_guarded(self):
+        for workflow_path in (LINUX, WINDOWS):
+            with self.subTest(workflow=workflow_path.name):
+                release = step_named(workflow_path, "Attach to GitHub Release")
+                self.assertIn("startsWith(github.ref, 'refs/tags/v')", release["if"])
 
 
 if __name__ == "__main__":

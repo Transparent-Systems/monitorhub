@@ -4,10 +4,12 @@
 - [ ] **Update Release Log**: Verify that any internal release logs or documentation sites are updated to reflect the new version.
 - [ ] **Check dependencies**: Verify that `requirements.txt` is up to date with `pyproject.toml` (regenerate with `uv pip compile pyproject.toml --universal -o requirements.txt`; `--universal` keeps the platform-specific entries such as PyInstaller's `pefile` on Windows and `macholib` on macOS).
 - [ ] **Run Tests**: Execute `.venv/bin/python mhub.py config test` to ensure the environment and configuration are valid.
-- [ ] **Build Executable on Linux** (optional - the tag push below builds it in CI): Run PyInstaller to generate the latest `monitorhub` binary.
-        Command: .venv/bin/python build_project.py
-- [ ] **Build Executable on Windows** (optional - the tag push below builds it in CI): Run PyInstaller to generate the latest `mhub.exe`.
-        Command: .venv/bin/python build_project.py
+- [ ] **Build Executables on Linux** (optional - the tag push below builds them in CI): the CLI and the web GUI, both onefile.
+        Command: `.venv/bin/python build_project.py cli` then `.venv/bin/python build_project.py gui`
+        Artefacts: `dist/mhub`, `dist/mhub-gui`
+- [ ] **Build Executables on Windows** (optional - the tag push below builds them in CI): the CLI as onefile and the web GUI as onedir (a folder, which is fast to start).
+        Command: `.venv/bin/python build_project.py cli` then `.venv/bin/python build_project.py gui --layout onedir`
+        Artefacts: `dist/mhub.exe`, and the `dist/mhub-gui` folder to be zipped as `mhub-gui-<version>-windows.zip`
 - [ ] **Merge the feature branch into main as one squashed commit**:
         - git switch main
         - git pull origin main
