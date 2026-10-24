@@ -123,15 +123,18 @@ class TestVersionedGuiArchive(unittest.TestCase):
         self.assertIn("mhub-gui-$env:VERSION-windows.zip", command)
 
 
-# Every action must declare `runs.using: node24`. The older majors
-# (upload-artifact v5, action-gh-release v2) declare node20, which GitHub
-# removed on 2026-09-23 and now force-migrates to node24 with a deprecation
-# warning. The values are the lowest major known to run on node24: upgrading
-# later is fine, downgrading is not.
+# Every action must declare `runs.using: node24`: Node 20 was removed from the
+# runners on 2026-09-23, so older majors (e.g. upload-artifact v5,
+# action-gh-release v2) are force-migrated to node24 and warn on every run.
+# The values below are the first major of each action that declares node24,
+# read from the action.yml the runner itself reads:
+#   checkout v4 node20 -> v5, setup-python v5 node20 -> v6,
+#   upload-artifact v5 node20 -> v6, action-gh-release v2 node20 -> v3.
+# Upgrading later passes; downgrading (or adding an unaudited action) fails.
 NODE24_ACTIONS = {
     "actions/checkout": 5,
     "actions/setup-python": 6,
-    "actions/upload-artifact": 7,
+    "actions/upload-artifact": 6,
     "softprops/action-gh-release": 3,
 }
 
