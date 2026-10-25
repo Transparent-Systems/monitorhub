@@ -1,12 +1,39 @@
 # Monitor Hub
 
-![AIP logo](https://aip.transparent.co.nz/wp-content/uploads/2025/06/AIP_grey_transparent_background_github-e1750625832556.png)
+![MonitorHub architecture](https://raw.githubusercontent.com/Transparent-Systems/monitorhub/main/docs/assets/images/monitorhub-lego-architecture.jpeg)
+
+**Full documentation: <https://transparent-systems.github.io/monitorhub/>**
+
+## Contents
+
+- [Quick Start](#-quick-start)
+- [How to run MonitorHub](#how-to-run-monitorhub)
+  - [Windows](#windows)
+  - [Linux](#linux)
+  - [Running from Source](#running-from-source)
+- [Database commands](#database-commands)
+- [Profiles: remote and command](#profiles-remote-and-command)
+- [Getting help](#getting-help)
+- [More information about Monitor Hub](#more-information-about-monitor-hub)
+  - [S3Handler](#s3handler)
+  - [Rclone](#rclone)
+  - [S3 via rclone](#s3-via-rclone)
+- [Features](#features)
+- [Shell Command Handler](#shell-command-handler)
+  - [Placeholders](#placeholders)
+  - [Command Safety](#command-safety)
+- [Use cases](#use-cases)
+- [Acknowledgments](#acknowledgments)
+- [License](#license)
+  - [Author](#-author)
 
 ## 🚀 Quick Start
 
-  You can configure MonitorHub with just a few commands
+  Run a command using either CLI mhub or GUI mhub-gui binary.
+  On a server CLI mhub is the prefered option while on a desktop you may prefer GUI mhub-gui.
+  For download instructions see: [How to run MonitorHub](#how-to-run-monitorhub).
 
-  **Initialise the database**:
+  **Initialise the database - once only**:  
   MonitorHub stores its configuration (profiles, monitors, and support tables) in a SQLite database.  
   The database is created explicitly, similar to ``git init``:
 
@@ -14,8 +41,8 @@
   mhub database init
   ```
 
-  Next create one or more profiles. Each profile is linked to one or more monitors.
-  After configuring a monitor you can start it.
+  Create one or more profiles. Each profile is linked to one or more monitors.  
+  Next create a new monitor and start the monitor.
   ```bash
   mhub profile new
   mhub monitor new
@@ -34,29 +61,76 @@
   mhub profile --help
   mhub monitor --help
   ```
-  
 
 ## How to run MonitorHub
 
   ### Windows
-  Download mhub.exe from GitHub. You can find the mhub.exe file under Releases.
 
-  ```bash
-  Example:
-  mhub.exe monitor new
+  Download one or both files from the
+  [Releases](https://github.com/Transparent-Systems/monitorhub/releases) page:
+
+  | File | What it is |
+  | ---- | ---------- |
+  | `mhub-gui-<version>-windows.zip` | The web GUI **and** the full CLI (recommended) |
+  | `mhub.exe` | The CLI only — smaller, for servers and scripts |
+
+  **Web GUI**: unzip the archive and run the executable inside it:
+
+  ```powershell
+  .\mhub-gui\mhub-gui.exe
   ```
+
+  Your browser opens http://127.0.0.1:8501. Keep the `mhub-gui` folder together:
+  the first run creates `conf\`, `data\` and `logs\` inside it, so keep those
+  subfolders when you upgrade. Streamlit options work as well:
+
+  ```powershell
+  .\mhub-gui\mhub-gui.exe --server.port 9000
+  ```
+
+  The GUI binary also carries the whole CLI, so it is the only download you need:
+
+  ```powershell
+  .\mhub-gui\mhub-gui.exe database init
+  .\mhub-gui\mhub-gui.exe monitor start
+  .\mhub-gui\mhub-gui.exe --help
+  ```
+
+  Windows SmartScreen may warn that the executable is unrecognised because it is
+  not code-signed. Choose **More info → Run anyway**.
+
+  **CLI only**: download `mhub.exe` and run it directly:
+
+  ```powershell
+  .\mhub.exe monitor new
+  ```
+
   ### Linux
-  Download mhub from GitHub. You can find the binary file under Releases.
+
+  Download the binaries you want from the
+  [Releases](https://github.com/Transparent-Systems/monitorhub/releases) page and
+  make them executable (the executable bit is not kept by the download):
 
   ```bash
-  Example:
-  mhub monitor new
+  chmod +x mhub mhub-gui
+  ```
+
+  **CLI**:
+
+  ```bash
+  ./mhub monitor new
+  ```
+
+  **Web GUI** (a single self-contained file that also carries the whole CLI):
+
+  ```bash
+  ./mhub-gui                     # opens http://127.0.0.1:8501
+  ./mhub-gui --server.port 9000
+  ./mhub-gui database init
   ```
 
   ### Running from Source
     
-    **Install Python**: Download from [python.org](https://www.python.org/downloads/).
-
     **Install Python**: Download from [python.org](https://www.python.org/downloads/).
     
     **Setup Environment**:
@@ -69,7 +143,8 @@
     pip install -r requirements.txt
     ```
 
-  ### Database commands
+
+## Database commands
 
   **Initialise the database**:
   MonitorHub stores its configuration (profiles, monitors, and support tables) in a SQLite database.  
@@ -124,7 +199,7 @@
   mhub monitor start
   ```
 
-### Profiles: remote and command
+## Profiles: remote and command
   1. A remote profile stores the configuration for a remote storage provider, like S3 cloud storage, FTP, Google Drive or Onedrive.  
     If the remote profile is for an S3 compatable storage provider, then you can use the builtin MonitorHub S3 handler.  
     All storage providers can be handled by Rclone.
@@ -149,7 +224,7 @@
   profile number to add individual profiles one at a time, or press Enter to
   stop (nothing is imported when no profile was selected).
 
-### Getting help
+## Getting help
   Getting help about commands available
   ```bash
   mhub --help
@@ -176,7 +251,7 @@
 ## More information about Monitor Hub
 
 [Website](https://aip.transparent.co.nz) |
-[Documentation](https://aip.transparent.co.nz/monitorhub/) |
+[Documentation](https://transparent-systems.github.io/monitorhub/) |
 
 MonitorHub has monitors and profiles. A monitor is an event consumer and triggers a handler configured in a profile.   At present we have:
 - an instant monitor for file system events
@@ -367,7 +442,7 @@ Example:
 notify-send "Testing command of monitor = {monitor_name}, profile = {profile_name}, event = {event_name}, source path = {src_path}"
 ```
 
-### Safety
+### Command Safety
 
 * By default a command is executed **without a shell** (`shell=False`) to
   avoid shell injection. Enable shell execution (opt-in) to use pipes,
@@ -390,38 +465,6 @@ timer ticks in addition to file system events. For a timer event, the command
 fires once per monitor `interval` (with no cooldown by default).
 
 
-## Why MonitorHub
-
-You can find more information on website [aip.transparent.co.nz/MonitorHub](https://aip.transparent.co.nz/MonitorHub)
-
-Project MonitorHub grew organically over time.
-I wanted the solve the many issues I experienced with common Windows desktop solutions.
-- Very slow to load initially
-- Privacy intrusion
-- Issues with backup handling
-- Not a real backup
-- Vendor lockin
-- Up to 100% CPU usage (what was it doing?)
-- Tool made PC hang if several explorer windows were open
-
-Initially I used `Rclone`, which is the swiss knife of (cloud) file transfer.
-I scheduled an rclone job every few hours and this was just fine for my purposes.  
-Until one day I wanted to upload my security videos to the cloud as well.  
-It was critical to upload those videos instantly and build a simple PowerShell script to do the job.  
-It worked, but it was not scalable. Each time I wanted to monitor another folder I had to copy the script and change the settings.  
-The logging was cumersome as well and I needed to run a separate cleanup job for the log files generated.  
-The main issue was that PowerShell was running on Windows only.  
-
-Now I had the choice to build a separate application for Linux, or build a generic solution for Windows, Linux and Mac OS.  
-To make the application scalable:
-- each monitor needed to be a separate process that could be started or stopped individually
-- a monitor could handle file events, timer events and futue prrof to handle events
-- a pluggable architecture that allowed adding new monitor types and profile types easily
-
-While I was working on the application it gradually became clear to me that on a high level it was a lego box with monitors that consume events and profile handlers that process an event.
-The application is scalable and the architecture is scalable as well.
-For example adding a webhook monitor only requires one new class WebhookMonitor that registers itself with an ActionHandler. ALl the plumbing is already in place. This makes it simple to expand the application.
-
 ## Use cases
 
 Some use cases are:
@@ -441,8 +484,7 @@ Some use cases are:
 ---
 
 ## Acknowledgments
-This project was developed with the assistance of several AI agents, mainly Deepseek V4 Pro and Google Gemini.  
-Later on in the project I used `OpenRouter` which makes it easy to try out different models.
+This project was developed with the assistance of Cline and several AI models like Deepseek and Google Gemini.  
 
 ## License
 This is free software under the terms of the MIT license included in this package.  
@@ -452,4 +494,4 @@ See file: LICENSE
 ### 👤 Author
 John Zoetebier
 
-* Website: [aip.transparent.co.nz](http://aip.transparent.co.nz)
+* Website: [aip.transparent.co.nz/monitorhub](http://aip.transparent.co.nz/monitorhub)

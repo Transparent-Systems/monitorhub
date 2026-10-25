@@ -1,0 +1,10 @@
+# Documentation build dependencies.
+#
+# Kept separate from requirements.txt on purpose: requirements.txt is installed
+# by the release workflows and bundled into the PyInstaller binaries, while these
+# packages are only needed to build the GitHub Pages manual. Install with
+# `make docs-install` (or `uv pip install -r requirements-docs.txt`).
+#
+# mkdocs-material 9.8.x requires Python >= 3.11 and pulls in mkdocs,
+# pymdown-extensions and the Material theme.
+mkdocs-material>=9.8,<10

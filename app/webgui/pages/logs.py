@@ -16,17 +16,22 @@ from pathlib import Path
 # which would shadow the top-level ``app`` package. Add the project root (the
 # folder containing ``app/`` and ``pyproject.toml``) explicitly so ``app.*``
 # imports resolve regardless of how the page is launched.
-_root = Path(__file__).resolve().parent
-while not (_root / "pyproject.toml").exists() and _root.parent != _root:
-    _root = _root.parent
-if str(_root) not in sys.path:
-    sys.path.insert(0, str(_root))
+#
+# Skipped when frozen (PyInstaller): ``app.*`` is served from the bundled
+# archive, and there is no ``pyproject.toml`` to walk up to.
+if not getattr(sys, "frozen", False):
+    _root = Path(__file__).resolve().parent
+    while not (_root / "pyproject.toml").exists() and _root.parent != _root:
+        _root = _root.parent
+    if str(_root) not in sys.path:
+        sys.path.insert(0, str(_root))
 
 import streamlit as st
 
 from app.monitor.monitor_process_manager import monitor_log_path
 from app.utils.app_config import AppConfig
 from app.utils.sqlite_handler import SQLiteHandler
+from app.webgui.database import database_ready
 
 # (label, run_every) pairs; None disables automatic refresh.
 REFRESH_OPTIONS: dict[str, str | None] = {
@@ -129,6 +134,9 @@ def main() -> None:
     st.title("🧾 Monitor Logs")
 
     sqlite_handler = _resources()
+    if not database_ready(sqlite_handler):
+        return
+
     monitors = sqlite_handler.get_monitors()
     if not monitors:
         st.info("No monitors yet — create one on the Monitors page.")

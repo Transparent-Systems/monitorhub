@@ -12,15 +12,21 @@ from pathlib import Path
 # shadow the top-level ``app`` package for the page scripts. Add the project
 # root (the folder containing ``app/`` and ``pyproject.toml``) explicitly so
 # ``app.*`` imports resolve for this page and every page in ``pages/``.
-_root = Path(__file__).resolve().parent
-while not (_root / "pyproject.toml").exists() and _root.parent != _root:
-    _root = _root.parent
-if str(_root) not in sys.path:
-    sys.path.insert(0, str(_root))
+#
+# Skipped when frozen (PyInstaller): ``app.*`` is served from the bundled
+# archive, and there is no ``pyproject.toml`` to walk up to.
+if not getattr(sys, "frozen", False):
+    _root = Path(__file__).resolve().parent
+    while not (_root / "pyproject.toml").exists() and _root.parent != _root:
+        _root = _root.parent
+    if str(_root) not in sys.path:
+        sys.path.insert(0, str(_root))
 
 import streamlit as st
 
-_app_icon_path = _root / "app_icon_512.png"
+from app.utils.project_paths import resource_root
+
+_app_icon_path = resource_root() / "app_icon_512.png"
 _has_app_icon = _app_icon_path.is_file()
 
 st.set_page_config(

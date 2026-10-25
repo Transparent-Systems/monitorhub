@@ -1,5 +1,5 @@
 """
-Version: 1.1.0
+Version: 1.2.0
 
 This script runs integration tests for an instant monitor.
 The script creates and starts and instant monitor. No manual action required.

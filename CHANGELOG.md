@@ -1,5 +1,57 @@
 # Changelog
 
+## [1.2.0] - 2026-10-26
+
+This release is about packaging and documentation: the GUI binary is now a
+single download that also carries the complete CLI, and the manual is published
+as a website.
+
+### GUI and CLI binaries
+
+- The GUI binary is now called `mhub-gui` (previously `mhub-webgui`) and is a
+  superset of the CLI: it dispatches the same commands, so `mhub-gui database
+  init` works exactly like `mhub database init`. One download is enough to
+  manage MonitorHub from the command line or from a browser.
+- The Windows GUI ships as an **onedir** folder in a versioned zip
+  (`mhub-gui-<version>-windows.zip`) instead of a onefile executable. A onefile
+  build of the Streamlit application spends several seconds unpacking itself on
+  every start; the folder starts immediately.
+- The Linux GUI stays a single self-contained file.
+- `build_project.py` gained an `--layout onefile|onedir` option and an `all`
+  target. A failed build now stops immediately with an explanation instead of
+  continuing to the next target.
+
+### Continuous integration
+
+- The GUI artifact is built and published by CI, alongside the CLI.
+- Workflow actions were moved to Node 24 runtimes.
+- `utils/check_actions.py` audits the Node runtime every workflow action
+  declares, so an action that drops Node 24 support fails the build instead of
+  being force-migrated by GitHub.
+- A Dependabot configuration keeps the workflow actions current.
+
+### Documentation
+
+- The manual is published with MkDocs Material to GitHub Pages:
+  <https://transparent-systems.github.io/monitorhub/>
+- The build runs `mkdocs build --strict`, so a link to a page that does not
+  exist fails the build rather than shipping a broken manual.
+- New pages cover installation, the first monitor, remote and command profiles,
+  the CLI, the database, placeholders and the architecture.
+- The README gained a table of contents and links to the published manual.
+
+## [1.1.0] - 2026-10-22
+
+This release introduced the web GUI.
+
+- New Streamlit web GUI (`mhub-gui`) with pages for monitors, profiles, logs and
+  database information, so profiles and monitors can be managed from a browser
+  instead of the terminal.
+- The GUI runs as a local server on port 8501 and opens in the default browser;
+  the CLI remains the primary interface on servers.
+- Additional tests for the web GUI pages, monitor configuration, monitor naming
+  and validation, and the rclone importer.
+
 ## [1.0.0] - 2026-10-10
 
 Initial release of MonitorHub (formerly "FolderMonitor").

@@ -1,5 +1,5 @@
 """
-Version: 1.1.0
+Version: 1.2.0
 
 Test integration script for S3 handler.
 The script iterates over monitors configured in a yaml file.

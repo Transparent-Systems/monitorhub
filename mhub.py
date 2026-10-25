@@ -1,10 +1,11 @@
 """
 Script: mhub.py
-Version: v1.1.0
+Version: v1.2.0
 Author: John Zoetebier
 Description:
     MonitorHub CLI — command-line interface for managing profiles,
-    monitors, configuration, and diagnostics.
+    monitors, configuration, and diagnostics. The 'webgui' subcommand
+    launches the Streamlit web interface (same feature set, browser UI).
 Requirements:
     1) Python (version pinned in .python-version; run 'mhub config python')
     2) Python modules in requirements.txt
@@ -16,6 +17,7 @@ Notes:
 """
 
 import argparse
+import importlib
 import sqlite3
 import sys
 
@@ -160,19 +162,17 @@ def _add_selector_args(
     )
 
 
-def main(argv: list[str] | None = None) -> int:
-    """Run the MonitorHub CLI and return the process exit code."""
-    argv = sys.argv[1:] if argv is None else list(argv)
+def build_parser() -> tuple[argparse.ArgumentParser, dict[str, argparse.ArgumentParser]]:
+    """Build the MonitorHub argument parser.
 
-    # Hidden in-process dispatch used by the frozen PyInstaller binary.
-    # When the binary re-invokes itself to start a monitor child process it
-    # passes `run-monitor` as the first argument. Run the monitor logic
-    # directly (rather than invoking `python app/monitor/run_monitor.py`) so it
-    # works inside the bundled executable.
-    if argv and argv[0] == "run-monitor":
-        from app.monitor.run_monitor import run_monitor_main
-        return run_monitor_main(argv[1:])
+    Returns the parser together with the mapping of top-level command name to
+    its subcommand parser, which is used to print the right help text when no
+    (or an unknown) subcommand is supplied.
 
+    Kept separate from :func:`main` so other entry points - notably the frozen
+    ``mhub-gui`` binary, which runs the CLI in-process - reuse this exact
+    command surface instead of duplicating it.
+    """
     parser = argparse.ArgumentParser(
         description="MonitorHub CLI for managing profiles, monitors, and configuration."
     )
@@ -228,6 +228,9 @@ def main(argv: list[str] | None = None) -> int:
 
     # Version command
     subparsers.add_parser("version", help="Show version")
+
+    # Web GUI command (Streamlit; requires the Streamlit dependency)
+    subparsers.add_parser("webgui", help="Launch the Streamlit web GUI")
 
     # Config command
     config_parser = subparsers.add_parser("config", help="Configuration commands (subcommands: test, python; enter 'config -h' for help)")
@@ -304,7 +307,66 @@ def main(argv: list[str] | None = None) -> int:
         help="Force kill the monitor process immediately instead of graceful shutdown"
     )
 
+    # Map top-level command names to their subcommand parser, used to print the
+    # correct help text when no (or an unknown) subcommand is supplied.
+    command_parsers = {
+        "profile": profile_parser,
+        "monitor": monitor_parser,
+        "database": database_parser,
+        "config": config_parser,
+    }
+
+    return parser, command_parsers
+
+
+def _run_webgui(db_dir: str | None) -> int:
+    """Launch the Streamlit web GUI for the ``webgui`` subcommand.
+
+    The import is dynamic on purpose. A static ``from app.webgui.launcher
+    import main`` makes PyInstaller bundle the whole Streamlit stack (its 23 MB
+    frontend bundle, pandas, pyarrow, altair, ...) into the CLI binary, which
+    has no use for it: the CLI artifact would grow from ~30 MB to ~120 MB.
+
+    The GUI binary (``mhub-gui``) bundles the launcher, so the command works
+    there. The small CLI build reports that the GUI is unavailable instead.
+    """
+    try:
+        launcher = importlib.import_module("app.webgui.launcher")
+    except ImportError:
+        print(
+            "ERROR: the web GUI is not included in this build.\n"
+            "Use the 'mhub-gui' executable, or run the web GUI from a source\n"
+            "checkout with: python mhub.py webgui",
+            file=sys.stderr,
+        )
+        return 1
+    return launcher.main(db_dir=db_dir)
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Run the MonitorHub CLI and return the process exit code."""
+    argv = sys.argv[1:] if argv is None else list(argv)
+
+    # Hidden in-process dispatch used by the frozen PyInstaller binary.
+    # When the binary re-invokes itself to start a monitor child process it
+    # passes `run-monitor` as the first argument. Run the monitor logic
+    # directly (rather than invoking `python app/monitor/run_monitor.py`) so it
+    # works inside the bundled executable.
+    if argv and argv[0] == "run-monitor":
+        from app.monitor.run_monitor import run_monitor_main
+        return run_monitor_main(argv[1:])
+
+    parser, command_parsers = build_parser()
     args = parser.parse_args(argv)
+
+    # `webgui` boots the Streamlit server, which resolves its own configuration,
+    # database and logging. Dispatch it before the logging/database wiring below
+    # so it also works on a machine where the database has not been initialised
+    # yet (the GUI pages report an empty/uninitialised database themselves).
+    # An explicit -d/--db-dir is forwarded so `mhub -d <path> webgui` opens that
+    # database in the GUI.
+    if args.command == "webgui":
+        return _run_webgui(args.db_dir)
 
     # Default the log configuration to the project's conf/ folder so it works
     # from any working directory; an explicit -l/--log value is kept verbatim.
@@ -324,15 +386,6 @@ def main(argv: list[str] | None = None) -> int:
         db_dir = app_config.get_default_db_dir(fallback="data")
     else:
         db_dir = args.db_dir
-
-    # Map top-level command names to their subcommand parser, used to print the
-    # correct help text when no (or an unknown) subcommand is supplied.
-    command_parsers = {
-        "profile": profile_parser,
-        "monitor": monitor_parser,
-        "database": database_parser,
-        "config": config_parser,
-    }
 
     # Handle command line arguments via a data-driven dispatch table.
     if args.command is not None:

@@ -1,0 +1,81 @@
+# MkDocs configuration for the MonitorHub manual, published to GitHub Pages.
+#
+# The documentation source lives in docs/ and is the single source of truth:
+# the site is built from those files on every push to main. See
+# .github/workflows/docs.yml.
+site_name: MonitorHub
+site_description: Lightweight cross-platform file and folder monitor
+# Project Pages site: served from the /monitorhub/ subpath. When a custom
+# domain (CNAME) is configured, change this one line - GitHub redirects the
+# github.io URL to the custom domain, so existing links keep working.
+site_url: https://transparent-systems.github.io/monitorhub/
+repo_url: https://github.com/Transparent-Systems/monitorhub
+edit_uri: edit/main/docs/
+
+docs_dir: docs
+site_dir: site
+
+# Treat warnings as errors. The workflow also runs `mkdocs build --strict`;
+# setting it here means a local build fails on the same problems CI would.
+# The usual cause is an internal link to a page that does not exist.
+strict: true
+
+# Maintainer-only documents that live in docs/ but are not part of the manual.
+exclude_docs: |
+  development_notes.md
+  release-checklist.md
+
+theme:
+  name: material
+  # Browser tab icon. This is the same 512 px icon the web GUI uses as its page
+  # icon, copied from the repository root so the build needs no network access.
+  favicon: assets/images/app_icon_512.png
+  features:
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - content.code.copy
+    - search.suggest
+    - search.highlight
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+
+nav:
+  - Home: index.md
+  - Getting started:
+      - Install on Windows: getting-started/install-windows.md
+      - Install on Linux: getting-started/install-linux.md
+      - Run from source: getting-started/from-source.md
+      - Your first monitor: getting-started/first-monitor.md
+  - Guides:
+      - Remote profiles: guides/remote-profiles.md
+      - Command profiles: guides/command-profiles.md
+  - Reference:
+      - Command-line interface: reference/cli.md
+      - Database: reference/database.md
+      - Placeholders: reference/placeholders.md
+  - Explanation:
+      - Architecture: explanation/architecture.md
+  - Releases:
+      - Changelog: releases/changelog.md

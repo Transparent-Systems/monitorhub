@@ -1,6 +1,6 @@
 """
 Script: run_monitor.py
-Version: v1.1.0
+Version: v1.2.0
 Author: John Zoetebier
 Date: 2026-08-12
     Entry point for a single monitor process.

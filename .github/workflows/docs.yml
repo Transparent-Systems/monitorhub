@@ -1,0 +1,57 @@
+name: Build and deploy documentation
+
+# Prerequisite, done once in the repository settings:
+#   Settings -> Pages -> Source: GitHub Actions
+# Until Pages is enabled this way the first deploy fails with "Get Pages site
+# failed"; the workflow cannot flip that switch by itself.
+on:
+  workflow_dispatch:            # manual run: republish without a docs change.
+  push:
+    branches: ['main']          # only the published branch deploys.
+    paths:
+      - 'docs/**'
+      - 'mkdocs.yml'
+      - 'requirements-docs.txt'
+      - '.github/workflows/docs.yml'
+
+# Least privilege for the whole workflow; the deploy job asks for the two extra
+# permissions GitHub Pages needs.
+permissions:
+  contents: read
+
+# One deployment at a time. cancel-in-progress stays false so a publish that is
+# already running is never interrupted half way.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write               # publish to GitHub Pages
+      id-token: write            # OIDC token the Pages deployment requires
+    environment:
+      name: github-pages         # its URL appears on the run summary
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Install documentation dependencies
+        run: python -m pip install -r requirements-docs.txt
+      # --strict turns warnings into errors: a link to a page that does not
+      # exist fails the build instead of shipping a broken manual. mkdocs.yml
+      # also sets strict: true, so a local build behaves the same way.
+      - name: Build documentation (strict)
+        run: mkdocs build --strict
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          # The artifact name must stay the default 'github-pages': the deploy
+          # step looks for exactly that name.
+          path: site
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

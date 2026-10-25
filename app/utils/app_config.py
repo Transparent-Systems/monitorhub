@@ -9,6 +9,11 @@ from app.utils.project_paths import project_conf
 
 DEFAULT_CONFIG_PATH = project_conf("config.yaml")
 
+# Environment variable that overrides the configured database directory. The
+# web GUI launcher exports this to pass -d/--db-dir on to the Streamlit pages:
+# they run in the same process but resolve their database through this module.
+DB_DIR_ENV_VAR = "MONITORHUB_DB_DIR"
+
 
 class AppConfig:
     """Manages application-level configuration stored in <project root>/conf/config.yaml."""
@@ -61,7 +66,14 @@ class AppConfig:
 
     def get_default_db_dir(self, fallback: str = "data") -> str:
         """
-        Resolves the default database directory from configuration.
+        Resolves the default database directory.
+
+        Precedence:
+
+        1. The ``MONITORHUB_DB_DIR`` environment variable, if set. This is how
+           ``mhub-gui -d/--db-dir`` reaches the web GUI pages.
+        2. The ``default_database`` setting in the configuration file.
+        3. ``fallback``.
 
         Relative paths are resolved against the config's project folder (the
         directory that contains ``conf/``), so the database location is
@@ -80,6 +92,10 @@ class AppConfig:
         Falls back to `fallback` (default "data", resolved against the same
         project folder) if not configured or found.
         """
+        override = os.environ.get(DB_DIR_ENV_VAR)
+        if override:
+            return self._resolve_db_dir(override)
+
         if not self._data:
             return self._resolve_db_dir(fallback)
 
