@@ -206,5 +206,48 @@ class TestManualRunsCannotPublish(unittest.TestCase):
                 self.assertIn("startsWith(github.ref, 'refs/tags/v')", release["if"])
 
 
+class TestReleaseNotesBody(unittest.TestCase):
+    """The release body comes from CHANGELOG.md, so nothing is pasted by hand."""
+
+    BODY_PATH = "dist/release_notes.md"
+
+    def _extract_step(self, workflow_path: Path) -> dict:
+        return step_named(workflow_path, "Extract release notes")
+
+    def test_both_workflows_extract_the_body_from_the_changelog(self):
+        for workflow_path in (LINUX, WINDOWS):
+            with self.subTest(workflow=workflow_path.name):
+                command = self._extract_step(workflow_path)["run"]
+
+                self.assertIn("utils/release_notes.py", command)
+                self.assertIn('--tag "${{ github.ref_name }}"', command)
+                self.assertIn(f"--output {self.BODY_PATH}", command)
+
+    def test_the_extraction_step_is_tag_guarded(self):
+        # A workflow_dispatch run must not fail because no tag exists.
+        for workflow_path in (LINUX, WINDOWS):
+            with self.subTest(workflow=workflow_path.name):
+                step = self._extract_step(workflow_path)
+                self.assertIn("startsWith(github.ref, 'refs/tags/v')", step["if"])
+
+    def test_the_release_step_uses_the_generated_body(self):
+        for workflow_path in (LINUX, WINDOWS):
+            with self.subTest(workflow=workflow_path.name):
+                release = step_named(workflow_path, "Attach to GitHub Release")
+
+                self.assertEqual(release["with"]["body_path"], self.BODY_PATH)
+
+    def test_the_extraction_runs_before_the_release_step(self):
+        # The file must exist when action-gh-release reads body_path.
+        for workflow_path in (LINUX, WINDOWS):
+            with self.subTest(workflow=workflow_path.name):
+                names = [step.get("name") for step in steps(workflow_path)]
+                self.assertLess(
+                    names.index("Extract release notes"),
+                    names.index("Attach to GitHub Release"),
+                )
+
+
+
 if __name__ == "__main__":
     unittest.main()

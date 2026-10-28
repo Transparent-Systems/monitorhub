@@ -39,10 +39,20 @@ jobs:
             dist/mhub.sha256
             dist/mhub-gui
             dist/mhub-gui.sha256
+      # The release body is the matching section of CHANGELOG.md. The script exits
+      # non-zero when the tag, version.py and the changelog disagree, so a
+      # mis-tagged build cannot publish the wrong notes.
+      - name: Extract release notes
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          python utils/release_notes.py \
+            --tag "${{ github.ref_name }}" \
+            --output dist/release_notes.md
       - name: Attach to GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v3
         with:
+          body_path: dist/release_notes.md
           files: |
             dist/mhub
             dist/mhub.sha256

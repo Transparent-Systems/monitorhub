@@ -1,6 +1,6 @@
 # Release Checklist
 
-- [ ] **Update Change Notes**: Ensure `CHANGELOG.md` is updated with the new version number, date, and a summary of changes.
+- [ ] **Update Change Notes**: Ensure `CHANGELOG.md` has a section for the new version in the form `## [<version>] - <date>` (e.g. `## [1.2.0] - 2026-10-26`) followed by a summary of changes. The release workflows extract this section verbatim as the GitHub Release body, and a build fails when the section is missing.
 - [ ] **Update Release Log**: Verify that any internal release logs or documentation sites are updated to reflect the new version.
 - [ ] **Check dependencies**: Verify that `requirements.txt` is up to date with `pyproject.toml` (regenerate with `uv pip compile pyproject.toml --universal -o requirements.txt`; `--universal` keeps the platform-specific entries such as PyInstaller's `pefile` on Windows and `macholib` on macOS).
 - [ ] **Run Tests**: Execute `.venv/bin/python mhub.py config test` to ensure the environment and configuration are valid.
@@ -29,7 +29,11 @@
 - [ ] **Push the tag**: `git push origin <version>`.
         This triggers the "Build Linux binary" and "Build Windows binary" workflows, which build
         the binaries and attach them to the GitHub Release for that tag.
-- [ ] **Create GitHub Release**:
-        - Open the release created by the tag push
-        - Paste the changelog notes
+- [ ] **Check the GitHub Release**:
+        - The tag push creates the release and fills its body from the matching
+          `CHANGELOG.md` section (`utils/release_notes.py`, consumed via `body_path`).
+          There is nothing to paste: if the body looks wrong, fix `CHANGELOG.md`
+          and edit the release.
         - The Windows and Linux executables and their SHA256 checksums are attached by the workflows.
+        - A build fails when the tag, `version.py` and the changelog disagree, so a
+          mis-tagged release cannot publish the wrong notes.
