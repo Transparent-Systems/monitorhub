@@ -32,8 +32,8 @@ MonitorHub while the monitor runs and are shown by `mhub monitor show`.
 
 ## Monitor Types
 
-A monitor consumes events and triggers one or more handlers.
 At present there are several monitor types dependent on what triggers the event.
+
 - instant monitor
     Monitor is triggered by a file or folder event
 - scheduled monitor with sub types
@@ -41,8 +41,24 @@ At present there are several monitor types dependent on what triggers the event.
     - backup monitor
     - restore monitor
 
+MonitorHub can be extended with new monitor types. This requires building a new monitor and registering that monitor type. An example of a new monitor type is a webhook monitor like a GitHub webhook.
 
 ## Instant Monitor
+An instant monitor reacts immediately upon a file system event inside a monitor path.
+Next the monitor dispatches an action to a queue of profile handlers. Each profile handler processes the action according to their configuration.
+
+## Backup Monitor
+A backup monitor is a subtype of a scheduled monitor. A timer event triggers the monitor into action.
+Next the monitor dispatches an action to a queue of profile handlers. Each profile handler processes the action according to their configuration.
+
+For a backup monitor a remote profile uploads a file from the **monitor path to the remote path**.
+
+## Restore Monitor
+A restore monitor is a subtype of a scheduled monitor. A timer event triggers the monitor into action.
+Next the monitor dispatches an action to a queue of profile handlers. Each profile handler processes the action according to their configuration.
+
+For a restore monitor a remote profile downloads a file from the **remote path to the monitor path**.
+
 
 
 
