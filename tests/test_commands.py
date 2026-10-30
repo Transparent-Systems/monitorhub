@@ -287,6 +287,7 @@ class TestCommands(unittest.TestCase):
         self.assertIn("Monitor test completed", mock_prompt.output_text)
 
     def test_monitor_new(self):
+        profile_id = self.database_test_data.sqlite_handler.get_profiles()[0]["id"]
         commands, _ = self._make_commands(
             [
                 "my-monitor",
@@ -294,6 +295,7 @@ class TestCommands(unittest.TestCase):
                 "remote:dest",
                 "1",
                 "",
+                str(profile_id),
                 "",
             ]
         )
@@ -302,9 +304,44 @@ class TestCommands(unittest.TestCase):
         self.assertTrue(monitor)
         self.assertEqual(monitor["monitor_type"], "instant")
         self.assertEqual(monitor["config"].get("exclude_patterns"), [])
+        linked = commands.sqlite_handler.get_profiles_for_monitor(
+            monitor_id=monitor["id"]
+        )
+        self.assertEqual({profile["id"] for profile in linked}, {profile_id})
+
+    def test_monitor_new_requires_a_profile(self):
+        """Entering no profile keeps prompting: a monitor with no profiles
+        would start, find nothing to dispatch to and exit."""
+        profile_id = self.database_test_data.sqlite_handler.get_profiles()[0]["id"]
+        # Inputs: ... type '1' (instant), no exclude patterns, then Enter with
+        # no profile selected (rejected), a profile id, then Enter to stop.
+        commands, mock_prompt = self._make_commands(
+            [
+                "my-monitor",
+                "testdata/source/instant-monitor",
+                "remote:dest",
+                "1",
+                "",
+                "",
+                str(profile_id),
+                "",
+            ]
+        )
+        commands.monitor.new()
+        monitor = commands.sqlite_handler.get_monitor(monitor_name="my-monitor")
+        self.assertTrue(monitor)
+        self.assertIn(
+            "Attach at least one profile: a monitor needs a profile to run.",
+            mock_prompt.output_text,
+        )
+        linked = commands.sqlite_handler.get_profiles_for_monitor(
+            monitor_id=monitor["id"]
+        )
+        self.assertEqual({profile["id"] for profile in linked}, {profile_id})
 
     def test_monitor_new_rejects_missing_monitor_path(self):
         """A missing monitor path is rejected and the prompt asks again."""
+        profile_id = self.database_test_data.sqlite_handler.get_profiles()[0]["id"]
         commands, mock_prompt = self._make_commands(
             [
                 "my-monitor",
@@ -313,6 +350,7 @@ class TestCommands(unittest.TestCase):
                 "remote:dest",
                 "1",
                 "",
+                str(profile_id),
                 "",
             ]
         )
@@ -532,6 +570,51 @@ class TestCommands(unittest.TestCase):
             {profile["id"] for profile in linked},
             {first_profile_id, second_profile_id},
         )
+
+    def test_monitor_edit_requires_a_profile(self):
+        """Deleting the last profile keeps prompting until one remains.
+
+        A monitor with no profiles cannot run, so the edit flow refuses to
+        finish with an empty profile list.
+        """
+        profiles = self.database_test_data.sqlite_handler.get_profiles()
+        only_profile_id = profiles[0]["id"]
+        replacement_id = profiles[1]["id"]
+        monitor_id = self.database_test_data.sqlite_handler.add_monitor(
+            name="edit-last-profile-monitor",
+            monitor_path="/tmp/edit-last-source",
+            remote_path="remote:edit-last-dest",
+            monitor_type="instant",
+            config={"exclude_patterns": []},
+            status="stopped",
+        )
+        self.database_test_data.sqlite_handler.add_monitor_profile_map(
+            monitor_id=monitor_id, profile_id=only_profile_id
+        )
+
+        # Inputs: keep name/path/remote/type, keep exclude patterns, delete the
+        # only profile, then Enter with nothing attached (rejected), a
+        # replacement profile, and Enter to stop.
+        commands, mock_prompt = self._make_commands(
+            [
+                "",
+                "",
+                "",
+                "",
+                "",
+                str(only_profile_id),
+                "",
+                str(replacement_id),
+                "",
+            ]
+        )
+        commands.monitor.edit(monitor_id=monitor_id)
+        self.assertIn(
+            "Attach at least one profile: a monitor needs a profile to run.",
+            mock_prompt.output_text,
+        )
+        linked = commands.sqlite_handler.get_profiles_for_monitor(monitor_id=monitor_id)
+        self.assertEqual({profile["id"] for profile in linked}, {replacement_id})
 
     def test_monitor_delete(self):
         first_id = self.database_test_data.sqlite_handler.get_monitors()[0]["id"]
@@ -1398,6 +1481,31 @@ class TestCommands(unittest.TestCase):
             commands.monitor.start(monitor_id=monitor["id"])
         launch.assert_not_called()
         self.assertIn("does not exist", mock_prompt.output_text)
+
+    def test_monitor_start_rejects_monitor_without_profiles(self):
+        """A monitor with no profiles is not launched: it would exit at once."""
+        commands, mock_prompt = self._make_commands([])
+        monitor_id = commands.sqlite_handler.add_monitor(
+            name="no-profile-monitor",
+            monitor_path=self.db_dir,
+            remote_path="remote:dest",
+            monitor_type="instant",
+            config={"exclude_patterns": []},
+            status="stopped",
+        )
+        self.assertEqual(
+            commands.sqlite_handler.get_profiles_for_monitor(monitor_id=monitor_id), []
+        )
+
+        with mock.patch.object(commands.monitor.processes, "launch") as launch:
+            commands.monitor.start(monitor_id=monitor_id)
+
+        launch.assert_not_called()
+        self.assertIn("cannot start", mock_prompt.output_text)
+        self.assertIn(
+            "Attach at least one profile: a monitor needs a profile to run.",
+            mock_prompt.output_text,
+        )
 
     def test_monitor_stop_escalates_when_process_survives(self):
         commands, mock_prompt = self._make_commands([])

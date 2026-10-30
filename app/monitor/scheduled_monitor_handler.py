@@ -75,6 +75,17 @@ class ScheduledMonitorHandler(MonitorHandler):
         if on_complete is not None:
             self._on_complete = on_complete
 
+        # A monitor with no profiles has nothing to copy to or from, so fail the
+        # start instead of running a schedule that can never do any work. This
+        # mirrors InstantMonitorHandler.start(), which returns False for the
+        # same reason.
+        if not self.profiles:
+            self.logger.error(
+                f"No remote profiles specified for monitor "
+                f"'{self.monitor.get('name')}' (id={self.monitor.get('id')}). Exiting."
+            )
+            return False
+
         # (Re)build command handlers so that a restart after stop() works:
         # stop() shuts down and clears the cached handlers.
         self.command_handlers = self._build_command_handlers()

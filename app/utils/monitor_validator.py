@@ -33,6 +33,24 @@ def validate_monitor_type_number(
     return None
 
 
+def profiles_required_error(profiles: list[dict] | None) -> str | None:
+    """Return an error message when a monitor has no profiles, else None.
+
+    A monitor consumes events and dispatches them to the profiles attached to
+    it through ``monitor_profile_map``. The relationship is optional in the
+    database — ``profiles`` is not a column on ``monitors`` — but a monitor with
+    no profiles has nothing to dispatch to: it starts, finds no profiles and
+    exits with a bare "No profiles found" in ``logs/monitor_<id>.log``, which
+    the user sees as an unexplained startup failure.
+
+    Shared by the CLI and the web GUI so a monitor cannot be created, edited or
+    started without at least one profile.
+    """
+    if not profiles:
+        return "Attach at least one profile: a monitor needs a profile to run."
+    return None
+
+
 def monitor_path_is_valid(monitor_path: str) -> str | None:
     """Return an error message when a monitor path is unusable, else None.
 

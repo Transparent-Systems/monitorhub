@@ -179,6 +179,69 @@ class TestMonitorsPageActions(unittest.TestCase):
             errors,
         )
 
+    def test_start_rejects_monitor_without_profiles(self) -> None:
+        """Start refuses a monitor with no profiles instead of launching it.
+
+        A launched child would find no profiles and exit immediately, which the
+        page would otherwise report as a startup failure.
+        """
+        self._add_monitor(MONITOR_STATUS_STOPPED, 0)
+        at = self._run_page()
+
+        with patch.object(MonitorProcessManager, "launch") as launch:
+            self._click(at, "▶ Start")
+
+        launch.assert_not_called()
+        errors = self._errors(at)
+        self.assertTrue(
+            any(
+                "cannot start" in error and "Attach at least one profile" in error
+                for error in errors
+            ),
+            errors,
+        )
+
+    def test_new_monitor_requires_a_profile(self) -> None:
+        """The create form refuses a monitor with no profiles attached."""
+        self.sqlite_handler.add_profile(
+            name="s3-profile", profile_type="s3", config={"remote_handler": "s3"}
+        )
+        at = self._run_page()
+        self._click(at, "＋ New")
+        self._text_input(at, "new_monitor_name").set_value("new-monitor")
+        self._text_input(at, "new_monitor_path").set_value(self.db_dir)
+        self._text_input(at, "new_monitor_remote").set_value("remote:destination")
+        self._click(at, "Save")
+
+        errors = self._errors(at)
+        self.assertTrue(
+            any("Attach at least one profile" in error for error in errors), errors
+        )
+        self.assertEqual(self.sqlite_handler.get_monitors(), [])
+
+    def test_edit_monitor_requires_a_profile(self) -> None:
+        """Detaching the last profile is refused, so the monitor stays runnable."""
+        profile_id = self.sqlite_handler.add_profile(
+            name="s3-profile", profile_type="s3", config={"remote_handler": "s3"}
+        )
+        monitor_id = self._add_monitor(MONITOR_STATUS_STOPPED, 0)
+        self.sqlite_handler.add_monitor_profile_map(
+            monitor_id=monitor_id, profile_id=profile_id
+        )
+
+        at = self._run_page()
+        self._click(at, "✎ Edit")
+        self.assertEqual(len(at.multiselect), 1, [w.label for w in at.multiselect])
+        at.multiselect[0].set_value([])
+        self._click(at, "Save")
+
+        errors = self._errors(at)
+        self.assertTrue(
+            any("Attach at least one profile" in error for error in errors), errors
+        )
+        linked = self.sqlite_handler.get_profiles_for_monitor(monitor_id=monitor_id)
+        self.assertEqual({profile["id"] for profile in linked}, {profile_id})
+
     def test_force_stop_is_not_offered(self) -> None:
         self._add_monitor(MONITOR_STATUS_STOPPED, 0)
         at = self._run_page()

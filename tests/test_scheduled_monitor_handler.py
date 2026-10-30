@@ -25,8 +25,26 @@ class TestScheduledMonitorHandler(unittest.TestCase):
                 "exclude_patterns": [],
             },
         }
-        self.mock_profiles = []
+        self.mock_profiles = [
+            {"name": "s3-test", "profile_type": "s3", "config": {}},
+        ]
         self.mock_log_config = {}
+
+    def test_start_returns_false_without_profiles(self):
+        """A monitor with no profiles fails the start instead of idling.
+
+        ScheduledMonitorHandler used to tolerate an empty profile list and
+        silently do no work on every tick.
+        """
+        handler = ScheduledMonitorHandler(
+            monitor=self.mock_monitor,
+            profiles=[],
+            log_config=self.mock_log_config,
+            direction=MONITOR_TYPE_BACKUP,
+        )
+
+        self.assertFalse(handler.start())
+        self.assertIsNone(handler.worker)
 
     def test_init_invalid_direction(self):
         with self.assertRaises(ValueError):

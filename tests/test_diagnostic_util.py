@@ -272,9 +272,18 @@ class DiagnosticUtilRunPathChecksTest(unittest.TestCase):
             with self.assertLogs(logger, level="WARNING") as captured:
                 result = util._run_path_checks(monitor)
 
-        # The monitor-path check passed; only the cleanup failed and it must be
-        # reported, not raised.
-        self.assertEqual(result.failure_count, 0)
+        # The monitor-path check passed, and the missing-profiles check is the
+        # single failure: a monitor with no profiles cannot run, so the test
+        # must not report a pass just because it had nothing to copy.
+        self.assertEqual(result.failure_count, 1)
+        self.assertEqual(result.success_count, 1)
+        failed_names = [
+            test_result["test_case_name"]
+            for test_result in result.test_results
+            if not test_result["test_ok"]
+        ]
+        self.assertEqual(len(failed_names), 1)
+        self.assertIn("at least one profile", failed_names[0])
         self.assertTrue(
             any("Failed to delete local temp file" in line for line in captured.output)
         )

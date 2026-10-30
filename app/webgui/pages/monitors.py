@@ -142,6 +142,19 @@ def _start_monitor(
             False,
         )
 
+    # A monitor with no profiles starts, finds nothing to dispatch to and exits,
+    # so refuse to launch it rather than report a start that is guaranteed to
+    # fail ("exited during startup").
+    profiles_error = monitor_validator.profiles_required_error(
+        sqlite_handler.get_profiles_for_monitor(monitor_id=monitor_id)
+    )
+    if profiles_error:
+        return (
+            f"Monitor '{monitor_name}' (id={monitor_id}) cannot start: "
+            f"{profiles_error}",
+            False,
+        )
+
     if process_manager.launch(monitor):
         return f"Monitor '{monitor_name}' (id={monitor_id}) started.", True
     return f"Failed to start monitor '{monitor_name}' (id={monitor_id}).", False
@@ -558,6 +571,13 @@ def _render_monitor_form(
             selected_labels = [
                 label for label, p in profile_options.items() if p.get("id") in selected_ids
             ]
+            if not profile_options:
+                # An empty picker would otherwise be a dead end: the monitor
+                # needs a profile, but there is none to choose.
+                st.warning(
+                    "No profiles exist yet. Create one on the Profiles page (or "
+                    "with 'mhub profile new') and it becomes selectable here."
+                )
             attached = st.multiselect(
                 "Attach profiles",
                 list(profile_options.keys()),
@@ -575,6 +595,14 @@ def _render_monitor_form(
             error = _validate_monitor_form(
                 sqlite_handler, name, monitor_path, remote_path, monitor_type, interval, editing
             )
+            # A monitor with no profiles cannot run, so the form refuses to save
+            # one. Only enforced when profiles exist to attach: a database with
+            # no profiles at all would otherwise make existing monitors
+            # impossible to edit.
+            if error is None and profile_options:
+                error = monitor_validator.profiles_required_error(
+                    [profile_options[label] for label in attached]
+                )
             if error:
                 st.error(error)
                 return

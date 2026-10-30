@@ -338,15 +338,24 @@ class MonitorCommands:
                 if not delete_profiles:
                     break
 
-        # Add profiles
+        # Add profiles, enforcing the "at least one profile" rule: a monitor with
+        # no profiles has nothing to dispatch events to and cannot run.
         all_profiles = self.sqlite_handler.get_profiles()
-        current_profile_ids = {p.get("id") for p in monitor_profiles} if monitor_profiles else set()
+        linked_ids = {
+            profile.get("id")
+            for profile in self.sqlite_handler.get_profiles_for_monitor(
+                monitor_id=monitor_id
+            )
+        }
         available_profiles = {
             profile.get("id"): profile
             for profile in all_profiles
-            if profile.get("id") not in current_profile_ids
+            if profile.get("id") not in linked_ids
         }
 
+        # Nothing to attach means the database has no profiles left. Leave the
+        # monitor as it is rather than prompting for a profile that cannot be
+        # chosen; 'monitor start' reports the missing profiles.
         if available_profiles:
             def render_available_profiles() -> None:
                 self.prompt.print("\nAvailable profiles to add:")
@@ -370,7 +379,17 @@ class MonitorCommands:
                     allow_cancel=True,
                 )
                 if input_add_id is None:
-                    break
+                    # Enter ends the selection, but the monitor must keep at
+                    # least one profile, so keep prompting until it has one.
+                    profiles_error = monitor_validator.profiles_required_error(
+                        self.sqlite_handler.get_profiles_for_monitor(
+                            monitor_id=monitor_id
+                        )
+                    )
+                    if profiles_error is None:
+                        break
+                    self.prompt.print(profiles_error)
+                    continue
 
                 profile_id_to_add = int(input_add_id)
                 profile_to_add = available_profiles[profile_id_to_add]
@@ -379,7 +398,6 @@ class MonitorCommands:
                     monitor_id=monitor_id, profile_id=profile_id_to_add
                 ):
                     self.prompt.print(f"Profile '{profile_to_add.get('name', 'N/A')}' added to monitor")
-                    current_profile_ids.add(profile_id_to_add)
                     del available_profiles[profile_id_to_add]
                 else:
                     self.prompt.print(
@@ -703,7 +721,16 @@ class MonitorCommands:
                 allow_cancel=True,
             )
             if raw_profile_id is None:
-                break
+                # Enter ends the selection, but only once at least one profile
+                # has been picked: a monitor with no profiles cannot run, so
+                # creating one would only defer the failure to 'monitor start'.
+                profiles_error = monitor_validator.profiles_required_error(
+                    selected_profiles
+                )
+                if profiles_error is None:
+                    break
+                self.prompt.print(profiles_error)
+                continue
 
             profile_id = int(raw_profile_id)
             self.prompt.print(f"You entered profile id: {profile_id}")
@@ -917,6 +944,19 @@ class MonitorCommands:
             self.prompt.print(
                 f"Monitor '{monitor_name}' (id={monitor_id_val}) cannot start: "
                 f"{path_error}"
+            )
+            return
+
+        # A monitor with no profiles starts, finds nothing to dispatch to and
+        # exits, so refuse to launch it rather than report a start that is
+        # guaranteed to fail.
+        profiles_error = monitor_validator.profiles_required_error(
+            self.sqlite_handler.get_profiles_for_monitor(monitor_id=monitor_id_val)
+        )
+        if profiles_error:
+            self.prompt.print(
+                f"Monitor '{monitor_name}' (id={monitor_id_val}) cannot start: "
+                f"{profiles_error}"
             )
             return
 

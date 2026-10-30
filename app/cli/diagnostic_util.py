@@ -13,6 +13,7 @@ from app.cli.process_test_result import ProcessTestResult
 from app.cli.profile_importer import ProfileImporter
 from app.cli.prompt_service import PromptService
 from app.utils import reference_data
+from app.utils.monitor_validator import profiles_required_error
 from app.utils.sqlite_handler import SQLiteHandler
 
 
@@ -283,6 +284,20 @@ class DiagnosticUtil:
 
         profile_count = len(profiles)
         self.prompt.print(f"Iterating over {profile_count} remote profiles for monitor: {monitor.get('name', 'Unknown')}")
+
+        # A monitor with no profiles cannot run. Report that as a failure: the
+        # loop below would otherwise test nothing and the zero failures would be
+        # reported as a pass.
+        profiles_error = profiles_required_error(profiles)
+        if profiles_error:
+            testname = f"Test monitor has at least one profile: {monitor.get('name', '')}"
+            self.prompt.print(testname)
+            process_test_result.process(
+                test_case_name=testname,
+                test_ok=False,
+                test_output=profiles_error,
+            )
+
         for profile in profiles:
             profile_type = profile.get("profile_type", "")
             # Get profile category from profile_type

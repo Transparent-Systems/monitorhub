@@ -4,8 +4,25 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from app.utils.monitor_validator import monitor_path_is_valid
+from app.utils.monitor_validator import monitor_path_is_valid, profiles_required_error
 from app.utils.project_paths import project_root
+
+
+class TestProfilesRequiredError(unittest.TestCase):
+    def test_no_profiles_is_rejected(self) -> None:
+        expected = "Attach at least one profile: a monitor needs a profile to run."
+        self.assertEqual(profiles_required_error([]), expected)
+        self.assertEqual(profiles_required_error(None), expected)
+
+    def test_one_profile_is_accepted(self) -> None:
+        self.assertIsNone(profiles_required_error([{"id": 1, "name": "s3-test"}]))
+
+    def test_many_profiles_are_accepted(self) -> None:
+        self.assertIsNone(
+            profiles_required_error(
+                [{"id": 1, "name": "s3-test"}, {"id": 2, "name": "cmd-test"}]
+            )
+        )
 
 
 class TestMonitorPathIsValid(unittest.TestCase):

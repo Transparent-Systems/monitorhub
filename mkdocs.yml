@@ -70,6 +70,7 @@ nav:
       - Web GUI: getting-started/web-gui.md
       - Your first monitor: getting-started/first-monitor.md
   - Guides:
+      - Monitors: guides/monitors.md
       - Remote profiles: guides/remote-profiles.md
       - Command profiles: guides/command-profiles.md
   - Reference:
