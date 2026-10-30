@@ -67,6 +67,7 @@ nav:
       - Install on Windows: getting-started/install-windows.md
       - Install on Linux: getting-started/install-linux.md
       - Run from source: getting-started/from-source.md
+      - Web GUI: getting-started/web-gui.md
       - Your first monitor: getting-started/first-monitor.md
   - Guides:
       - Remote profiles: guides/remote-profiles.md

@@ -52,6 +52,7 @@ managed with `mhub database`, `mhub profile` and `mhub monitor`.
 | --- | --- |
 | Install the binaries | [Install on Windows](getting-started/install-windows.md) or [Install on Linux](getting-started/install-linux.md) |
 | Run from a source checkout | [Run from source](getting-started/from-source.md) |
+| Info about the Web GUI | [Web GUI](getting-started/web-gui.md) |
 | Create my first monitor | [Your first monitor](getting-started/first-monitor.md) |
 | Configure cloud storage | [Remote profiles](guides/remote-profiles.md) |
 | Run a command on an event | [Command profiles](guides/command-profiles.md) |
