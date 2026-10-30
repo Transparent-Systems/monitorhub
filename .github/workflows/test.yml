@@ -1,0 +1,41 @@
+name: Unit tests
+
+# The gate every change has to pass, including the Dependabot pull requests that
+# keep the workflow actions current. Those pull requests run with a read-only
+# token and no secrets, and nothing else reacts to them: the build workflows only
+# run on a v* tag, which is far too late to catch a regression. `make test-unit`
+# is the same target a developer runs locally, so CI cannot drift away from it.
+on:
+  pull_request:               # every pull request, Dependabot's included.
+  push:
+    branches: ['main']        # and every push that lands on the published branch.
+
+# The suite only reads the checkout and writes to a temporary directory, so the
+# token needs nothing beyond the checkout itself.
+permissions:
+  contents: read
+
+# A pull request that is pushed to twice in a row only needs its newest commit
+# tested, so the older run is cancelled instead of queueing behind it.
+concurrency:
+  group: unit-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      # The Makefile hardcodes .venv/bin/python, so CI builds the same
+      # virtualenv a developer has before calling the target.
+      - name: Create the virtualenv
+        run: python -m venv .venv
+      - name: Install dependencies
+        run: .venv/bin/python -m pip install -r requirements.txt
+      # Integration tests self-skip without credentials in testdata/.env, so the
+      # unit suite is exactly what runs here.
+      - name: Run unit tests
+        run: make test-unit

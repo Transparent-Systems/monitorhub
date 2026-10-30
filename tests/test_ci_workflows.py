@@ -1,7 +1,9 @@
-"""Guard the release workflows.
+"""Guard the CI workflows.
 
 CI is the one place a mistake is expensive and invisible: the GUI binary was
 once missing from the artifacts, and a manual run must never publish a release.
+The unit-test workflow is guarded too: it is the only check a Dependabot pull
+request ever gets.
 """
 
 import unittest
@@ -12,6 +14,7 @@ import yaml
 WORKFLOW_DIR = Path(__file__).resolve().parents[1] / ".github" / "workflows"
 LINUX = WORKFLOW_DIR / "build-linux.yml"
 WINDOWS = WORKFLOW_DIR / "build-windows.yml"
+UNIT_TESTS = WORKFLOW_DIR / "test.yml"
 
 # The GUI ships as a single onefile binary on Linux, and as a versioned zip of
 # the onedir folder on Windows.
@@ -34,6 +37,16 @@ def step_named(workflow_path: Path, name: str) -> dict:
         if step.get("name") == name:
             return step
     raise AssertionError(f"no step named {name!r} in {workflow_path.name}")
+
+
+def triggers(workflow_path: Path) -> dict:
+    """Return a workflow's ``on:`` block.
+
+    PyYAML implements YAML 1.1, where the bare key ``on`` parses as the boolean
+    ``True``, so the block is looked up under both spellings.
+    """
+    workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+    return workflow.get("on", workflow.get(True)) or {}
 
 
 def _entries(value: str) -> list[str]:
@@ -148,7 +161,7 @@ class TestActionsRunOnNode24(unittest.TestCase):
     """Node 20 was removed from the runners on 2026-09-23."""
 
     def test_every_action_is_audited(self):
-        for workflow_path in (LINUX, WINDOWS):
+        for workflow_path in (LINUX, WINDOWS, UNIT_TESTS):
             for ref in action_refs(workflow_path):
                 with self.subTest(action=ref):
                     self.assertIn(
@@ -158,7 +171,7 @@ class TestActionsRunOnNode24(unittest.TestCase):
                     )
 
     def test_no_action_is_pinned_below_its_node24_major(self):
-        for workflow_path in (LINUX, WINDOWS):
+        for workflow_path in (LINUX, WINDOWS, UNIT_TESTS):
             for ref in action_refs(workflow_path):
                 name, _, version = ref.partition("@")
                 major = version.lstrip("v").split(".")[0]
@@ -167,6 +180,43 @@ class TestActionsRunOnNode24(unittest.TestCase):
                     continue
                 with self.subTest(action=ref):
                     self.assertGreaterEqual(int(major), NODE24_ACTIONS[name])
+
+
+class TestUnitTestsGateEveryChange(unittest.TestCase):
+    """A pull request has to be tested before it can be merged.
+
+    Nothing else reacts to a pull request: the build workflows only run on a v*
+    tag, so without this workflow a Dependabot bump would arrive with no checks
+    at all.
+    """
+
+    def test_the_workflow_exists(self):
+        self.assertTrue(UNIT_TESTS.is_file(), UNIT_TESTS)
+
+    def test_it_runs_on_every_pull_request(self):
+        self.assertIn("pull_request", triggers(UNIT_TESTS))
+
+    def test_it_runs_on_pushes_to_main(self):
+        # The published branch must not be the only branch without a check.
+        self.assertEqual(triggers(UNIT_TESTS)["push"]["branches"], ["main"])
+
+    def test_it_runs_the_unit_tests_through_the_makefile(self):
+        # A hand-written unittest invocation here would drift from the target a
+        # developer runs locally.
+        self.assertIn("make test-unit", run_commands(UNIT_TESTS))
+
+    def test_it_creates_the_virtualenv_the_makefile_requires(self):
+        # `make test-unit` fails without .venv/bin/python, so a clean runner has
+        # to build the virtualenv first.
+        self.assertIn("python -m venv .venv", run_commands(UNIT_TESTS))
+
+    def test_it_uses_the_python_version_the_project_requires(self):
+        versions = [
+            step["with"]["python-version"]
+            for step in steps(UNIT_TESTS)
+            if "setup-python" in step.get("uses", "")
+        ]
+        self.assertEqual(versions, ["3.12"])
 
 
 DEPENDABOT = WORKFLOW_DIR.parent / "dependabot.yml"
