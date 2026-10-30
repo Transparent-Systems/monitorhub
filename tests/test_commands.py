@@ -49,6 +49,12 @@ class TestCommands(unittest.TestCase):
         )
         self.database_test_data.remove_test_data()
         self.database_test_data.load_test_data()
+        # `monitor start` validates every monitor path before it launches, and
+        # the seeded monitors point at working directories under testdata/ that
+        # are gitignored (like testdb/). A clean checkout has to create them,
+        # otherwise the suite only passes on a machine that happens to have them.
+        for monitor in self.database_test_data.sqlite_handler.get_monitors():
+            Path(monitor["monitor_path"]).mkdir(parents=True, exist_ok=True)
         self._commands: Commands | None = None
 
     def tearDown(self) -> None:

@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 
 from app.utils.monitor_validator import monitor_path_is_valid
+from app.utils.project_paths import project_root
 
 
 class TestMonitorPathIsValid(unittest.TestCase):
@@ -36,13 +37,17 @@ class TestMonitorPathIsValid(unittest.TestCase):
         )
 
     def test_relative_path_is_resolved_against_project_root(self) -> None:
-        self.assertIsNone(
-            monitor_path_is_valid("testdata/source/instant-monitor")
-        )
-        self.assertEqual(
-            monitor_path_is_valid("testdata/source/does-not-exist"),
-            "Monitor path 'testdata/source/does-not-exist' does not exist.",
-        )
+        # A relative path is resolved against the project root, so the probe has
+        # to live there. tempfile creates it there, which keeps the test off a
+        # directory that only exists on a developer's machine.
+        with tempfile.TemporaryDirectory(dir=project_root()) as temp_dir:
+            relative = Path(temp_dir).name
+            self.assertIsNone(monitor_path_is_valid(relative))
+            missing = f"{relative}-missing"
+            self.assertEqual(
+                monitor_path_is_valid(missing),
+                f"Monitor path '{missing}' does not exist.",
+            )
 
 
 if __name__ == "__main__":

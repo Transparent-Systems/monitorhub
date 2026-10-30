@@ -75,18 +75,27 @@ def _make_handler(command_timeout: float = 0) -> RcloneHandler:
 
 
 def _make_profiled_handler(profile: dict, command_timeout: float = 0) -> RcloneHandler:
-    """Build a handler from a full profile dict (env-based rclone config)."""
+    """Build a handler from a full profile dict (env-based rclone config).
+
+    The binary is faked: building the environment must not need rclone to be
+    installed, and probing a real one would tie the assertions to whatever
+    version happens to be on the machine.
+    """
     logger = logging.getLogger("tests.test_rclone_handler")
     logger.setLevel(logging.CRITICAL)
     logger.propagate = False
-    handler = RcloneHandler(
-        base_monitor_path="/tmp",
-        base_remote_path="bucket/prefix",
-        profile_name=profile.get("name", ""),
-        logger=logger,
-        command_timeout=command_timeout,
-        profile=profile,
-    )
+    with (
+        mock.patch.object(RcloneHandler, "get_rclone_path", return_value="rclone"),
+        mock.patch.object(rclone_env, "known_rclone_flags", return_value=None),
+    ):
+        handler = RcloneHandler(
+            base_monitor_path="/tmp",
+            base_remote_path="bucket/prefix",
+            profile_name=profile.get("name", ""),
+            logger=logger,
+            command_timeout=command_timeout,
+            profile=profile,
+        )
     handler.rclone_path = "rclone"
     return handler
 
@@ -297,8 +306,12 @@ class TestRcloneProfileEnvironment(unittest.TestCase):
             "profile_type": "s3",
             "config": {"rclone_options": {"s3_object_lock_mod": "GOVERNANCE"}},
         }
-        with mock.patch.object(
-            rclone_env, "unknown_rclone_options", return_value=["s3_object_lock_mod"]
+        with (
+            mock.patch.object(RcloneHandler, "get_rclone_path", return_value="rclone"),
+            mock.patch.object(rclone_env, "known_rclone_flags", return_value=None),
+            mock.patch.object(
+                rclone_env, "unknown_rclone_options", return_value=["s3_object_lock_mod"]
+            ),
         ):
             RcloneHandler(
                 base_monitor_path="/tmp",
@@ -343,10 +356,14 @@ class TestRcloneProfileEnvironment(unittest.TestCase):
     def test_test_connection_uses_the_profile_environment(self):
         prompt = mock.Mock()
 
-        with mock.patch(
-            "app.monitor.rclone_handler.subprocess.Popen",
-            return_value=_FakeProcess(0, stdout="bucket"),
-        ) as popen:
+        with (
+            mock.patch.object(RcloneHandler, "get_rclone_path", return_value="rclone"),
+            mock.patch.object(rclone_env, "known_rclone_flags", return_value=None),
+            mock.patch(
+                "app.monitor.rclone_handler.subprocess.Popen",
+                return_value=_FakeProcess(0, stdout="bucket"),
+            ) as popen,
+        ):
             RcloneHandler.test_connection(
                 profile_name="my-dest",
                 logger=logging.getLogger("tests.test_rclone_handler"),
