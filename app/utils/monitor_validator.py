@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from app.utils import reference_data
 from app.utils.project_paths import project_root
 from app.utils.sqlite_handler import SQLiteHandler
 
@@ -48,6 +49,47 @@ def profiles_required_error(profiles: list[dict] | None) -> str | None:
     """
     if not profiles:
         return "Attach at least one profile: a monitor needs a profile to run."
+    return None
+
+
+def has_remote_profile(profiles: list[dict] | None) -> bool:
+    """Return whether any profile in *profiles* is a remote profile.
+
+    A remote profile copies files between the monitor path and the remote path;
+    a command profile runs a command and never touches the remote path. The
+    category is derived from ``profile_type`` (see
+    :func:`app.utils.reference_data.get_profile_category`), so this is the same
+    test the monitor runtime applies.
+    """
+    return any(
+        reference_data.get_profile_category(profile.get("profile_type", ""))
+        == reference_data.PROFILE_CATEGORY_REMOTE
+        for profile in profiles or []
+    )
+
+
+def remote_path_required_error(
+    remote_path: str | None, profiles: list[dict] | None
+) -> str | None:
+    """Return an error when a remote profile has no remote path, else None.
+
+    The remote path is required as soon as a remote profile is attached, and is
+    not needed at all by a monitor whose profiles are all command profiles.
+    Enforced so a monitor cannot be saved (or started) with a remote profile
+    and no destination, which would reach the remote handler as an empty path.
+    """
+    if (remote_path or "").strip():
+        return None
+
+    for profile in profiles or []:
+        if (
+            reference_data.get_profile_category(profile.get("profile_type", ""))
+            == reference_data.PROFILE_CATEGORY_REMOTE
+        ):
+            return (
+                "Remote path is required because profile "
+                f"'{profile.get('name', 'N/A')}' is a remote profile."
+            )
     return None
 
 

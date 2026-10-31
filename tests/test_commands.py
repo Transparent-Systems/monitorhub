@@ -288,15 +288,18 @@ class TestCommands(unittest.TestCase):
 
     def test_monitor_new(self):
         profile_id = self.database_test_data.sqlite_handler.get_profiles()[0]["id"]
+        # Inputs: name, monitor path, type '1' (instant), no exclude patterns,
+        # one profile id, Enter to stop, then the remote path - asked last and
+        # only because that profile is a remote profile.
         commands, _ = self._make_commands(
             [
                 "my-monitor",
                 "testdata/source/instant-monitor",
-                "remote:dest",
                 "1",
                 "",
                 str(profile_id),
                 "",
+                "remote:dest",
             ]
         )
         commands.monitor.new()
@@ -304,27 +307,62 @@ class TestCommands(unittest.TestCase):
         self.assertTrue(monitor)
         self.assertEqual(monitor["monitor_type"], "instant")
         self.assertEqual(monitor["config"].get("exclude_patterns"), [])
+        self.assertEqual(monitor["remote_path"], "remote:dest")
         linked = commands.sqlite_handler.get_profiles_for_monitor(
             monitor_id=monitor["id"]
         )
         self.assertEqual({profile["id"] for profile in linked}, {profile_id})
 
+    def test_monitor_new_skips_remote_path_for_command_profiles(self):
+        """A command-only monitor is not asked for a remote path.
+
+        The remote path is only used by remote profiles, so a monitor that runs
+        command profiles only stores an empty value.
+        """
+        command_profile = next(
+            profile
+            for profile in self.database_test_data.sqlite_handler.get_profiles()
+            if profile["profile_type"] == "event_command"
+        )
+        # Inputs: name, monitor path, type '1' (instant), no exclude patterns,
+        # the command profile id, Enter to stop. No remote path prompt follows.
+        commands, mock_prompt = self._make_commands(
+            [
+                "command-monitor",
+                "testdata/source/instant-monitor",
+                "1",
+                "",
+                str(command_profile["id"]),
+                "",
+            ]
+        )
+        commands.monitor.new()
+        monitor = commands.sqlite_handler.get_monitor(monitor_name="command-monitor")
+        self.assertTrue(monitor)
+        self.assertEqual(monitor["remote_path"], "")
+        self.assertNotIn("remote path", mock_prompt.output_text.lower())
+        linked = commands.sqlite_handler.get_profiles_for_monitor(
+            monitor_id=monitor["id"]
+        )
+        self.assertEqual({profile["id"] for profile in linked}, {command_profile["id"]})
+
     def test_monitor_new_requires_a_profile(self):
         """Entering no profile keeps prompting: a monitor with no profiles
         would start, find nothing to dispatch to and exit."""
         profile_id = self.database_test_data.sqlite_handler.get_profiles()[0]["id"]
-        # Inputs: ... type '1' (instant), no exclude patterns, then Enter with
-        # no profile selected (rejected), a profile id, then Enter to stop.
+        # Inputs: name, path, type '1' (instant), no exclude patterns, then
+        # Enter with no profile selected (rejected), a profile id, Enter to
+        # stop, and the remote path.
         commands, mock_prompt = self._make_commands(
             [
                 "my-monitor",
                 "testdata/source/instant-monitor",
-                "remote:dest",
                 "1",
                 "",
                 "",
                 str(profile_id),
                 "",
+                "remote:dest",
             ]
         )
         commands.monitor.new()
@@ -347,11 +385,11 @@ class TestCommands(unittest.TestCase):
                 "my-monitor",
                 "/missing/monitor-path",
                 "testdata/source/instant-monitor",
-                "remote:dest",
                 "1",
                 "",
                 str(profile_id),
                 "",
+                "remote:dest",
             ]
         )
         commands.monitor.new()
@@ -366,19 +404,19 @@ class TestCommands(unittest.TestCase):
         profiles = self.database_test_data.sqlite_handler.get_profiles()
         first_profile_id = profiles[0]["id"]
         second_profile_id = profiles[1]["id"]
-        # Inputs: name, paths, type, no exclude patterns, two profile ids, then
-        # Enter to stop. Selecting two profiles back-to-back proves there is no
-        # per-profile y/N confirmation step in between.
+        # Inputs: name, monitor path, type, no exclude patterns, two profile
+        # ids, Enter to stop, remote path. Selecting two profiles back-to-back
+        # proves there is no per-profile y/N confirmation step in between.
         commands, _ = self._make_commands(
             [
                 "my-monitor",
                 "testdata/source/instant-monitor",
-                "remote:dest",
                 "1",
                 "",
                 str(first_profile_id),
                 str(second_profile_id),
                 "",
+                "remote:dest",
             ]
         )
         commands.monitor.new()
@@ -456,10 +494,11 @@ class TestCommands(unittest.TestCase):
         # Backup Monitor 1 has an interval config
         monitor = self.database_test_data.sqlite_handler.get_monitor(monitor_name="Backup Monitor 1")
         self.assertIsNotNone(monitor)
-        # Inputs: keep name, keep monitor path, keep remote path, keep monitor type,
-        # interval: '-1s' (invalid), then '15m' (valid), then keep exclude patterns, no profiles to delete, no profiles to add
+        # Inputs: keep name, keep monitor path, keep monitor type, interval
+        # '-1s' (invalid) then '15m' (valid), keep exclude patterns, no profiles
+        # to delete, no profiles to add, keep remote path.
         commands, mock_prompt = self._make_commands(
-            ["", "", "", "", "-1s", "15m", "", "", ""]
+            ["", "", "", "-1s", "15m", "", "", ""]
         )
         commands.monitor.edit(monitor_id=monitor["id"])
         self.assertIn("Invalid interval: '-1s'", mock_prompt.output_text)
@@ -471,7 +510,7 @@ class TestCommands(unittest.TestCase):
         monitor = self.database_test_data.sqlite_handler.get_monitor(monitor_name="Restore Monitor 1")
         self.assertIsNotNone(monitor)
         commands, mock_prompt = self._make_commands(
-            ["", "", "", "", "20m", "", "", ""]
+            ["", "", "", "20m", "", "", ""]
         )
         commands.monitor.edit(monitor_id=monitor["id"])
         self.assertIn("Current restore interval: 1m", mock_prompt.output_text)
@@ -484,7 +523,7 @@ class TestCommands(unittest.TestCase):
         )
         self.assertIsNotNone(monitor)
         commands, _ = self._make_commands(
-            ["", "", "", "", "10", "", "", ""]
+            ["", "", "", "10", "", "", ""]
         )
         commands.monitor.edit(monitor_id=monitor["id"])
         updated_monitor = commands.sqlite_handler.get_monitor(monitor_id=monitor["id"])
@@ -495,10 +534,11 @@ class TestCommands(unittest.TestCase):
             monitor_name="Backup Monitor 1"
         )
         self.assertIsNotNone(monitor)
-        # Inputs: keep name/path/remote, type 'abc' (invalid, retried), type '1'
-        # (instant), then the remaining keep/stop prompts.
+        # Inputs: keep name/path, type 'abc' (invalid, retried), type '1'
+        # (instant), then the remaining keep/stop prompts. Switching to instant
+        # means no interval prompt follows.
         commands, mock_prompt = self._make_commands(
-            ["", "", "", "abc", "1", "", "", "", ""]
+            ["", "", "abc", "1", "", "", ""]
         )
         commands.monitor.edit(monitor_id=monitor["id"])
         self.assertIn(
@@ -516,7 +556,7 @@ class TestCommands(unittest.TestCase):
         # '99' is above the range and '0' would index from the end of the list;
         # both must be rejected before a valid '1' (instant) is accepted.
         commands, mock_prompt = self._make_commands(
-            ["", "", "", "99", "0", "1", "", "", "", ""]
+            ["", "", "99", "0", "1", "", "", ""]
         )
         commands.monitor.edit(monitor_id=monitor["id"])
         self.assertIn(
@@ -549,18 +589,18 @@ class TestCommands(unittest.TestCase):
             config={"exclude_patterns": []},
             status="stopped",
         )
-        # Inputs: keep name/path/remote/type, keep exclude patterns, two profile
-        # ids, then Enter to stop. Selecting two profiles back-to-back proves
-        # there is no per-profile y/N confirmation step in between.
+        # Inputs: keep name/path/type, keep exclude patterns, two profile ids,
+        # Enter to stop, keep remote path. Selecting two profiles back-to-back
+        # proves there is no per-profile y/N confirmation step in between.
         commands, _ = self._make_commands(
             [
                 "",
                 "",
                 "",
                 "",
-                "",
                 str(first_profile_id),
                 str(second_profile_id),
+                "",
                 "",
             ]
         )
@@ -592,12 +632,11 @@ class TestCommands(unittest.TestCase):
             monitor_id=monitor_id, profile_id=only_profile_id
         )
 
-        # Inputs: keep name/path/remote/type, keep exclude patterns, delete the
-        # only profile, then Enter with nothing attached (rejected), a
-        # replacement profile, and Enter to stop.
+        # Inputs: keep name/path/type, keep exclude patterns, delete the only
+        # profile, then Enter with nothing attached (rejected), a replacement
+        # profile, Enter to stop, and keep the remote path.
         commands, mock_prompt = self._make_commands(
             [
-                "",
                 "",
                 "",
                 "",
@@ -605,6 +644,7 @@ class TestCommands(unittest.TestCase):
                 str(only_profile_id),
                 "",
                 str(replacement_id),
+                "",
                 "",
             ]
         )
@@ -615,6 +655,40 @@ class TestCommands(unittest.TestCase):
         )
         linked = commands.sqlite_handler.get_profiles_for_monitor(monitor_id=monitor_id)
         self.assertEqual({profile["id"] for profile in linked}, {replacement_id})
+
+    def test_monitor_edit_keeps_remote_path_when_only_command_profiles_remain(self):
+        """A remote path left over from a command-only monitor is not cleared.
+
+        The remote path is only *needed* by a remote profile, so the edit flow
+        skips the prompt when none is linked and leaves the stored value alone
+        rather than removing it.
+        """
+        command_profile = next(
+            profile
+            for profile in self.database_test_data.sqlite_handler.get_profiles()
+            if profile["profile_type"] == "event_command"
+        )
+        monitor_id = self.database_test_data.sqlite_handler.add_monitor(
+            name="command-only-monitor",
+            monitor_path="/tmp/command-only-source",
+            remote_path="remote:left-over-dest",
+            monitor_type="instant",
+            config={"exclude_patterns": []},
+            status="stopped",
+        )
+        self.database_test_data.sqlite_handler.add_monitor_profile_map(
+            monitor_id=monitor_id, profile_id=command_profile["id"]
+        )
+
+        # Inputs: keep name/path/type, keep exclude patterns, Enter to keep the
+        # linked profile, Enter to add none. A command profile is linked, so
+        # there is no remote path prompt at all.
+        commands, mock_prompt = self._make_commands(["", "", "", "", "", ""])
+        commands.monitor.edit(monitor_id=monitor_id)
+
+        updated = commands.sqlite_handler.get_monitor(monitor_id=monitor_id)
+        self.assertEqual(updated["remote_path"], "remote:left-over-dest")
+        self.assertNotIn("Enter remote path", mock_prompt.output_text)
 
     def test_monitor_delete(self):
         first_id = self.database_test_data.sqlite_handler.get_monitors()[0]["id"]
@@ -1481,6 +1555,37 @@ class TestCommands(unittest.TestCase):
             commands.monitor.start(monitor_id=monitor["id"])
         launch.assert_not_called()
         self.assertIn("does not exist", mock_prompt.output_text)
+
+    def test_monitor_start_rejects_remote_profile_without_remote_path(self):
+        """A remote profile with no destination is not launched.
+
+        The remote handler would be built with an empty base path, so the start
+        is refused instead.
+        """
+        remote_profile_id = next(
+            profile["id"]
+            for profile in self.database_test_data.sqlite_handler.get_profiles()
+            if profile["profile_type"] == "s3"
+        )
+        commands, mock_prompt = self._make_commands([])
+        monitor_id = commands.sqlite_handler.add_monitor(
+            name="no-remote-path-monitor",
+            monitor_path=self.db_dir,
+            remote_path="",
+            monitor_type="instant",
+            config={"exclude_patterns": []},
+            status="stopped",
+        )
+        commands.sqlite_handler.add_monitor_profile_map(
+            monitor_id=monitor_id, profile_id=remote_profile_id
+        )
+
+        with mock.patch.object(commands.monitor.processes, "launch") as launch:
+            commands.monitor.start(monitor_id=monitor_id)
+
+        launch.assert_not_called()
+        self.assertIn("cannot start", mock_prompt.output_text)
+        self.assertIn("Remote path is required", mock_prompt.output_text)
 
     def test_monitor_start_rejects_monitor_without_profiles(self):
         """A monitor with no profiles is not launched: it would exit at once."""

@@ -8,7 +8,7 @@ The properties of a monitor are:
 | --- | --- | --- |
 | `name` | Unique name identifying the monitor | Yes |
 | `monitor_path` | Local folder the monitor watches for file system events, or copies to/from the remote for backup and restore monitors | Yes |
-| `remote_path` | Remote path the monitor's profiles upload to or download from | Yes |
+| `remote_path` | Remote path the monitor's remote profiles upload to or download from | Yes for a remote profile, not needed for a command-only monitor |
 | `monitor_type` | The kind of monitor: `instant`, `backup` or `restore` | Yes |
 | `config` | Type-specific settings: `interval` (backup and restore only) and `exclude_patterns` | No — defaults to `{}` |
 | `profiles` | Profiles attached to the monitor through `monitor_profile_map` | Yes — at least one to run |
@@ -29,6 +29,15 @@ MonitorHub while the monitor runs and are shown by `mhub monitor show`.
     events to would start, find no profiles and exit, which is why the CLI and
     the web GUI both require at least one profile when a monitor is created or
     edited, and refuse to start a monitor that has none.
+
+!!! note "The remote path follows the profiles"
+    A **remote profile** copies files between the monitor path and the remote
+    path, so it needs one; a **command profile** runs a command and never
+    touches the remote path. MonitorHub therefore asks for the remote path
+    *after* the profiles, requires it only when a remote profile is linked, and
+    skips the question entirely for a command-only monitor. A remote path that
+    is left over from an earlier remote profile is kept rather than cleared, so
+    re-linking a remote profile later does not mean re-entering it.
 
 ## Monitor Types
 

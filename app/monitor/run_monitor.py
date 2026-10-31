@@ -29,7 +29,10 @@ from app.utils.constants import (
 )
 from app.utils.generic_util import is_process_alive, utc_timestamp_now
 from app.utils.logger_setup import setup_logging
-from app.utils.monitor_validator import monitor_path_is_valid
+from app.utils.monitor_validator import (
+    monitor_path_is_valid,
+    remote_path_required_error,
+)
 from app.utils.project_paths import project_conf
 from app.utils.sqlite_handler import SQLiteHandler
 
@@ -105,6 +108,20 @@ class MonitorRunContext:
         # If no profiles are found, log an error and exit.
         if not profiles:
             logger.error(f"No profiles found for monitor '{monitor.get('name')}' (id={monitor_id}). Exiting.")
+            sqlite_handler.close()
+            return None
+
+        # A remote profile needs a remote path. Without one the remote handler
+        # would be built with an empty base path, so fail here rather than let
+        # it surface as an unexplained error later.
+        remote_path_error = remote_path_required_error(
+            monitor.get("remote_path"), profiles
+        )
+        if remote_path_error:
+            logger.error(
+                f"Monitor '{monitor.get('name')}' (id={monitor_id}) cannot start: "
+                f"{remote_path_error} Exiting."
+            )
             sqlite_handler.close()
             return None
 

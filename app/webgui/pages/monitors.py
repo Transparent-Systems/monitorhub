@@ -145,13 +145,24 @@ def _start_monitor(
     # A monitor with no profiles starts, finds nothing to dispatch to and exits,
     # so refuse to launch it rather than report a start that is guaranteed to
     # fail ("exited during startup").
-    profiles_error = monitor_validator.profiles_required_error(
-        sqlite_handler.get_profiles_for_monitor(monitor_id=monitor_id)
-    )
+    linked_profiles = sqlite_handler.get_profiles_for_monitor(monitor_id=monitor_id)
+    profiles_error = monitor_validator.profiles_required_error(linked_profiles)
     if profiles_error:
         return (
             f"Monitor '{monitor_name}' (id={monitor_id}) cannot start: "
             f"{profiles_error}",
+            False,
+        )
+
+    # Same for a remote profile with no destination: the remote handler would be
+    # built with an empty base path.
+    remote_path_error = monitor_validator.remote_path_required_error(
+        monitor.get("remote_path"), linked_profiles
+    )
+    if remote_path_error:
+        return (
+            f"Monitor '{monitor_name}' (id={monitor_id}) cannot start: "
+            f"{remote_path_error}",
             False,
         )
 
@@ -470,19 +481,20 @@ def _validate_monitor_form(
     sqlite_handler: SQLiteHandler,
     name: str,
     monitor_path: str,
-    remote_path: str,
     monitor_type: str,
     interval: str,
     editing: dict | None,
 ) -> str | None:
-    """Return an error message when the form is invalid, otherwise None."""
+    """Return an error message when the form is invalid, otherwise None.
+
+    The remote path is not checked here: whether it is required depends on the
+    linked profiles, so it is validated against them at the call site.
+    """
     if not name.strip():
         return "Monitor name cannot be empty."
     path_error = monitor_validator.monitor_path_is_valid(monitor_path)
     if path_error:
         return path_error
-    if not remote_path.strip():
-        return "Remote path cannot be empty."
 
     existing = sqlite_handler.get_monitor(monitor_name=name)
     if existing and (editing is None or existing.get("id") != editing.get("id")):
@@ -522,28 +534,66 @@ def _render_monitor_form(
                 "This monitor is running. Changes will take effect only after it "
                 "is restarted (stop, then start)."
             )
-        # The type selector lives outside the form so changing it re-runs the
-        # page immediately, which enables/disables the interval field live.
-        # (Form widgets batch their input and only re-run on submit.)
+        # The monitor type, name, monitor path and linked profiles live outside
+        # the form so changing them re-runs the page immediately: the remote
+        # path below is only required when a remote profile is linked, and form
+        # widgets batch their input until submit.
         type_index = type_names.index(current_type) if current_type in type_names else 0
         monitor_type = st.selectbox(
             "Monitor type", type_names, index=type_index, key=f"{key_prefix}_type"
         )
 
+        name = st.text_input(
+            "Name", value=current.get("name", ""), key=f"{key_prefix}_name"
+        ).strip()
+        monitor_path = st.text_input(
+            "Monitor path",
+            value=current.get("monitor_path", ""),
+            key=f"{key_prefix}_path",
+        ).strip()
+
+        profile_options = {f"{p.get('id')}: {p.get('name', 'N/A')}": p for p in profiles}
+        monitor_id = current.get("id", 0)
+        selected_ids = (
+            {p.get("id") for p in sqlite_handler.get_profiles_for_monitor(monitor_id)}
+            if is_edit
+            else set()
+        )
+        selected_labels = [
+            label for label, p in profile_options.items() if p.get("id") in selected_ids
+        ]
+        if not profile_options:
+            # An empty picker would otherwise be a dead end: the monitor
+            # needs a profile, but there is none to choose.
+            st.warning(
+                "No profiles exist yet. Create one on the Profiles page (or "
+                "with 'mhub profile new') and it becomes selectable here."
+            )
+        attached = st.multiselect(
+            "Attach profiles",
+            list(profile_options.keys()),
+            default=selected_labels,
+            key=f"{key_prefix}_profiles",
+        )
+        attached_profiles = [profile_options[label] for label in attached]
+        # The remote path is only used by a remote profile, so its label and its
+        # validation follow the profile selection above.
+        remote_path_required = monitor_validator.has_remote_profile(attached_profiles)
+
         interval_disabled = monitor_type not in (MONITOR_TYPE_BACKUP, MONITOR_TYPE_RESTORE)
 
         with st.form(key_prefix, clear_on_submit=False):
-            name = st.text_input(
-                "Name", value=current.get("name", ""), key=f"{key_prefix}_name"
-            ).strip()
-            monitor_path = st.text_input(
-                "Monitor path",
-                value=current.get("monitor_path", ""),
-                key=f"{key_prefix}_path",
-            ).strip()
             remote_path = st.text_input(
-                "Remote path",
-                value=current.get("remote_path", ""),
+                "Remote path (required)"
+                if remote_path_required
+                else "Remote path (not needed for command profiles)",
+                value=current.get("remote_path") or "",
+                help=(
+                    "Required: this monitor has a remote profile linked."
+                    if remote_path_required
+                    else "Only used by remote profiles. A monitor that runs "
+                    "command profiles only needs no remote path."
+                ),
                 key=f"{key_prefix}_remote",
             ).strip()
 
@@ -561,30 +611,6 @@ def _render_monitor_form(
                 key=f"{key_prefix}_exclude",
             )
 
-            profile_options = {f"{p.get('id')}: {p.get('name', 'N/A')}": p for p in profiles}
-            monitor_id = current.get("id", 0)
-            selected_ids = (
-                {p.get("id") for p in sqlite_handler.get_profiles_for_monitor(monitor_id)}
-                if is_edit
-                else set()
-            )
-            selected_labels = [
-                label for label, p in profile_options.items() if p.get("id") in selected_ids
-            ]
-            if not profile_options:
-                # An empty picker would otherwise be a dead end: the monitor
-                # needs a profile, but there is none to choose.
-                st.warning(
-                    "No profiles exist yet. Create one on the Profiles page (or "
-                    "with 'mhub profile new') and it becomes selectable here."
-                )
-            attached = st.multiselect(
-                "Attach profiles",
-                list(profile_options.keys()),
-                default=selected_labels,
-                key=f"{key_prefix}_profiles",
-            )
-
             submitted = st.form_submit_button("Save")
 
         if st.button("Cancel edit" if is_edit else "Cancel", key=f"{key_prefix}_cancel"):
@@ -593,15 +619,18 @@ def _render_monitor_form(
 
         if submitted:
             error = _validate_monitor_form(
-                sqlite_handler, name, monitor_path, remote_path, monitor_type, interval, editing
+                sqlite_handler, name, monitor_path, monitor_type, interval, editing
             )
-            # A monitor with no profiles cannot run, so the form refuses to save
-            # one. Only enforced when profiles exist to attach: a database with
-            # no profiles at all would otherwise make existing monitors
-            # impossible to edit.
+            # A monitor needs at least one profile, and a remote profile needs a
+            # remote path; neither rule can be expressed by the widgets above,
+            # so both are enforced here. The profile rule only applies when
+            # profiles exist to attach: a database with no profiles at all would
+            # otherwise make existing monitors impossible to edit.
             if error is None and profile_options:
-                error = monitor_validator.profiles_required_error(
-                    [profile_options[label] for label in attached]
+                error = monitor_validator.profiles_required_error(attached_profiles)
+            if error is None:
+                error = monitor_validator.remote_path_required_error(
+                    remote_path, attached_profiles
                 )
             if error:
                 st.error(error)

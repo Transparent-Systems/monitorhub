@@ -196,7 +196,12 @@ class MonitorCommands:
     # ------------------------------------------------------------------
 
     def _edit_basic_fields(self, monitor: dict) -> None:
-        """Edit name, monitor_path, remote_path, and monitor_type on a monitor dict."""
+        """Edit name, monitor_path, and monitor_type on a monitor dict.
+
+        The remote path is deliberately not here: whether it is needed depends
+        on the linked profiles, so it is edited after them (see
+        :meth:`_edit_remote_path`).
+        """
         # Monitor name
         def render_monitor_name() -> None:
             self.prompt.print(f"Current monitor name: {monitor.get('name', 'N/A')}")
@@ -225,20 +230,6 @@ class MonitorCommands:
         )
         if new_monitor_path:
             monitor["monitor_path"] = new_monitor_path
-
-        # Remote path
-        def render_remote_path() -> None:
-            self.prompt.print(f"Current remote path: {monitor.get('remote_path', 'N/A')}")
-            self.prompt.print("Press Enter to keep current remote path")
-
-        new_remote_path = self.prompt.prompt_required(
-            "Enter new remote path: ",
-            current=monitor.get("remote_path"),
-            allow_cancel=True,
-            render=render_remote_path,
-        )
-        if new_remote_path:
-            monitor["remote_path"] = new_remote_path
 
         # Monitor type
         monitor_types = reference_data.MONITOR_TYPES
@@ -407,6 +398,42 @@ class MonitorCommands:
                 if not available_profiles:
                     self.prompt.print("All profiles have been added.")
                     break
+
+    def _edit_remote_path(self, monitor: dict) -> None:
+        """Edit the remote path, which only a remote profile needs.
+
+        Called after :meth:`_edit_profiles` so the linked profiles are final. A
+        monitor whose profiles are all command profiles is skipped entirely: the
+        stored value is deliberately left as it is rather than cleared, because
+        an unused remote path is harmless and would only have to be re-entered
+        if a remote profile is linked later.
+        """
+        linked_profiles = self.sqlite_handler.get_profiles_for_monitor(
+            monitor_id=monitor.get("id", 0)
+        )
+        if not monitor_validator.has_remote_profile(linked_profiles):
+            return
+
+        current_remote_path = monitor.get("remote_path") or None
+
+        def render_remote_path() -> None:
+            self.prompt.print(
+                f"Current remote path: {monitor.get('remote_path') or 'none'}"
+            )
+            if current_remote_path:
+                self.prompt.print("Press Enter to keep current remote path")
+
+        entered_remote_path = self.prompt.prompt_required(
+            "Enter remote path: ",
+            current=current_remote_path,
+            render=render_remote_path,
+            empty_message=monitor_validator.remote_path_required_error(
+                "", linked_profiles
+            ),
+            echo_label="remote path",
+        )
+        if entered_remote_path:
+            monitor["remote_path"] = entered_remote_path
 
     # ------------------------------------------------------------------
     # Public monitor commands
@@ -589,6 +616,8 @@ class MonitorCommands:
         self._edit_interval(monitor)
         self._edit_exclude_patterns(monitor)
         self._edit_profiles(monitor)
+        # After the profiles: whether a remote path is needed depends on them.
+        self._edit_remote_path(monitor)
 
         # Update monitor
         try:
@@ -649,15 +678,6 @@ class MonitorCommands:
         )
         if input_monitor_path is None:
             self.prompt.print("monitor path cannot be just spaces.")
-            return
-
-        input_remote_path = self.prompt.prompt_required(
-            "Please enter remote path: ",
-            allow_cancel=True,
-            echo_label="remote path",
-        )
-        if input_remote_path is None:
-            self.prompt.print("Remote path cannot be just spaces.")
             return
 
         monitor_types = reference_data.MONITOR_TYPES
@@ -742,6 +762,25 @@ class MonitorCommands:
                 self.prompt.print("All profiles have been selected.")
                 break
 
+        # The remote path is asked for last, and only when it is needed: it is
+        # used by remote profiles, which copy files between the monitor path and
+        # the remote path. A monitor whose profiles are all command profiles
+        # runs commands and never touches a remote path, so it is not asked and
+        # stores an empty value.
+        input_remote_path = ""
+        if monitor_validator.has_remote_profile(selected_profiles):
+            self.prompt.print(
+                "A remote profile is linked, so a remote path is required."
+            )
+            entered_remote_path = self.prompt.prompt_required(
+                "Please enter remote path: ",
+                empty_message=monitor_validator.remote_path_required_error(
+                    "", selected_profiles
+                ),
+                echo_label="remote path",
+            )
+            input_remote_path = entered_remote_path or ""
+
         try:
             monitor_id = self.sqlite_handler.add_monitor(
                 name=input_monitor_name,
@@ -797,7 +836,7 @@ class MonitorCommands:
             self.prompt.print(f"Monitor name: {monitor.get('name', 'N/A')}")
             self.prompt.print(f"Monitor type: {monitor.get('monitor_type', 'N/A')}")
             self.prompt.print(f"Monitor path: {monitor.get('monitor_path', 'N/A')}")
-            self.prompt.print(f"Remote path: {monitor.get('remote_path', 'N/A')}")
+            self.prompt.print(f"Remote path: {monitor.get('remote_path') or 'N/A'}")
             self.prompt.print(f"Status: {monitor.get('status', 'N/A')}")
             config = monitor.get("config") or {}
             for key in config:
@@ -950,13 +989,26 @@ class MonitorCommands:
         # A monitor with no profiles starts, finds nothing to dispatch to and
         # exits, so refuse to launch it rather than report a start that is
         # guaranteed to fail.
-        profiles_error = monitor_validator.profiles_required_error(
-            self.sqlite_handler.get_profiles_for_monitor(monitor_id=monitor_id_val)
+        linked_profiles = self.sqlite_handler.get_profiles_for_monitor(
+            monitor_id=monitor_id_val
         )
+        profiles_error = monitor_validator.profiles_required_error(linked_profiles)
         if profiles_error:
             self.prompt.print(
                 f"Monitor '{monitor_name}' (id={monitor_id_val}) cannot start: "
                 f"{profiles_error}"
+            )
+            return
+
+        # Same for a remote profile with no destination: the remote handler
+        # would be built with an empty base path.
+        remote_path_error = monitor_validator.remote_path_required_error(
+            monitor.get("remote_path"), linked_profiles
+        )
+        if remote_path_error:
+            self.prompt.print(
+                f"Monitor '{monitor_name}' (id={monitor_id_val}) cannot start: "
+                f"{remote_path_error}"
             )
             return
 

@@ -17,6 +17,10 @@ matching event:
 mhub profile new
 ```
 
+A monitor that uses command profiles only needs no remote path: a command
+profile runs a command and never copies files to a remote destination, so
+MonitorHub does not ask for one. See [Monitors](monitors.md).
+
 ## Configuration keys
 
 The command settings are stored in the profile's `config`:

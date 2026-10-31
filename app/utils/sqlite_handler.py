@@ -457,7 +457,11 @@ class SQLiteHandler:
             "id": row["id"],
             "name": row["name"],
             "monitor_path": row["monitor_path"],
-            "remote_path": row["remote_path"],
+            # Normalised to "" rather than None: the remote path is optional for
+            # a monitor whose profiles are all command profiles, and consumers
+            # (e.g. ``monitor.get("remote_path", "")``) would otherwise receive
+            # None, which reaches Path(None) inside the remote handlers.
+            "remote_path": row["remote_path"] if row["remote_path"] is not None else "",
             "monitor_type": row["monitor_type"],
             "config": json.loads(config_val) if config_val else None,
             "status": row["status"],

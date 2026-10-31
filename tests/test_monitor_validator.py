@@ -4,8 +4,63 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from app.utils.monitor_validator import monitor_path_is_valid, profiles_required_error
+from app.utils.monitor_validator import (
+    has_remote_profile,
+    monitor_path_is_valid,
+    profiles_required_error,
+    remote_path_required_error,
+)
 from app.utils.project_paths import project_root
+
+REMOTE_PROFILE = {"id": 1, "name": "s3-test", "profile_type": "s3"}
+COMMAND_PROFILE = {"id": 2, "name": "cmd-test", "profile_type": "event_command"}
+
+
+class TestHasRemoteProfile(unittest.TestCase):
+    def test_remote_profile_is_detected(self) -> None:
+        self.assertTrue(has_remote_profile([REMOTE_PROFILE]))
+
+    def test_command_profile_is_not_remote(self) -> None:
+        self.assertFalse(has_remote_profile([COMMAND_PROFILE]))
+
+    def test_mixed_profiles_are_remote(self) -> None:
+        self.assertTrue(has_remote_profile([COMMAND_PROFILE, REMOTE_PROFILE]))
+
+    def test_empty_or_none_is_not_remote(self) -> None:
+        self.assertFalse(has_remote_profile([]))
+        self.assertFalse(has_remote_profile(None))
+
+
+class TestRemotePathRequiredError(unittest.TestCase):
+    def test_remote_profile_without_remote_path_is_rejected(self) -> None:
+        self.assertEqual(
+            remote_path_required_error("", [REMOTE_PROFILE]),
+            "Remote path is required because profile 's3-test' is a remote profile.",
+        )
+        self.assertEqual(
+            remote_path_required_error(None, [REMOTE_PROFILE]),
+            "Remote path is required because profile 's3-test' is a remote profile.",
+        )
+        self.assertEqual(
+            remote_path_required_error("   ", [REMOTE_PROFILE]),
+            "Remote path is required because profile 's3-test' is a remote profile.",
+        )
+
+    def test_remote_profile_with_remote_path_is_accepted(self) -> None:
+        self.assertIsNone(remote_path_required_error("remote:dest", [REMOTE_PROFILE]))
+
+    def test_command_only_monitor_needs_no_remote_path(self) -> None:
+        """A command profile runs a command and never touches a remote path."""
+        self.assertIsNone(remote_path_required_error("", [COMMAND_PROFILE]))
+        self.assertIsNone(remote_path_required_error(None, [COMMAND_PROFILE]))
+        self.assertIsNone(remote_path_required_error("", []))
+        self.assertIsNone(remote_path_required_error("", None))
+
+    def test_mixed_profiles_still_require_a_remote_path(self) -> None:
+        self.assertEqual(
+            remote_path_required_error("", [COMMAND_PROFILE, REMOTE_PROFILE]),
+            "Remote path is required because profile 's3-test' is a remote profile.",
+        )
 
 
 class TestProfilesRequiredError(unittest.TestCase):

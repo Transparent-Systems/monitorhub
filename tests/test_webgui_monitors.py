@@ -43,12 +43,16 @@ class TestMonitorsPageActions(unittest.TestCase):
         self._temp_dir.cleanup()
 
     def _add_monitor(
-        self, status: str, pid: int, monitor_path: str | None = None
+        self,
+        status: str,
+        pid: int,
+        monitor_path: str | None = None,
+        remote_path: str = "/tmp/destination",
     ) -> int:
         monitor_id = self.sqlite_handler.add_monitor(
             name="monitor",
             monitor_path=monitor_path or self.db_dir,
-            remote_path="/tmp/destination",
+            remote_path=remote_path,
             monitor_type="instant",
             config={},
             status=status,
@@ -56,6 +60,25 @@ class TestMonitorsPageActions(unittest.TestCase):
         )
         self.assertIsNotNone(monitor_id)
         return int(monitor_id)
+
+    def _add_profile(self, name: str, profile_type: str) -> int:
+        profile_id = self.sqlite_handler.add_profile(
+            name=name,
+            profile_type=profile_type,
+            config=(
+                {"command": "echo hi"}
+                if profile_type == "event_command"
+                else {"remote_handler": "s3"}
+            ),
+        )
+        self.assertIsNotNone(profile_id)
+        return int(profile_id)
+
+    def _select_profiles(self, at: AppTest, labels: list[str]) -> None:
+        """Set the 'Attach profiles' picker (it lives outside the form)."""
+        matches = [widget for widget in at.multiselect if widget.key.endswith("_profiles")]
+        self.assertEqual(len(matches), 1, [widget.key for widget in at.multiselect])
+        matches[0].set_value(labels)
 
     def _run_page(self) -> AppTest:
         with patch(
@@ -241,6 +264,83 @@ class TestMonitorsPageActions(unittest.TestCase):
         )
         linked = self.sqlite_handler.get_profiles_for_monitor(monitor_id=monitor_id)
         self.assertEqual({profile["id"] for profile in linked}, {profile_id})
+
+    def test_new_monitor_requires_remote_path_for_remote_profile(self) -> None:
+        """A remote profile needs a destination, so Save is refused without one."""
+        profile_id = self._add_profile("s3-profile", "s3")
+        at = self._run_page()
+        self._click(at, "＋ New")
+        self._text_input(at, "new_monitor_name").set_value("remote-monitor")
+        self._text_input(at, "new_monitor_path").set_value(self.db_dir)
+        self._select_profiles(at, [f"{profile_id}: s3-profile"])
+        self._click(at, "Save")
+
+        errors = self._errors(at)
+        self.assertTrue(any("Remote path is required" in error for error in errors), errors)
+        self.assertIsNone(
+            self.sqlite_handler.get_monitor(monitor_name="remote-monitor")
+        )
+
+    def test_new_monitor_allows_empty_remote_path_for_command_profile(self) -> None:
+        """A command-only monitor needs no remote path and saves without one."""
+        profile_id = self._add_profile("cmd-profile", "event_command")
+        at = self._run_page()
+        self._click(at, "＋ New")
+        self._text_input(at, "new_monitor_name").set_value("command-monitor")
+        self._text_input(at, "new_monitor_path").set_value(self.db_dir)
+        self._select_profiles(at, [f"{profile_id}: cmd-profile"])
+        self._click(at, "Save")
+
+        self.assertEqual(self._errors(at), [])
+        monitor = self.sqlite_handler.get_monitor(monitor_name="command-monitor")
+        self.assertIsNotNone(monitor)
+        self.assertEqual(monitor["remote_path"], "")
+        linked = self.sqlite_handler.get_profiles_for_monitor(monitor_id=monitor["id"])
+        self.assertEqual({profile["id"] for profile in linked}, {profile_id})
+
+    def test_edit_keeps_remote_path_for_command_only_monitor(self) -> None:
+        """Editing a command-only monitor does not clear its stored remote path.
+
+        The remote path is only *needed* by a remote profile, so it is left as
+        it is rather than removed behind the user's back.
+        """
+        profile_id = self._add_profile("cmd-profile", "event_command")
+        monitor_id = self._add_monitor(
+            MONITOR_STATUS_STOPPED, 0, remote_path="left-over-destination"
+        )
+        self.sqlite_handler.add_monitor_profile_map(
+            monitor_id=monitor_id, profile_id=profile_id
+        )
+
+        at = self._run_page()
+        self._click(at, "✎ Edit")
+        self._click(at, "Save")
+
+        self.assertEqual(self._errors(at), [])
+        updated = self.sqlite_handler.get_monitor(monitor_id=monitor_id)
+        self.assertEqual(updated["remote_path"], "left-over-destination")
+
+    def test_start_rejects_remote_profile_without_remote_path(self) -> None:
+        """Start refuses a remote profile with no destination."""
+        profile_id = self._add_profile("s3-profile", "s3")
+        monitor_id = self._add_monitor(MONITOR_STATUS_STOPPED, 0, remote_path="")
+        self.sqlite_handler.add_monitor_profile_map(
+            monitor_id=monitor_id, profile_id=profile_id
+        )
+
+        at = self._run_page()
+        with patch.object(MonitorProcessManager, "launch") as launch:
+            self._click(at, "▶ Start")
+
+        launch.assert_not_called()
+        errors = self._errors(at)
+        self.assertTrue(
+            any(
+                "cannot start" in error and "Remote path is required" in error
+                for error in errors
+            ),
+            errors,
+        )
 
     def test_force_stop_is_not_offered(self) -> None:
         self._add_monitor(MONITOR_STATUS_STOPPED, 0)

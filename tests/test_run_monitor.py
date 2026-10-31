@@ -66,6 +66,7 @@ class TestRunMonitor(BaseTestClass):
             "name": "test_monitor",
             "monitor_type": "instant",
             "monitor_path": "/definitely/missing/monitorhub-test",
+            "remote_path": "remote:dest",
             "status": "stopped",
             "pid": 0,
         }
@@ -96,6 +97,7 @@ class TestRunMonitor(BaseTestClass):
             "name": "test_monitor",
             "monitor_type": "scheduled",
             "monitor_path": self.db_dir,
+            "remote_path": "remote:dest",
         }
         mock_sqlite.get_profiles_for_monitor.return_value = [{"id": 1, "name": "p1"}]
         mock_sqlite_cls.return_value = mock_sqlite
@@ -132,6 +134,7 @@ class TestRunMonitor(BaseTestClass):
             "name": "test_monitor",
             "monitor_type": "instant",
             "monitor_path": self.db_dir,
+            "remote_path": "remote:dest",
         }
         mock_sqlite.get_profiles_for_monitor.return_value = [{"id": 1, "name": "p1"}]
         mock_sqlite_cls.return_value = mock_sqlite
@@ -171,6 +174,7 @@ class TestRunMonitor(BaseTestClass):
                 # Intermediate 'stop' state with a PID that is still alive.
                 "status": "stop",
                 "pid": child.pid,
+                "remote_path": "remote:dest",
             }
             mock_sqlite.get_profiles_for_monitor.return_value = [{"id": 1, "name": "p1"}]
             mock_sqlite_cls.return_value = mock_sqlite
@@ -208,6 +212,7 @@ class TestRunMonitor(BaseTestClass):
             "name": "test_monitor",
             "monitor_type": "scheduled",
             "monitor_path": self.db_dir,
+            "remote_path": "remote:dest",
         }
         mock_sqlite.get_profiles_for_monitor.return_value = [{"id": 1, "name": "p1"}]
         mock_sqlite_cls.return_value = mock_sqlite
@@ -250,6 +255,7 @@ class TestRunMonitor(BaseTestClass):
             "name": "test_monitor",
             "monitor_type": "instant",
             "monitor_path": self.db_dir,
+            "remote_path": "remote:dest",
         }
         mock_sqlite.get_profiles_for_monitor.return_value = [{"id": 1, "name": "p1"}]
         mock_sqlite_cls.return_value = mock_sqlite
@@ -383,6 +389,7 @@ class TestRunMonitorPhases(BaseTestClass):
             "monitor_type": "scheduled",
             "monitor_path": self.db_dir,
             "pid": 0,
+            "remote_path": "remote:dest",
         }
         mock_sqlite.get_profiles_for_monitor.return_value = [{"id": 1, "name": "p1"}]
         mock_sqlite_cls.return_value = mock_sqlite
@@ -422,6 +429,7 @@ class TestRunMonitorPhases(BaseTestClass):
             "monitor_type": "instant",
             "status": "stop",
             "pid": os.getpid() + 12345,
+            "remote_path": "remote:dest",
         }
         mock_sqlite.get_profiles_for_monitor.return_value = [{"id": 1, "name": "p1"}]
         mock_sqlite_cls.return_value = mock_sqlite

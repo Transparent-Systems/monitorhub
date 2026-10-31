@@ -33,10 +33,10 @@ are written by MonitorHub while the profile is used and are shown by
 Please note that a profile category is different from a profile type.
 At present there are two profile categories:
 
-- Remote profile
+- Remote profile  
     A remote profile propagates files from and to a remote storage.  
     See: [Remote profiles](remote-profiles.md)
-- Command profile
+- Command profile  
     A command profile handles a command similar to running a command in a shell.  
     See: [Command profiles](command-profiles.md)
 
