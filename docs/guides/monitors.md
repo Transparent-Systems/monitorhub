@@ -52,22 +52,40 @@ At present there are several monitor types dependent on what triggers the event.
 
 MonitorHub can be extended with new monitor types. This requires building a new monitor and registering that monitor type. An example of a new monitor type is a webhook monitor like a GitHub webhook.
 
-## Instant Monitor
+### Instant Monitor
 An instant monitor reacts immediately upon a file system event inside a monitor path.
 Next the monitor dispatches an action to a queue of profile handlers. Each profile handler processes the action according to their configuration.
 
-## Backup Monitor
+### Backup Monitor
 A backup monitor is a subtype of a scheduled monitor. A timer event triggers the monitor into action.
 Next the monitor dispatches an action to a queue of profile handlers. Each profile handler processes the action according to their configuration.
 
 For a backup monitor a remote profile uploads a file from the **monitor path to the remote path**.
 
-## Restore Monitor
+### Restore Monitor
 A restore monitor is a subtype of a scheduled monitor. A timer event triggers the monitor into action.
 Next the monitor dispatches an action to a queue of profile handlers. Each profile handler processes the action according to their configuration.
 
 For a restore monitor a remote profile downloads a file from the **remote path to the monitor path**.
 
+
+## Sequential or parallel processing of events?
+One monitor can have one or more profiles. Each profile has a handler that is added to a queue.
+When a mointor is triggered by an event, like a file event or a timer event, it sends an action to the handler queue. Next that action is processed by each handler one after another. This is called **sequential processing**.
+
+Suppose you have an instant monitor with two remote profiles, the first one is Backblaze and the second one is for Google Drive.
+Now whenever a file event happens that file will be uploaded first to Backblaze and thereafter to Google Drive.
+If that is what you want, fine, not a problem.
+However, if you want that same file to be uploaded to both remote storage providers at the same time, then you need to configure one more monitor. This is called **parallel processing**.
+
+Recommended steps enable parallel processing:
+
+- Clone original monitor
+- Change the remote profile
+- Save changes
+
+Next you need to start both monitors.
+Both monitors run in a separate process on your device. A file change, or timer event, is processed in parallel by both monitors.
 
 
 
