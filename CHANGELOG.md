@@ -1,5 +1,56 @@
 # Changelog
 
+## [1.3.0] - 2026-10-31
+
+This release tightens how monitors are created and configured, and documents the
+profile model.
+
+### Monitors and profiles
+
+- A monitor now requires at least one profile. The profiles relationship is the
+  `monitor_profile_map` join table, not a column on `monitors`, so nothing
+  stopped a monitor from being created with none. Such a monitor started, found
+  nothing to dispatch to and exited, which the CLI reported as "started" and the
+  web GUI as an unexplained startup failure. The CLI and the web GUI now enforce
+  the rule on create, edit and start, `monitor test` reports missing profiles
+  instead of passing with nothing tested, and a scheduled monitor fails the start
+  like an instant monitor rather than silently idling.
+- The remote path is now conditional on the linked profiles. A remote profile
+  copies files between the monitor path and the remote path; a command profile
+  runs a command and never touches it. Both interfaces now pick the profiles
+  first and ask for the remote path afterwards: the CLI prompts for it only when
+  a remote profile was selected, and the GUI labels it accordingly (the profile
+  picker, name and monitor path moved outside the Streamlit form so the label
+  updates live). A remote path left over from an earlier remote profile is kept
+  rather than cleared, so re-linking a remote profile does not mean re-entering
+  it. A monitor that has a remote profile but no remote path is refused at start,
+  and a `NULL` remote path is normalised to an empty string when read.
+
+### Documentation
+
+- New profiles guide covering the profile model, the profile properties and the
+  two profile categories (remote and command).
+- New web GUI getting-started page with screenshots of a profile form, the
+  monitor wizard, the monitor list and a monitor log.
+- Updated the monitors guide for the "at least one profile" rule and the
+  conditional remote path.
+
+### Continuous integration
+
+- The unit tests run on every pull request and every push to `main`
+  (`.github/workflows/test.yml`), through the same `make test-unit` target a
+  developer runs locally, so CI cannot drift away from it.
+- The unit tests no longer depend on local fixtures or a local rclone install.
+- The GitHub Release body is generated from the matching `CHANGELOG.md` section
+  by `utils/release_notes.py`. A tagged build fails when the tag, `version.py`
+  and the changelog disagree, so a mis-tagged release cannot publish the wrong
+  notes.
+- Workflow actions bumped to `actions/checkout@v7` and
+  `actions/setup-python@v7`.
+
+The database schema is unchanged (1.0.0), so `mhub database upgrade` is not
+required for this release.
+
 ## [1.2.0] - 2026-10-26
 
 This release is about packaging and documentation: the GUI binary is now a

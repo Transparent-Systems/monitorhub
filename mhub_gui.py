@@ -1,6 +1,6 @@
 """
 Script: mhub_gui.py
-Version: v1.2.0
+Version: v1.3.0
 Author: John Zoetebier
 Description:
     Entry point for the MonitorHub GUI binary (``mhub-gui``).
