@@ -24,6 +24,7 @@ strict: true
 exclude_docs: |
   development_notes.md
   release-checklist.md
+  linkedin-post.md
 
 theme:
   name: material
