@@ -98,6 +98,22 @@ class ProfileEditor:
         input_profile_name = profile.get("name", "N/A")
         self.prompt.print(f"You selected profile: {input_profile_name}")
 
+        # Profile name: editable, like the monitor edit flow. Pressing Enter
+        # keeps the current name.
+        def render_profile_name() -> None:
+            self.prompt.print(f"Current profile name: {profile.get('name', 'N/A')}")
+            self.prompt.print("Press Enter to keep current profile name")
+
+        new_profile_name = self.prompt.prompt_required(
+            "Enter new profile name: ",
+            current=profile.get("name"),
+            allow_cancel=True,
+            render=render_profile_name,
+        )
+        if new_profile_name:
+            profile["name"] = new_profile_name
+            input_profile_name = new_profile_name
+
         # Get profile category from code-defined reference data
         profile_type = profile.get("profile_type", "")
         profile_category = reference_data.get_profile_category(profile_type)

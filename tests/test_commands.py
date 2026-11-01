@@ -871,7 +871,7 @@ class TestCommands(unittest.TestCase):
             config=config,
         )
         commands, mock_prompt = self._make_commands(
-            [str(profile["id"]), "", "", "", "n"]
+            [str(profile["id"]), "", "", "", "", "n"]
         )
         commands.profile.edit()
         text = mock_prompt.output_text
@@ -885,7 +885,7 @@ class TestCommands(unittest.TestCase):
             "ftp-test", "pass", "super-secret-pass"
         )
         commands, mock_prompt = self._make_commands(
-            [str(profile_id), "", "", "", ""]
+            [str(profile_id), "", "", "", "", ""]
         )
         commands.profile.edit()
         text = mock_prompt.output_text
@@ -980,7 +980,7 @@ class TestCommands(unittest.TestCase):
         )["id"]
         # Keep access key, secret and endpoint (empty entries), then answer yes
         # to the rclone routing question.
-        commands, _ = self._make_commands([str(profile_id), "", "", "", "y"])
+        commands, _ = self._make_commands([str(profile_id), "", "", "", "", "y"])
         commands.profile.edit()
         profile = commands.sqlite_handler.get_profile(profile_id=profile_id)
         self.assertEqual(
@@ -992,7 +992,7 @@ class TestCommands(unittest.TestCase):
         profile_id = self.database_test_data.sqlite_handler.get_profile(
             profile_name="s3-test"
         )["id"]
-        commands, _ = self._make_commands([str(profile_id), "", "", "", "n"])
+        commands, _ = self._make_commands([str(profile_id), "", "", "", "", "n"])
         commands.profile.edit()
         profile = commands.sqlite_handler.get_profile(profile_id=profile_id)
         self.assertEqual(profile["config"][reference_data.CONFIG_REMOTE_HANDLER], "s3")
@@ -1021,7 +1021,7 @@ class TestCommands(unittest.TestCase):
             profile_name="ftp-test"
         )["id"]
         commands, _ = self._make_commands(
-            [str(profile_id), "192.168.1.99", "", "", ""]
+            [str(profile_id), "", "192.168.1.99", "", "", ""]
         )
         commands.profile.edit()
         profile = commands.sqlite_handler.get_profile(profile_id=profile_id)
@@ -1036,7 +1036,7 @@ class TestCommands(unittest.TestCase):
         profile_id = self.database_test_data.sqlite_handler.get_profile(
             profile_name="ftp-test"
         )["id"]
-        commands, _ = self._make_commands([str(profile_id), "", "", "", ""])
+        commands, _ = self._make_commands([str(profile_id), "", "", "", "", ""])
         commands.profile.edit()
         profile = commands.sqlite_handler.get_profile(profile_id=profile_id)
         self.assertEqual(profile["config"]["host"], "192.168.1.51")
@@ -1053,7 +1053,7 @@ class TestCommands(unittest.TestCase):
             return_value=None,
         ):
             commands, _ = self._make_commands(
-                [str(profile_id), "", "", "", "transfers=8, s3_chunk_size=16M"]
+                [str(profile_id), "", "", "", "", "transfers=8, s3_chunk_size=16M"]
             )
             commands.profile.edit()
         profile = commands.sqlite_handler.get_profile(profile_id=profile_id)
@@ -1072,7 +1072,7 @@ class TestCommands(unittest.TestCase):
             return_value=None,
         ):
             commands, mock_prompt = self._make_commands(
-                [str(profile_id), "", "", "", "transfers", "transfers=8"]
+                [str(profile_id), "", "", "", "", "transfers", "transfers=8"]
             )
             commands.profile.edit()
         self.assertIn("Invalid rclone option", mock_prompt.output_text)
@@ -1088,6 +1088,7 @@ class TestCommands(unittest.TestCase):
         commands, _ = self._make_commands(
             [
                 str(profile_id),
+                "",
                 "",
                 "",
                 "",
@@ -1109,7 +1110,7 @@ class TestCommands(unittest.TestCase):
     def test_profile_edit_s3_rclone_profile_keeps_rclone_route(self):
         profile_id = self._route_s3_profile_through_rclone("s3-test")
         commands, _ = self._make_commands(
-            [str(profile_id), "", "", "", "", "", ""]
+            [str(profile_id), "", "", "", "", "", "", ""]
         )
         commands.profile.edit()
         profile = commands.sqlite_handler.get_profile(profile_id=profile_id)
@@ -1130,6 +1131,7 @@ class TestCommands(unittest.TestCase):
             commands, _ = self._make_commands(
                 [
                     str(profile_id),
+                    "",  # profile name
                     "",  # provider
                     "",  # access_key_id
                     "",  # secret_access_key
@@ -1159,6 +1161,7 @@ class TestCommands(unittest.TestCase):
                     "",
                     "",
                     "",
+                    "",
                     "no_check_buckets=true",  # not a flag for ftp -> rejected
                     "transfers=8",  # accepted on the retry
                 ]
@@ -1185,6 +1188,7 @@ class TestCommands(unittest.TestCase):
                     "",
                     "",
                     "",
+                    "",
                     "no-check-upload=true, PROGRESS=true",
                 ]
             )
@@ -1201,7 +1205,7 @@ class TestCommands(unittest.TestCase):
         profile_id = self._set_profile_config_value(
             "ftp-test", "rclone_options", {"ftp_no_check_upload": "true"}
         )
-        commands, _ = self._make_commands([str(profile_id), "", "", "", ""])
+        commands, _ = self._make_commands([str(profile_id), "", "", "", "", ""])
         commands.profile.edit()
         profile = commands.sqlite_handler.get_profile(profile_id=profile_id)
         self.assertEqual(
@@ -1275,7 +1279,7 @@ class TestCommands(unittest.TestCase):
             profile_name="command-test"
         )["id"]
         commands, _ = self._make_commands(
-            [str(profile_id), "echo updated", "", "", "", "", ""]
+            [str(profile_id), "", "echo updated", "", "", "", "", ""]
         )
         commands.profile.edit()
         profile = commands.sqlite_handler.get_profile(profile_id=profile_id)
@@ -1285,13 +1289,13 @@ class TestCommands(unittest.TestCase):
         profile_id = self.database_test_data.sqlite_handler.get_profile(
             profile_name="command-test"
         )["id"]
-        commands, _ = self._make_commands(["echo updated", "", "", "", "", ""])
+        commands, _ = self._make_commands(["", "echo updated", "", "", "", "", ""])
         commands.profile.edit(profile_id=profile_id)
         profile = commands.sqlite_handler.get_profile(profile_id=profile_id)
         self.assertEqual(profile["config"]["command"], "echo updated")
 
     def test_profile_edit_command_by_name(self):
-        commands, _ = self._make_commands(["echo updated", "", "", "", "", ""])
+        commands, _ = self._make_commands(["", "echo updated", "", "", "", "", ""])
         commands.profile.edit(profile_name="command-test")
         profile = commands.sqlite_handler.get_profile(profile_name="command-test")
         self.assertEqual(profile["config"]["command"], "echo updated")
@@ -1303,6 +1307,44 @@ class TestCommands(unittest.TestCase):
         commands, mock_prompt = self._make_commands([])
         commands.profile.edit(profile_id=profile_id, profile_name="command-test")
         self.assertIn("Cannot specify both --profile-id and --profile-name.", mock_prompt.output_text)
+
+    def test_profile_edit_renames_command_profile(self):
+        profile_id = self.database_test_data.sqlite_handler.get_profile(
+            profile_name="command-test"
+        )["id"]
+        # Inputs: new name, then keep every command-config field.
+        commands, mock_prompt = self._make_commands(
+            ["renamed-command", "", "", "", "", "", ""]
+        )
+        commands.profile.edit(profile_id=profile_id)
+        renamed = commands.sqlite_handler.get_profile(profile_id=profile_id)
+        self.assertEqual(renamed["name"], "renamed-command")
+        # The rename is persisted, not a copy: the old name is gone.
+        self.assertIsNone(
+            commands.sqlite_handler.get_profile(profile_name="command-test")
+        )
+        self.assertIn("Current profile name: command-test", mock_prompt.output_text)
+
+    def test_profile_edit_renames_remote_profile(self):
+        profile_id = self.database_test_data.sqlite_handler.get_profile(
+            profile_name="s3-test"
+        )["id"]
+        # Inputs: new name, then keep the access key, secret, endpoint and route.
+        commands, _ = self._make_commands(["renamed-s3", "", "", "", "n"])
+        commands.profile.edit(profile_id=profile_id)
+        renamed = commands.sqlite_handler.get_profile(profile_id=profile_id)
+        self.assertEqual(renamed["name"], "renamed-s3")
+        self.assertIsNone(commands.sqlite_handler.get_profile(profile_name="s3-test"))
+
+    def test_profile_edit_keeps_name_on_enter(self):
+        profile_id = self.database_test_data.sqlite_handler.get_profile(
+            profile_name="command-test"
+        )["id"]
+        # An empty name entry keeps the current name.
+        commands, _ = self._make_commands(["", "", "", "", "", "", ""])
+        commands.profile.edit(profile_id=profile_id)
+        kept = commands.sqlite_handler.get_profile(profile_id=profile_id)
+        self.assertEqual(kept["name"], "command-test")
 
     def test_profile_delete(self):
         first_id = self.database_test_data.sqlite_handler.get_profiles()[0]["id"]

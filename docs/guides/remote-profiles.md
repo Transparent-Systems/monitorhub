@@ -151,5 +151,8 @@ current value and pressing Enter keeps it. The profile's `rclone_options` are
 entered as `key=value` pairs using the bare rclone property name (enter `none` to
 remove them).
 
+Editing starts by prompting for the profile name, so a remote profile can be
+renamed while you edit it; press Enter to keep the current name.
+
 Next: attach the profile to a monitor in
 [Your first monitor](../getting-started/first-monitor.md).

@@ -20,6 +20,11 @@ creating a profile (`mhub profile new` or the web GUI). The remaining properties
 are written by MonitorHub while the profile is used and are shown by
 `mhub profile show`.
 
+A profile's `name` can also be changed after it is created: `mhub profile edit`
+prompts for it first (press Enter to keep the current name), and the web GUI edit
+form has the same Name field. Renaming updates the profile in place — its id, the
+monitors linked to it and its timestamps are unchanged.
+
 !!! note "Category is derived, not stored"
     A profile's category (`remote` or `command`) is not one of its properties:
     MonitorHub derives it from `profile_type`, which is why the two are

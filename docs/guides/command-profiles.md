@@ -57,6 +57,17 @@ full list and an example.
 - Cooldown suppresses repeat firings within a window; the default `0s` disables
   throttling.
 
+## Editing a command profile
+
+```bash
+mhub profile edit          # prompts for the profile
+```
+
+`mhub profile edit` prompts for the profile name first (press Enter to keep the
+current name), then re-prompts for each command setting with the current value
+shown, so pressing Enter keeps a value. See [Profiles](profiles.md) for the
+profile model.
+
 ## Testing a command profile
 
 ```bash

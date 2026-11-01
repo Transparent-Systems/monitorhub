@@ -47,7 +47,7 @@ Global options come before the subcommand, for example
 | --- | --- |
 | `mhub profile show` | Show all profiles. |
 | `mhub profile new` | Create a profile (select the profile category interactively). |
-| `mhub profile edit` | Edit a profile. |
+| `mhub profile edit` | Edit a profile, including renaming it. |
 | `mhub profile delete` | Delete a profile. |
 | `mhub profile test [--live]` | Test a profile. Without `--live` the test is a dry run; `--live` executes with sample values. |
 | `mhub profile clone [--deep]` | Clone a profile. The clone copies the profile's type and configuration; `--deep` also links it to the same monitors as the original (the default is a shallow clone with no monitor links). |

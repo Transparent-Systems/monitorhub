@@ -4,6 +4,10 @@
 
 ### Monitors and profiles
 
+- `mhub profile edit` now prompts for the profile name, so a profile can be
+  renamed from the CLI the same way a monitor can. Pressing Enter keeps the
+  current name. This brings the CLI in line with `monitor edit` and the web GUI
+  edit form, which already allowed renaming.
 - `mhub profile clone [--deep]` is now available from the CLI. It performs the
   same shallow and deep profile clone the web GUI already offered: a shallow
   clone (the default) copies the profile's type and configuration and links the
