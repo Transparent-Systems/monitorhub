@@ -25,6 +25,7 @@ exclude_docs: |
   development_notes.md
   release-checklist.md
   linkedin-post.md
+  explanation/rust-port-assessment.md
 
 theme:
   name: material
