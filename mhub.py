@@ -70,6 +70,15 @@ _SUBCOMMAND_DISPATCH = {
         },
     ),
     ("profile", "import"): ("profile", "import_profiles", lambda _: {}),
+    ("profile", "clone"): (
+        "profile",
+        "clone",
+        lambda args: {
+            "profile_id": getattr(args, "profile_id", None),
+            "profile_name": getattr(args, "profile_name", None),
+            "deep": args.deep,
+        },
+    ),
     ("monitor", "delete"): (
         "monitor",
         "delete",
@@ -260,6 +269,16 @@ def build_parser() -> tuple[argparse.ArgumentParser, dict[str, argparse.Argument
         action="store_true",
         default=False,
         help="Execute the command with sample values instead of dry-run only"
+        )
+    profile_clone_parser = profile_subparsers.add_parser("clone", help="Clone a profile")
+    _add_selector_args(profile_clone_parser, "profile", "clone", "omit to select interactively")
+    profile_clone_parser.add_argument("--deep",
+        action="store_true",
+        default=False,
+        help=(
+            "Also link the clone to the same monitors as the original (deep clone); "
+            "the default is a shallow clone with no monitor links"
+        )
         )
 
 

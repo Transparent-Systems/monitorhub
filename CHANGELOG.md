@@ -1,5 +1,16 @@
 # Changelog
 
+## [Unreleased]
+
+### Monitors and profiles
+
+- `mhub profile clone [--deep]` is now available from the CLI. It performs the
+  same shallow and deep profile clone the web GUI already offered: a shallow
+  clone (the default) copies the profile's type and configuration and links the
+  clone to no monitors, while `--deep` also links the clone to the same monitors
+  as the original. Both routes call the same `SQLiteHandler.clone_profile` the
+  web GUI uses, so the two interfaces cannot disagree.
+
 ## [1.3.0] - 2026-10-31
 
 This release tightens how monitors are created and configured, and documents the

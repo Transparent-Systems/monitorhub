@@ -50,6 +50,7 @@ Global options come before the subcommand, for example
 | `mhub profile edit` | Edit a profile. |
 | `mhub profile delete` | Delete a profile. |
 | `mhub profile test [--live]` | Test a profile. Without `--live` the test is a dry run; `--live` executes with sample values. |
+| `mhub profile clone [--deep]` | Clone a profile. The clone copies the profile's type and configuration; `--deep` also links it to the same monitors as the original (the default is a shallow clone with no monitor links). |
 | `mhub profile import` | Import profiles from an existing rclone configuration. |
 
 ### Database
@@ -85,8 +86,8 @@ items, as noted in each command's help text.
 
 | Flag | Applies to | Description |
 | --- | --- | --- |
-| `-i`, `--profile-id <ID>` | `profile edit`, `delete`, `test` | ID of the profile |
-| `-n`, `--profile-name <NAME>` | `profile edit`, `delete`, `test` | Name of the profile |
+| `-i`, `--profile-id <ID>` | `profile edit`, `delete`, `test`, `clone` | ID of the profile |
+| `-n`, `--profile-name <NAME>` | `profile edit`, `delete`, `test`, `clone` | Name of the profile |
 | `-i`, `--monitor-id <ID>` | `monitor edit`, `delete`, `clone`, `show`, `start`, `test`, `stop` | ID of the monitor |
 | `-n`, `--monitor-name <NAME>` | `monitor edit`, `delete`, `clone`, `show`, `start`, `test`, `stop` | Name of the monitor |
 

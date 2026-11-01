@@ -21,6 +21,10 @@ class TestSubcommandDispatch(unittest.TestCase):
         owner, method, _ = mhub._SUBCOMMAND_DISPATCH[("config", "test")]
         self.assertEqual((owner, method), ("app", "config_test"))
 
+    def test_profile_clone_is_dispatched_to_profile_commands(self):
+        owner, method, _ = mhub._SUBCOMMAND_DISPATCH[("profile", "clone")]
+        self.assertEqual((owner, method), ("profile", "clone"))
+
     def test_every_dispatch_entry_targets_a_known_owner(self):
         for (_, _), (owner, _, _) in mhub._SUBCOMMAND_DISPATCH.items():
             self.assertIn(owner, {"app", "profile", "monitor", "database"})
@@ -46,6 +50,19 @@ class TestBuildParser(unittest.TestCase):
     def test_webgui_is_a_command(self):
         parser, _ = mhub.build_parser()
         self.assertEqual(parser.parse_args(["webgui"]).command, "webgui")
+
+    def test_profile_clone_parses_deep_flag(self):
+        parser, _ = mhub.build_parser()
+        args = parser.parse_args(["profile", "clone", "--deep", "-i", "3"])
+        self.assertEqual(args.profile_subcommand, "clone")
+        self.assertEqual(args.profile_id, 3)
+        self.assertTrue(args.deep)
+
+    def test_profile_clone_deep_defaults_to_shallow(self):
+        parser, _ = mhub.build_parser()
+        args = parser.parse_args(["profile", "clone", "-n", "s3-test"])
+        self.assertEqual(args.profile_name, "s3-test")
+        self.assertFalse(args.deep)
 
 
 class TestWebguiDispatch(unittest.TestCase):

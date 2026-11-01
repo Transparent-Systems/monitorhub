@@ -1332,6 +1332,81 @@ class TestCommands(unittest.TestCase):
         commands.profile.delete(profile_id=target["id"], profile_name=target["name"])
         self.assertIn("Cannot specify both --profile-id and --profile-name.", mock_prompt.output_text)
 
+    def test_profile_clone_shallow_by_id(self):
+        commands, mock_prompt = self._make_commands([])
+        target = commands.sqlite_handler.get_profile(profile_name="s3-test")
+        commands.profile.clone(profile_id=target["id"])
+
+        clone = commands.sqlite_handler.get_profile(profile_name="s3-test (copy)")
+        self.assertIsNotNone(clone)
+        self.assertEqual(clone["profile_type"], target["profile_type"])
+        self.assertEqual(clone["config"], target["config"])
+        # A shallow clone is not linked to any monitor.
+        self.assertEqual(
+            commands.sqlite_handler.get_monitors_for_profile(clone["id"]), []
+        )
+        self.assertIn("shallow clone", mock_prompt.output_text)
+
+    def test_profile_clone_deep_by_id(self):
+        commands, mock_prompt = self._make_commands([])
+        target = commands.sqlite_handler.get_profile(profile_name="s3-test")
+        source_monitors = {
+            m["id"]
+            for m in commands.sqlite_handler.get_monitors_for_profile(target["id"])
+        }
+        self.assertTrue(source_monitors)  # Seeded data links profiles to monitors.
+
+        commands.profile.clone(profile_id=target["id"], deep=True)
+
+        clone = commands.sqlite_handler.get_profile(profile_name="s3-test (copy)")
+        self.assertIsNotNone(clone)
+        clone_monitors = {
+            m["id"]
+            for m in commands.sqlite_handler.get_monitors_for_profile(clone["id"])
+        }
+        self.assertEqual(source_monitors, clone_monitors)
+        self.assertIn("deep clone", mock_prompt.output_text)
+
+    def test_profile_clone_by_name(self):
+        commands, mock_prompt = self._make_commands([])
+        commands.profile.clone(profile_name="command-test")
+
+        clone = commands.sqlite_handler.get_profile(profile_name="command-test (copy)")
+        self.assertIsNotNone(clone)
+        self.assertIn("shallow clone", mock_prompt.output_text)
+
+    def test_profile_clone_interactive(self):
+        commands, mock_prompt = self._make_commands([])
+        target = commands.sqlite_handler.get_profile(profile_name="s3-test")
+        commands, mock_prompt = self._make_commands([str(target["id"])])
+        commands.profile.clone()
+
+        self.assertIsNotNone(
+            commands.sqlite_handler.get_profile(profile_name="s3-test (copy)")
+        )
+        self.assertIn("shallow clone", mock_prompt.output_text)
+
+    def test_profile_clone_both_id_and_name(self):
+        commands, mock_prompt = self._make_commands([])
+        target = commands.sqlite_handler.get_profile(profile_name="s3-test")
+        commands.profile.clone(profile_id=target["id"], profile_name=target["name"])
+        self.assertIn(
+            "Cannot specify both --profile-id and --profile-name.",
+            mock_prompt.output_text,
+        )
+
+    def test_profile_clone_not_found(self):
+        commands, mock_prompt = self._make_commands([])
+        commands.profile.clone(profile_id=999999)
+        self.assertIn("Profile with id=999999 not found.", mock_prompt.output_text)
+
+        commands, mock_prompt = self._make_commands([])
+        commands.profile.clone(profile_name="non-existent-profile")
+        self.assertIn(
+            "Profile with name='non-existent-profile' not found.",
+            mock_prompt.output_text,
+        )
+
     def test_profile_test_command(self):
         profile_id = self.database_test_data.sqlite_handler.get_profile(
             profile_name="command-test"

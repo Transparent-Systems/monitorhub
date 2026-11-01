@@ -2,8 +2,10 @@
 
 import logging
 import shlex
+import sqlite3
 from typing import Any
 
+from app.cli.db_error_messages import integrity_error_message
 from app.cli.profile_editor import ProfileEditor
 from app.cli.profile_importer import ProfileImporter
 from app.cli.prompt_service import PromptService
@@ -429,6 +431,68 @@ class ProfileCommands:
     def new(self):
         """Create a new profile interactively (delegated to :class:`ProfileEditor`)."""
         self.editor.new()
+
+    def clone(
+        self,
+        profile_id: int | None = None,
+        profile_name: str | None = None,
+        deep: bool = False,
+    ) -> None:
+        """
+        Clone a profile, or select one interactively.
+
+        The clone copies the profile's type and config. By default it is a
+        shallow clone with no monitor links; with ``deep=True`` it is also
+        linked to the same monitors as the source. Both routes call the same
+        :meth:`SQLiteHandler.clone_profile` the web GUI uses, so the two
+        interfaces cannot disagree.
+        """
+        if profile_id is not None and profile_name is not None:
+            self.prompt.print("Cannot specify both --profile-id and --profile-name.")
+            return
+
+        if profile_id is not None:
+            profile = self.sqlite_handler.get_profile(profile_id=profile_id)
+            if not profile:
+                self.prompt.print(f"Profile with id={profile_id} not found.")
+                return
+            self._clone_profile(profile, deep)
+            return
+
+        if profile_name is not None:
+            profile = self.sqlite_handler.get_profile(profile_name=profile_name)
+            if not profile:
+                self.prompt.print(f"Profile with name='{profile_name}' not found.")
+                return
+            self._clone_profile(profile, deep)
+            return
+
+        profile = self.selector.select_interactive()
+        if not profile:
+            return
+        self._clone_profile(profile, deep)
+
+    def _clone_profile(self, profile: dict[str, Any], deep: bool = False) -> None:
+        """Clone a single profile resolved by id, name, or interactive selection."""
+        source_name = profile.get("name", "N/A")
+        try:
+            new_id = self.sqlite_handler.clone_profile(profile.get("id", 0), deep=deep)
+        except sqlite3.IntegrityError as error:
+            self.prompt.print(
+                integrity_error_message(error, entity="Profile", name=source_name)
+            )
+            return
+
+        if new_id is None:
+            self.prompt.print(f"Profile name: {source_name} not cloned")
+            return
+
+        clone = self.sqlite_handler.get_profile(profile_id=new_id)
+        new_name = clone.get("name", "N/A") if clone else "N/A"
+        clone_kind = "deep clone" if deep else "shallow clone"
+        self.prompt.print(
+            f"Profile '{new_name}' created as a {clone_kind} of '{source_name}'."
+        )
 
     def show(self, profile_id: int | None = None, profile_name: str | None = None):
         """
