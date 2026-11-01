@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [1.4.0] - 2026-11-02
 
 ### Monitors and profiles
 
@@ -14,6 +14,12 @@
   clone to no monitors, while `--deep` also links the clone to the same monitors
   as the original. Both routes call the same `SQLiteHandler.clone_profile` the
   web GUI uses, so the two interfaces cannot disagree.
+
+### Documentation
+
+- Documented sequential and parallel event processing in the monitors guide.
+- Added the Rust port assessment and the LinkedIn announcement copy under
+  `docs/`.
 
 ## [1.3.0] - 2026-10-31
 
